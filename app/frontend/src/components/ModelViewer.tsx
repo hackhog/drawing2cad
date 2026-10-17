@@ -27,7 +27,7 @@ function Part({ url }: { url: string }) {
 
 export default function ModelViewer({ url }: { url: string }) {
   return (
-    <Canvas className="model-viewer" camera={{ position: [1, 0.8, 1.2], fov: 35, near: 0.0001, far: 1000 }} dpr={[1, 2]}>
+    <Canvas className="cursor-grab" camera={{ position: [1, 0.8, 1.2], fov: 35, near: 0.0001, far: 1000 }} dpr={[1, 2]}>
       <color attach="background" args={["#fbfbfc"]} />
       <hemisphereLight args={["#ffffff", "#b8bec8", 1.6]} />
       <directionalLight position={[3, 5, 4]} intensity={1.6} />

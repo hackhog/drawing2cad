@@ -14,15 +14,20 @@ The UI design history is in [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-
 - The app can derive review flags from service results. Keep unclear strokes and unrecognized text characters visible.
 - Keep the browser response compatible unless you also update its types and consumers.
 - Keep two containers: `frontend/` supplies the React UI through nginx; `backend/` supplies the FastAPI API without static files.
-- Use relative `/api/...` paths in the UI. Do not add a backend URL to the UI code.
+- Use root-relative `/api/...` paths in the UI. Do not add a backend URL to the UI code.
 - Use React and TypeScript in `frontend/`. Vite builds the UI into ignored `frontend/dist/`.
+- Use TanStack Router for views and TanStack Query for all server data ([ADR 0015](../docs/adr/0015-web-ui-on-tanstack-shadcn-with-service-adapter.md)).
+- Use shadcn components in `frontend/src/components/ui/` and Tailwind classes. Do not add a second component library.
+- Components call the service only through the `WebApi` interface in `frontend/src/lib/webApi.ts`.
+  Do not add storage, CAD, drawing, or validation rules to components.
+- Mark simulated data as simulated. Fixture results are not acceptance evidence.
 - Do not use a CDN, external scripts, or external fonts. The UI must work offline. Install npm packages with exact versions.
 - Keep three.js and react-three-fiber in the lazy-loaded `ModelViewer.tsx` module.
 - SVG coordinates use sheet millimeters, with the Y axis down. Keep the established UI class colors.
 - The backend image includes `drawing2cad-mcp/` and `app/backend/`. The frontend image contains the UI build.
 - Do not include input data or local configuration in either image.
 - The MCP package is a non-editable path dependency. After an MCP change, run `uv sync --reinstall-package drawing2cad-mcp` in `backend/`.
-- After a change, run `uv run pytest` in `backend/` and `npm run build` in `frontend/`.
+- After a change, run `uv run pytest` in `backend/`, and `npm test` and `npm run build` in `frontend/`.
 - Test both containers with Docker Compose when Docker is available.
 - Test PDF upload and the STEP viewer in the browser when browser access is available. Report tests that could not run.
 

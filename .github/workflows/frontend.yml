@@ -1,0 +1,39 @@
+# Test and build the web UI (ADR 0015) and its container image.
+# This workflow does not commit or deploy artifacts.
+name: Frontend
+
+on:
+  pull_request:
+    paths: ['app/frontend/**', '.github/workflows/frontend.yml']
+  push:
+    branches: [main]
+    paths: ['app/frontend/**', '.github/workflows/frontend.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24        # Same major version as the build stage in app/frontend/Dockerfile.
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build       # Type check and Vite build.
+      - name: UI loads no external resources
+        run: |
+          if grep -rlE 'https?://(fonts\.|cdn\.|unpkg\.com|cdnjs\.)' dist; then
+            echo "The build references an external resource. The UI must work offline." >&2
+            exit 1
+          fi
+      - name: Build the container image
+        run: docker build -t drawing2cad-frontend:ci .

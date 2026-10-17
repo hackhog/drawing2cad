@@ -1,18 +1,21 @@
 // Das Blatt als SVG in Blatt-mm: blasses Seitenbild, darüber die klassifizierten Striche, Texte und Ansichten.
 // Zoom per Rad, Verschieben per Ziehen, Doppelklick = ganzes Blatt. Ein Prüf-Flag als `focus` zoomt auf seine Stelle.
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { Box, ExtractResult, ReviewFlag, StrokeKind } from "../lib/api";
-import { boxToViewBox, strokePath } from "../lib/geometry";
-import { KINDS, OFF_BY_DEFAULT } from "../lib/kinds";
+import type { Box, ExtractResult, ReviewFlag, StrokeKind } from "@/lib/drawing";
+import { boxToViewBox, strokePath } from "@/lib/geometry";
+import { KINDS, OFF_BY_DEFAULT } from "@/lib/kinds";
+import { cn } from "@/lib/utils";
+import { VIEWER_FRAME } from "./viewerFrame";
 
 interface Props {
   result: ExtractResult;
   focus: ReviewFlag | null;
   fitKey: number; // jede Änderung = zurück aufs ganze Blatt
-  dropProps: object;
+  step: 1 | 2 | 3; // 1 = Originalblatt, 2 = Strichklassen, 3 = Prüfen
+  dropProps: object; // PDFs dropped onto the sheet start an upload
 }
 
-export function SheetViewer({ result, focus, fitKey, dropProps }: Props) {
+export function SheetViewer({ result, focus, fitKey, step, dropProps }: Props) {
   const d = result.drawing;
   const [w, h] = d.sheet_size_mm;
   const sheetBox: Box = useMemo(() => boxToViewBox([0, 0, w, h], 4), [w, h]);
@@ -93,14 +96,18 @@ export function SheetViewer({ result, focus, fitKey, dropProps }: Props) {
 
   return (
     <>
-      <div className="kinds" aria-label="Strichklassen">
-        {KINDS.filter(([kind]) => byKind.has(kind)).map(([kind, label, color]) => (
-          <button key={kind} type="button" className="chip" aria-pressed={!off.has(kind)} title={label} onClick={() => toggle(kind)}>
-            <i style={{ background: color }} /><span>{label}</span><b>{byKind.get(kind)!.length}</b>
-          </button>
-        ))}
-      </div>
-      <div className="viewer" {...dropProps}>
+      {step === 2 && (
+        <div className="mb-2.5 flex flex-wrap gap-1.5" aria-label="Strichklassen">
+          {KINDS.filter(([kind]) => byKind.has(kind)).map(([kind, label, color]) => (
+            <button key={kind} type="button" aria-pressed={!off.has(kind)} title={label} onClick={() => toggle(kind)}
+              className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-0.5 text-xs font-medium aria-[pressed=false]:opacity-45">
+              <i className="size-2 rounded-full" style={{ background: color }} /><span>{label}</span>
+              <b className="font-medium text-muted-foreground">{byKind.get(kind)!.length}</b>
+            </button>
+          ))}
+        </div>
+      )}
+      <div data-step={step} className={cn("sheet", VIEWER_FRAME)} {...dropProps}>
         <svg
           ref={svgRef} xmlns="http://www.w3.org/2000/svg" viewBox={viewBox.join(" ")} className={panning ? "panning" : undefined}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}

@@ -26,7 +26,7 @@
       "id": "webui",
       "type": "frontend",
       "label": "Existing demo UI",
-      "sublabel": "React, three.js, nginx",
+      "sublabel": "React, TanStack, shadcn, nginx",
       "pos": [
         320,
         140

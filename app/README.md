@@ -58,15 +58,15 @@ uv sync --reinstall-package drawing2cad-mcp
 
 ## User interface
 
-The interface has four steps: **Drawing, Recognized, Review, and 3D model**.
-UI text remains in German.
-See [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md) and
-[ADR 0010](../docs/adr/0010-demo-ui-in-react-with-3d-viewer.md) for the design history.
+The UI uses React, TanStack Router, TanStack Query, and shadcn ([ADR 0015](../docs/adr/0015-web-ui-on-tanstack-shadcn-with-service-adapter.md)).
+UI text remains in German. See [frontend/README.md](frontend/README.md) for routes, service adapters, and the structure.
 
-- The overview shows each uploaded drawing and its status.
-- The drawing view shows the original page and the existing stroke classes.
-- The review view marks unclear strokes, unrecognized text characters, and missing views.
-- The model view converts an uploaded STEP file to GLB for display.
+- The overview shows each uploaded drawing, its upload progress, and its status.
+- The drawing page has the four steps **Drawing, Recognized, Review, and 3D model** ([ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md)).
+- The review step marks unclear strokes, unrecognized text characters, and missing views.
+- The model step converts an uploaded STEP file to GLB for display.
+- The run page shows job state, parameters, review data, results, and notes.
+  With the current backend, these functions show as unavailable. `npm run dev:fixture` shows them with simulated data.
 - Batch upload sends a maximum of two PDFs at the same time.
 
 Use the mouse wheel to zoom. Drag to move the sheet. Double-click to show the full sheet.
@@ -123,6 +123,6 @@ The complete service must also deliver a technical drawing. Drawing and model cr
 Run `uv run pytest` in `backend/` for API and review tests.
 Sample-based tests are skipped when their inputs are absent.
 Synthetic tests verify the shared service boundary, hash agreement, and temporary-file cleanup.
-Run `npm run build` in `frontend/` for the type check and build.
+Run `npm test` and `npm run build` in `frontend/` for the unit tests, the type check, and the build.
 Run `docker compose build` at the repository root for both container builds.
 These commands describe the test procedure. They do not assert a completed test run.

@@ -1,4 +1,4 @@
-import type { Box, Stroke } from "./api";
+import type { Box, Stroke } from "./drawing";
 
 function pt(cx: number, cy: number, r: number, deg: number): [number, number] {
   const a = (deg * Math.PI) / 180;
