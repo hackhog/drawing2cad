@@ -19,6 +19,7 @@ npm run dev:fixture          # simulated service, no backend necessary (see "Ser
 ```
 
 Install npm packages only with exact versions (`package-lock.json`).
+CI (`.github/workflows/frontend.yml`) runs the tests, the build, an offline check of `dist/`, and the image build.
 
 ## Stack
 
