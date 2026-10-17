@@ -8,8 +8,10 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "cascadio>=0.1.1",
     "drawing-extractor",
     "fastapi>=0.143.3",
+    "numpy>=2",
     "pymupdf>=1.28.2",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.54.0",

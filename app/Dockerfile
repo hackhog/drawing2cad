@@ -1,5 +1,15 @@
-# Demo-App (ADR 0006). Build-Kontext ist das Projekt-Root, weil der Extraktor als Pfad-Abhängigkeit mitkommt:
+# Demo-App (ADR 0006, 0010). Build-Kontext ist das Projekt-Root, weil der Extraktor als Pfad-Abhängigkeit mitkommt:
 #   docker compose build   bzw.   docker build -f app/Dockerfile .
+
+# Stufe 1: Oberfläche (React, app/web) → statische Dateien. Node ist nur hier nötig, nicht im fertigen Image.
+FROM node:24.21.0-slim AS web
+WORKDIR /src/app/web
+COPY app/web/package.json app/web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY app/web/ ./
+RUN npm run build
+
+# Stufe 2: Python-App mit Extraktor; liefert API und die gebaute Oberfläche aus
 FROM python:3.12-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
@@ -12,6 +22,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /src
 COPY extractor/ extractor/
 COPY app/ app/
+COPY --from=web /src/app/src/drawing_demo/static/ app/src/drawing_demo/static/
 
 WORKDIR /src/app
 RUN uv sync --locked --no-dev --no-editable \

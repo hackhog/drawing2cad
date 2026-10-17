@@ -73,3 +73,6 @@ Desktop.ini
 
 # Intentionally keep resources/, skills/, example configs and dependency locks.
 # Do not ignore PDF, STEP, PRT, FCStd or image formats globally.
+
+# Build output of app/web (Vite); the Docker image builds it (ADR 0010)
+/app/src/drawing_demo/static/
