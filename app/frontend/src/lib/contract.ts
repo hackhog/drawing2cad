@@ -46,7 +46,7 @@ export interface Part {
   capabilities: { parameter_edit: boolean };
 }
 
-export type ArtifactRole = "drawing_pdf" | "drawing_dxf" | "step" | "manifest";
+export type ArtifactRole = "drawing_pdf" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report";
 
 /** An output file. Content is read by `artifact_id` only. */
 export interface Artifact {
@@ -122,6 +122,8 @@ export interface Run {
   run_id: string;
   source_id: string;
   phase: RunPhase;
+  /** The phase in which a failed run stopped. */
+  failed_phase?: RunPhase | null;
   job: Job;
   part: Part | null;
   artifacts: Artifact[];

@@ -14,7 +14,8 @@ const SEQUENCE: RunPhase[] = ["queued", "analyzing", "modeling", "drawing", "val
 
 export function JobCard({ run }: { run: Run }) {
   const [tone, label] = runStatus(run);
-  const current = SEQUENCE.indexOf(run.phase === "failed" ? "validating" : run.phase);
+  // A failed run marks the phase in which it stopped. Older records have no such phase.
+  const current = SEQUENCE.indexOf(run.phase === "failed" ? (run.failed_phase ?? "validating") : run.phase);
   return (
     <Card className="gap-3 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0">
@@ -44,7 +45,7 @@ export function JobCard({ run }: { run: Run }) {
           <dt>Beendet</dt><dd>{run.job.finished_at ? time(run.job.finished_at) : "–"}</dd>
         </dl>
         {run.error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="[overflow-wrap:anywhere]">
             <AlertTitle className="line-clamp-none">{run.error.message}</AlertTitle>
             <AlertDescription>
               {run.error.recovery && <p>{run.error.recovery}</p>}

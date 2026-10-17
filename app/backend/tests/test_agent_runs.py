@@ -49,6 +49,7 @@ def test_phase_follows_the_tool_sequence():
     assert phase_for("build_from_description", "analyzing") == "modeling"
     assert phase_for("drawing_render", "modeling") == "drawing"
     assert phase_for("export_step", "drawing") == "validating"
+    assert phase_for("part_export_review", "modeling") == "modeling"
     assert phase_for("cad_worker_probe", "modeling") == "modeling"
     assert phase_for("part_schema", "analyzing") == "analyzing"
 
@@ -81,6 +82,8 @@ def test_review_keeps_assumptions_flags_and_untested_checks_apart():
 @pytest.mark.parametrize(("role", "media_type", "expected"), [
     ("released_step", "model/step", "step"), ("technical_drawing", "application/pdf", "drawing_pdf"),
     ("technical_drawing", "image/vnd.dxf", "drawing_dxf"), ("run_manifest", "application/json", "manifest"),
+    ("part_description", "application/json", "part_description"), ("run_trace", "application/json", "trace"),
+    ("domain_run_events", "application/json", "events"), ("drawing_report", "application/json", "report"),
     ("source_preview", "image/png", None),
 ])
 def test_only_delivered_domain_artifacts_are_shown(role, media_type, expected):
@@ -230,6 +233,8 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
             thread.join(10)
     # The part exists in the domain store, but without a build there is no model to deliver.
     assert run["error"]["code"] == "AGENT_NO_MODEL", run
+    # The run failed while modeling; the report is the run note, not the error message.
+    assert run["failed_phase"] == "modeling" and "Report" not in run["error"]["message"]
     assert run["part"]["revision"] == 1 and [p["name"] for p in run["part"]["parameters"]] == ["length", "thickness"]
     assert run["agent_report"] == "Report: part created, not built."
     assert run["review"]["release_state"] == "draft" and run["artifacts"] == []

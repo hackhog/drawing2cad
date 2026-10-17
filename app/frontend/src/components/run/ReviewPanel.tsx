@@ -30,7 +30,7 @@ export function ReviewPanel({ run }: { run: Run }) {
       {run.agent_report && (
         <section>
           <h3 className={H3}>Bericht des Agenten</h3>
-          <p className="rounded-md border bg-surface px-3 py-2 text-xs whitespace-pre-wrap text-card-foreground">{run.agent_report}</p>
+          <p className="rounded-md border bg-surface px-3 py-2 text-xs whitespace-pre-wrap text-card-foreground [overflow-wrap:anywhere]">{run.agent_report}</p>
         </section>
       )}
 

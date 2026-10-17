@@ -17,7 +17,8 @@ import { delivery, isActive, isReleased } from "@/lib/release";
 
 const ROLE: Record<ArtifactRole, string> = {
   drawing_pdf: "Technische Zeichnung (PDF)", drawing_dxf: "Technische Zeichnung (DXF)", step: "3D-Modell (STEP)",
-  manifest: "Lauf-Manifest",
+  part_description: "Bauteilbeschreibung (JSON)", manifest: "Lauf-Manifest", trace: "MCP-Protokoll",
+  events: "Domain-Ereignisse", report: "Prüfbericht (JSON)",
 };
 
 function save(blob: Blob, filename: string) {

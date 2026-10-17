@@ -46,6 +46,7 @@ class JobStore:
             "part_prefix": "web-" + run_id.removeprefix("run_"),
             "part_run_id": None,
             "phase": "queued",
+            "failed_phase": None,
             "job": {"job_id": run_id, "status": "queued", "progress": 0, "started_at": now(), "finished_at": None},
             "error": None,
         }
@@ -86,6 +87,7 @@ class JobStore:
         """A restart ends unfinished background jobs; record that instead of a run that waits forever."""
         for run in self.list():
             if run["job"]["status"] in ("queued", "running"):
-                self.update(run["run_id"], phase="failed", job={"status": "failed", "finished_at": now()}, error={
+                self.update(run["run_id"], phase="failed", failed_phase=run["phase"],
+                            job={"status": "failed", "finished_at": now()}, error={
                     "code": "RUN_INTERRUPTED", "message": "Der Server wurde während des Laufs neu gestartet.",
                     "field": None, "recovery": "Lauf erneut starten."})

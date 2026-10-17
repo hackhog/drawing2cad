@@ -20,7 +20,7 @@ const OUTPUTS: [ArtifactRole, string, string][] = [
   ["manifest", "application/json", "manifest"],
 ];
 const EXTENSION: Record<ArtifactRole, string> = {
-  drawing_pdf: "pdf", drawing_dxf: "dxf", step: "step", manifest: "json",
+  drawing_pdf: "pdf", drawing_dxf: "dxf", step: "step", part_description: "json", manifest: "json", trace: "json", events: "json", report: "json",
 };
 
 interface RunRecord {

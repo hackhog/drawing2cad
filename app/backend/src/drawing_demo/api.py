@@ -124,6 +124,7 @@ def _all(backend: DomainBackend, operation: str, **arguments: Any) -> list[dict[
 def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     """A web run record with the part, review, artifacts, and agent report of its domain part run."""
     view = {key: record[key] for key in ("run_id", "source_id", "phase", "job", "error")}
+    view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
     view.update(part=None, review=None, artifacts=[], simulated=False)
     part_run = record["part_run_id"]
     if part_run is None:

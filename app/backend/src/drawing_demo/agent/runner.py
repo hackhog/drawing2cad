@@ -79,7 +79,9 @@ class AgentRunner:
                        "Lauf erneut starten. Bleibt der Fehler, die Server-Protokolle prüfen.")
 
     def _fail(self, run_id: str, code: str, message: str, recovery: str) -> None:
-        self.jobs.update(run_id, phase="failed", job={"status": "failed", "finished_at": now()},
+        # Keep the phase in which the run failed, so the UI does not show later phases as completed.
+        self.jobs.update(run_id, phase="failed", failed_phase=self.jobs.get(run_id)["phase"],
+                         job={"status": "failed", "finished_at": now()},
                          error={"code": code, "message": message, "field": None, "recovery": recovery})
 
     @asynccontextmanager
@@ -141,8 +143,9 @@ class AgentRunner:
             # A built model without release is a finished run; its review shows why the release is blocked.
             self.jobs.update(run_id, phase="done", error=None, job={"status": "succeeded", "progress": 1, "finished_at": now()})
         else:
-            self._fail(run_id, "AGENT_NO_MODEL", (report or "Der Agent hat kein gültiges Modell gebaut.")[:4000],
-                       "Offene Prüfpunkte ansehen; Zeichnung klären und Lauf erneut starten.")
+            # The complete report is the run note; the error names only the result.
+            self._fail(run_id, "AGENT_NO_MODEL", f"Der Agent hat kein gültiges Modell gebaut (Status: {summary.get('status')}).",
+                       "Bericht und offene Prüfpunkte im Reiter Prüfung ansehen; Zeichnung klären und Lauf erneut starten.")
 
     def store_report(self, part_run: str, report: str) -> None:
         """Replace the run note with the report. The note has its own revision; the first note uses revision zero."""

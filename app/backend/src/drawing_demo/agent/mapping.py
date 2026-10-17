@@ -16,11 +16,15 @@ PHASE_BY_TOOL = {
     "add_cut": "modeling", "add_chamfer": "modeling", "add_fillet": "modeling", "build_from_description": "modeling",
     "drawing_schema": "drawing", "drawing_validate": "drawing", "drawing_render": "drawing", "drawing_review": "drawing",
     "artifact_preview": "drawing",
-    "export_step": "validating", "part_export_review": "validating",
+    # part_export_review only exports the current state; it keeps the phase, so a failed build stays in "modeling".
+    "export_step": "validating",
 }
 # Domain artifact roles that the web UI delivers. Previews of sources and artifacts are inspection aids only.
 ROLE_BY_MEDIA_TYPE = {("released_step", "model/step"): "step", ("technical_drawing", "application/pdf"): "drawing_pdf",
-                      ("technical_drawing", "image/vnd.dxf"): "drawing_dxf"}
+                      ("technical_drawing", "image/vnd.dxf"): "drawing_dxf",
+                      ("part_description", "application/json"): "part_description",
+                      ("run_manifest", "application/json"): "manifest", ("run_trace", "application/json"): "trace",
+                      ("domain_run_events", "application/json"): "events"}
 
 ORIGIN_BY_EVIDENCE = {"explicit": "source", "derived": "source", "inferred": "assumed", "assumed": "assumed", "unresolved": "assumed"}
 CHECK_STATUS = {"pass": "pass", "fail": "fail"}
@@ -115,7 +119,7 @@ def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet
 def artifact_view(artifact: dict[str, Any], source_sha256: str) -> dict[str, Any] | None:
     """A domain artifact as a delivered web artifact, or None for an artifact that the UI does not deliver."""
     media_type = artifact["media_type"]
-    role = ROLE_BY_MEDIA_TYPE.get((artifact["role"], media_type)) or ("manifest" if media_type == "application/json" else None)
+    role = ROLE_BY_MEDIA_TYPE.get((artifact["role"], media_type)) or ("report" if media_type == "application/json" else None)
     if role is None:
         return None
     return {"artifact_id": artifact["artifact_id"], "role": role, "media_type": media_type, "filename": artifact["filename"],
