@@ -1,0 +1,39 @@
+# Find references to GitHub issues and pull requests in the documentation (AGENTS.md).
+# Work status belongs in issues and pull requests, not in versioned documentation.
+# This workflow does not commit or deploy artifacts.
+name: No issue references in documentation
+
+on:
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'docs/diagrams/*.json'
+      - '.github/workflows/docs-references.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.md'
+      - 'docs/diagrams/*.json'
+      - '.github/workflows/docs-references.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs-references:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Documentation has no issue or pull request references
+        run: |
+          # Matches issue and PR links of this repository, "#<number>", and "issue <number>" or "PR <number>".
+          # "Issue 9" of ASD-STE100 is the edition of a standard, not a GitHub issue.
+          pattern='hackhog/drawing2cad/(issues|pull)/[0-9]+|(^|[[:space:]([,])#[0-9]{1,5}([^0-9A-Za-z]|$)|\b([Ii]ssues?|PRs?|[Pp]ull requests?) #?[0-9]+'
+          matches=$(git grep -n -I -E "$pattern" -- '*.md' 'docs/diagrams/*.json' ':!resources/**' \
+            | grep -v -E '^skills/drawing2cad/references/documentation-language\.md:[0-9]+:.*Issue 9' || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            echo "Remove these issue or pull request references. Describe the current state instead (AGENTS.md)." >&2
+            exit 1
+          fi

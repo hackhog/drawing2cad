@@ -43,8 +43,8 @@ The fixture adapter imitates job phases, revisions, stale artifacts, revision co
 An uploaded filename that contains `fail` simulates a failed STEP re-import.
 The fixture does not analyze the uploaded PDF, and its results are not acceptance evidence.
 
-`src/lib/contract.ts` holds provisional types for the shared contract of #24.
-When #24 publishes its schemas, update these types and the HTTP adapter.
+`src/lib/contract.ts` holds provisional types for the [shared service contract](../../docs/contracts/m2-service-v1.md).
+When the shared service publishes its schemas, update these types and the HTTP adapter.
 
 ## User interface
 

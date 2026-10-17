@@ -13,9 +13,8 @@ Report actual evidence. Do not infer model performance from unit tests.
 | M1 reconstruction | Measure PDF interpretation, editable JSON construction, geometry checks, and fresh STEP import. | Source inventory, description, geometry measurements, candidate/release, review records, manifest, and trace. | A technical release does not prove source completeness, independent STEP conformance, NX opening, or AP242. |
 | Complete-service matrix | Measure the M2 drawing/service requirements and M3 AP242 requirements on permitted fixtures. | Actual drawing, model, STEP, PMI, reconstruction, change, and independent validation artifacts. | No success claim for an unavailable or unexecuted phase. |
 
-[ADR 0014](../docs/adr/0014-headless-build123d-metric-prototype.md) defines the current issue 12 milestones.
+[ADR 0014](../docs/adr/0014-headless-build123d-metric-prototype.md) defines the milestones.
 The headless worker is part of M1. M2 upload/drawing delivery and M3 AP242 acceptance remain separate requirements.
-Do not apply the former deferral to issues 7 and 11 to the current M1 implementation.
 
 The maintained `drawing2cad_mcp.evaluation_client` replays declared MCP calls and records their results.
 The [local model client](../docs/local-model-evaluation.md) runs a bounded Ollama trial through MCP.

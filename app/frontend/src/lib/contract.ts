@@ -1,5 +1,5 @@
-// Provisional frontend view of the shared service contract (#24, #26).
-// The #24 owner publishes the binding schemas. When they are available, replace these types
+// Provisional frontend view of the shared service contract (docs/contracts/m2-service-v1.md).
+// The shared service publishes the binding schemas. When they are available, replace these types
 // with the published ones and keep the field names. Do not add domain rules here.
 import type { Box } from "./drawing";
 
