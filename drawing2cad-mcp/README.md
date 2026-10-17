@@ -522,6 +522,8 @@ The normal PDF text, page, and crop tools retain their separate page-transform s
 
 The glyph reader uses the bundled NX glyph templates. It does not perform OCR.
 Unknown characters can appear as `?` or as an incorrect known character.
+Filled triangles are arrowheads, not characters. The glyph reader ignores them.
+The class `annotation` marks strokes that are not part geometry and that text positions explain: free table separators between stacked text, isolated edge condition corners (ISO 13715) next to a signed value, and drawn parentheses around a text block. The enclosed text then starts with `(`.
 The reader does not read stroke text in the title block.
 Obtain the drawing scale, tolerances, and manufacturing notes from verified source observations.
 Unclassified strokes remain `unclear`. Classification is evidence for review, not a verified manufacturing requirement.

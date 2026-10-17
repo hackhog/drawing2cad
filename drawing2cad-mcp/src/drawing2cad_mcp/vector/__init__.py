@@ -11,6 +11,7 @@ import math
 
 import pymupdf
 
+from .annotations import mark_annotations
 from .classify import classify
 from .coordinates import display_rotation
 from .model import Drawing, Kind, TextBlock
@@ -23,7 +24,6 @@ from .views import group_views
 def extract(pdf: Path, page_number: int = 1) -> Drawing:
     strokes, glyphs, sheet, raster = read_pdf(pdf, page_number)
     classify(strokes)
-    views = group_views(strokes, raster)
     texts = read_blocks(glyphs, strokes)
     with pymupdf.open(pdf) as document:
         page = document[page_number - 1]
@@ -39,6 +39,9 @@ def extract(pdf: Path, page_number: int = 1) -> Drawing:
                         texts.append(TextBlock(len(texts) + 1, box, 0, span["text"],
                                                -math.degrees(math.atan2(dy, dx)) % 360,
                                                1.0, "native_pdf_text"))
+    # Text positions are evidence for annotation strokes. Mark them before view grouping.
+    mark_annotations(strokes, texts)
+    views = group_views(strokes, raster)
     return display_rotation(Drawing(pdf.name, sheet, strokes, texts, views, raster), rotation)
 
 

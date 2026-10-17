@@ -21,6 +21,7 @@ class Kind(StrEnum):
     EXTENSION = "extension"  # Extension line
     ARROW = "arrow"  # Dimension arrowhead and fill strokes
     CUTTING_PLANE = "cutting_plane"  # Cutting plane with section arrows
+    ANNOTATION = "annotation"  # Table separator, edge condition symbol, or drawn parenthesis; not part geometry
     UNCLEAR = "unclear"
 
 
