@@ -206,6 +206,39 @@ def test_polling_a_run_does_not_use_the_step_budget_of_its_part_run(environment)
         assert calls.count("part_read") == 1
 
 
+def test_run_artifacts_are_in_creation_order(environment):
+    # The domain lists artifacts by ID. The UI shows the latest drawing of a revision, so the order must be creation order.
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        part_run = run["part_prefix"] + "-plate"
+        services.backend.call("part_create", run_id=part_run, description=description(source["source_id"], source["sha256"]),
+                              sources=[{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}])
+        services.jobs.update(run["run_id"], part_run_id=part_run, phase="done", job={"status": "succeeded"})
+        drawing = {"role": "technical_drawing", "media_type": "application/pdf", "sha256": SHA, "size_bytes": 1, "revision": 1}
+        listed = [{**drawing, "artifact_id": "art_" + "a" * 32, "filename": "later.pdf", "created": 2.0},
+                  {**drawing, "artifact_id": "art_" + "b" * 32, "filename": "earlier.pdf", "created": 1.0}]
+        original = api._all
+        environment.setattr(api, "_all", lambda backend, operation, **arguments:
+                            listed if operation == "artifact_list" else original(backend, operation, **arguments))
+        artifacts = client.get(f"/api/runs/{run['run_id']}").json()["artifacts"]
+        assert [a["filename"] for a in artifacts] == ["earlier.pdf", "later.pdf"]
+
+
+def test_a_conversation_error_fails_the_run_even_with_a_built_part(environment):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
+        summary = {"status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}}
+        services.runner.finish(run["run_id"], summary)  # No part_read: the error decides before the part state.
+        result = services.jobs.get(run["run_id"])
+        assert result["error"]["code"] == "AGENT_FAILED" and "HTTP 429" in result["error"]["message"]
+        assert result["failed_phase"] == "drawing"
+
+
 class Server(uvicorn.Server):
     def install_signal_handlers(self):
         pass  # Keep the signal handlers of the test runner.

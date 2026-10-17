@@ -18,11 +18,14 @@ export function delivery(run: Run): Delivery {
   const reasons: string[] = [];
   const state = run.review?.release_state ?? "draft";
   if (state === "stale") reasons.push("Ergebnisse gehören zu einer älteren Revision und werden neu erzeugt.");
-  if (state === "blocked") reasons.push("Eine Prüfung ist fehlgeschlagen. Die Ergebnisse sind gesperrt.");
+  // "blocked" also covers a valid build without release; name a failed check only when one failed.
+  const failed = run.review?.validation.some((v) => v.status === "fail") ?? false;
+  if (state === "blocked") reasons.push(failed ? "Eine Prüfung ist fehlgeschlagen. Die Ergebnisse sind gesperrt."
+    : "Modell gebaut, aber nicht freigegeben: Geprüfte Zeichnung und STEP-Freigabe fehlen.");
   if (state === "draft") reasons.push("Noch keine geprüften Ergebnisse.");
   // These checks guard against an inconsistent service state; the reported state already explains the other cases.
   if (state === "released" && outputs.length && !revisionsAgree) reasons.push("Zeichnung und Modell gehören nicht zur aktuellen Revision.");
-  if (state === "released" && run.review?.validation.some((v) => v.status === "fail")) reasons.push("Mindestens eine Prüfung ist fehlgeschlagen.");
+  if (state === "released" && failed) reasons.push("Mindestens eine Prüfung ist fehlgeschlagen.");
   return { released: state === "released" && revisionsAgree && reasons.length === 0, revisionsAgree, reasons };
 }
 
@@ -31,3 +34,13 @@ export const isReleased = (state: Delivery, run: Run, artifact: Artifact): boole
   state.released && artifact.model_revision === run.part?.revision;
 
 export const isActive = (run: Run) => run.job.status === "queued" || run.job.status === "running";
+
+/** A draft belongs to the current revision of a finished run that the service did not release. */
+export const isDraft = (state: Delivery, run: Run, artifact: Artifact): boolean =>
+  !isReleased(state, run, artifact) && !isActive(run) && artifact.model_revision === run.part?.revision;
+
+/** The latest released or draft artifact of a role. The service lists artifacts in creation order. */
+export const latestShown = (run: Run, role: Artifact["role"]): Artifact | undefined => {
+  const state = delivery(run);
+  return run.artifacts.findLast((a) => a.role === role && (isReleased(state, run, a) || isDraft(state, run, a)));
+};
