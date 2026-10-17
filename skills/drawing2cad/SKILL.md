@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record evidence, build an editable part description, deliver a dimensioned DXF/PDF drawing, and validate STEP within the live capability scope.
 metadata:
-  version: "0.12.0"
+  version: "0.13.0"
 ---
 
 # drawing2cad
@@ -51,6 +51,9 @@ AP242 construction, adapter edits, and semantic PMI remain required final capabi
    The review is an identified attestation. Automatic drawing-to-solid equivalence remains `not_tested`.
    Model edits require updated drawing content and binding. A rebuild invalidates the earlier drawing review.
 8. Inspect the build candidate and its fresh-worker re-import results.
+   For AP242, inspect the independent analyzer report and use `part_render_pmi`
+   when available. Review the actual stored strokes in every annotation-plane detail
+   view. A render pass does not replace visual review or full conformance tests.
    Call `export_step` with the verified revision and complete source-review `coverage`.
    Record external STEP analysis and target-CAD opening separately.
    Treat the coverage counts as a review assertion. Retain a callout-to-measurement inventory to support it.

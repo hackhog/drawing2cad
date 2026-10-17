@@ -232,6 +232,14 @@ class Application:
             "available": executable, "schema_tool": "pmi_schema", "kinds": ["diameter", "linear"],
             "readback": "OCCT_XDE_same_kernel", "graphical_presentation": "tessellated_strokes",
             "target_viewer_display": "not_tested", "tolerances_datums_threads": "unsupported"}
+        from .adapters.stepcode import capabilities as analyzer_capabilities
+        analysis = analyzer_capabilities()
+        result["domain_services"]["independent_ap242_analysis"] = {
+            **analysis, "available": executable and analysis["available"],
+            "execution": "fresh_restricted_worker_on_each_ap242_build",
+            "release_requirement": "hash_bound_schema_read_and_nominal_pmi_graph",
+            "nominal_pmi_scope": "values_units_identifiers_product_links_and_face_membership",
+            "geometric_value_verification": "not_tested"}
         if self.domain is not None:
             try:
                 drafting_available = executable and version("ezdxf") is not None
@@ -250,6 +258,12 @@ class Application:
                 "input": "owned_existing_artifact_id_and_hash", "external_step_upload": False,
                 "adapter": "drawing2cad-construction/1", "native_target_cad_features": "not_tested",
                 "outputs": "diagnostic_artifacts_not_released"}
+            result["domain_services"]["pmi_visual_inspection"] = {
+                "available": executable, "tools": ["part_render_pmi", "step_render_pmi"],
+                "backend": "OCCT_XDE_pymupdf", "input": "current_build_or_owned_artifact",
+                "scope": "imported_wireframe_and_actual_stored_pmi_strokes",
+                "outputs": ["pdf", "png"], "annotation_plane_detail_views": True,
+                "target_cad_opening": "not_tested", "independent_kernel": False}
             result["step_inspection"]["tools"] = [name for name in STEP_SCHEMAS if name in self.domain_catalog]
             result["step_inspection"]["available"] = bool(result["step_inspection"]["tools"])
             result["workflow"] = {"available": False, "deprecated": True, "tools": []}
