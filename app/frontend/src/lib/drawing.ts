@@ -5,7 +5,7 @@ export type Point = [number, number];
 
 export type StrokeKind =
   | "contour" | "hidden" | "centerline" | "hatch" | "dimension"
-  | "arrow" | "extension" | "cutting_plane" | "unclear";
+  | "arrow" | "extension" | "cutting_plane" | "annotation" | "unclear";
 
 interface StrokeBase { id: number; kind: StrokeKind; width_mm: number }
 export type Stroke =

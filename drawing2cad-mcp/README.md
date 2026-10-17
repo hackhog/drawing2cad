@@ -521,7 +521,14 @@ It still requires the supported full-page CropBox, zero MediaBox origin, and Use
 The normal PDF text, page, and crop tools retain their separate page-transform support.
 
 The glyph reader uses the bundled NX glyph templates. It does not perform OCR.
+Filled outlines can contain lines, rectangles, quadrilaterals, and cubic Bézier curves.
+Each filled cubic curve becomes 16 line segments for glyph matching. This approximation does not define CAD geometry.
 Unknown characters can appear as `?` or as an incorrect known character.
+Filled triangles are arrowheads, not characters. The glyph reader ignores them.
+The class `annotation` marks strokes that are not part geometry. Text positions are the evidence.
+It includes free table separators between stacked text and free edge condition corners (ISO 13715) next to a signed value.
+It also includes drawn parentheses around a text block. The enclosed text then starts with `(`.
+A free stroke has no contact with other strokes at its ends, along its length, or at a crossing.
 The reader does not read stroke text in the title block.
 Obtain the drawing scale, tolerances, and manufacturing notes from verified source observations.
 Unclassified strokes remain `unclear`. Classification is evidence for review, not a verified manufacturing requirement.
@@ -530,6 +537,8 @@ The analysis runs in a separate process for each request.
 `pdf.timeout_seconds` limits that process. The service terminates it when the timeout expires.
 The source snapshot and internal response are temporary data. The operation creates no persistent JSON export or colored overlay.
 For visual review, use `pdf_render_page` and `pdf_crop_region`.
+If PDF preparation fails, the domain service logs a bounded diagnostic with private storage paths removed.
+The public error gives a recovery action without returning worker diagnostics. The web overview displays the error and recovery action.
 
 Create the model through the maintained part tools. Use the drawing tools to create and review the dimensioned technical drawing.
 Its creation can precede or follow construction; final revisions must agree.

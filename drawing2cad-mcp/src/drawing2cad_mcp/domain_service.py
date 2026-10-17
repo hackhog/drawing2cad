@@ -72,6 +72,11 @@ class DomainService:
     def close(self):
         self.jobs.close()
 
+    def source_delete(self, ctx: AccessContext, source_id: str) -> dict:
+        """Delete an uploaded source for a trusted adapter. Not an MCP tool, so an agent cannot remove its input."""
+        self.store.namespace_root(ctx)
+        return self._public(self.store.source_delete(ctx, source_id))
+
     def _backend(self, ctx):
         namespace = self.store.namespace_root(ctx)
         with self._services_lock:
@@ -198,8 +203,9 @@ class DomainService:
         except StepError as error:
             raise DomainError(error.code, "The STEP inspection failed. Check the artifact and expected hash.") from None
         except PdfError as error:
-            # The redacted reason tells the agent and the user what to change in the request or the PDF.
-            raise DomainError("PDF_PREPARATION_FAILED", self._redact(str(error))) from None
+            LOG.warning("PDF operation %s failed: %s", name, self._redact(str(error)))
+            raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.",
+                              next_action="Inspect the server diagnostic. Use PDF image tools if the vector profile does not support this page.") from None
         except Exception:
             LOG.exception("Domain operation %s failed", name)
             raise DomainError("DOMAIN_OPERATION_FAILED", "The domain operation failed. No private process details are returned.") from None

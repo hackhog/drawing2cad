@@ -64,12 +64,17 @@ def _contours(items: list) -> list[list[Point]]:
             corners = [_mm(quad.ul), _mm(quad.ur), _mm(quad.lr), _mm(quad.ll)]
             contours.append(corners + corners[:1])
             continue
-        if item[0] != "l":
-            continue
-        a, b = _mm(item[1]), _mm(item[2])
-        if not contours or math.dist(contours[-1][-1], a) > 1e-6:
-            contours.append([a])
-        contours[-1].append(b)
+        if item[0] == "c":
+            p0, c1, c2, p3 = (_mm(point) for point in item[1:])
+            # Approximate the filled outline, not a physical part curve.
+            points = [_bezier(p0, c1, c2, p3, i / 16) for i in range(17)]
+        elif item[0] == "l":
+            points = [_mm(item[1]), _mm(item[2])]
+        else:
+            raise ValueError("The filled path contains unsupported glyph geometry.")
+        if not contours or math.dist(contours[-1][-1], points[0]) > 1e-6:
+            contours.append([points[0]])
+        contours[-1].extend(points[1:])
     return contours
 
 
@@ -101,10 +106,9 @@ def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[flo
             box = (r.x0 * PT_TO_MM, r.y0 * PT_TO_MM, r.x1 * PT_TO_MM, r.y1 * PT_TO_MM)
             if in_drawing_area(box):
                 contours = _contours(d["items"])
-                # Glyph outlines are polygons (ADR 0004). A filled path with curves is a
-                # symbol, such as the origin dot of an ordinate dimension, and not text.
-                if contours and all(item[0] in {"l", "re", "qu"} for item in d["items"]):
-                    glyphs.append(Glyph(box, contours))
+                if not contours:
+                    raise ValueError("The filled path contains unsupported glyph geometry.")
+                glyphs.append(Glyph(box, contours))
             continue
         width = (d.get("width") or 0.0) * PT_TO_MM
         for item in d["items"]:

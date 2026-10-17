@@ -46,6 +46,22 @@ def test_compact_and_filtered_results_share_source_and_leave_no_exports(service,
     assert not list(service.output_root.iterdir())
 
 
+def test_filled_bezier_analysis_preserves_source_and_cleans_worker(service, tmp_path):
+    source = tmp_path / "filled-bezier.pdf"
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=1190.55, height=841.89)
+    content = DecodedStreamObject()
+    content.set_data(b"0 g 150 600 m 152 600 152 602 150 602 c 148 602 148 600 150 600 c f")
+    page[NameObject("/Contents")] = writer._add_object(content)
+    writer.write(source)
+    before = sha256(source.read_bytes()).hexdigest()
+    result = service.extract_drawing(source, include_strokes=True)
+    assert result["source"]["sha256"] == before == sha256(source.read_bytes()).hexdigest()
+    assert result["summary"]["text_blocks"] == 1
+    assert result["text_blocks"][0]["glyph_count"] == 1
+    assert not list(service.output_root.iterdir())
+
+
 def test_cropped_pages_fail_explicitly(service, tmp_path):
     source = make_pdf(tmp_path / "transformed.pdf", cropbox=True)
     with pytest.raises(PdfError, match="full, zero-origin MediaBox"):
@@ -120,14 +136,12 @@ def test_analysis_worker_timeout_cleans_snapshot(service, tmp_path, monkeypatch)
     assert not list(service.output_root.iterdir())
 
 
-def test_worker_failure_is_a_pdf_error_and_cleans_snapshot(service, tmp_path, monkeypatch, caplog):
+def test_worker_failure_is_a_pdf_error_and_cleans_snapshot(service, tmp_path, monkeypatch):
     source = make_vector_pdf(tmp_path / "failure.pdf")
     monkeypatch.setattr("drawing2cad_mcp.pdf.subprocess.run", lambda command, **kwargs:
-                        subprocess.CompletedProcess(command, 1, stderr=b"ValueError: Cannot read /private/var/x/customer.pdf"))
-    with pytest.raises(PdfError) as error:
+                        subprocess.CompletedProcess(command, 1, stderr=b"invalid glyph"))
+    with pytest.raises(PdfError, match="invalid glyph"):
         service.extract_drawing(source)
-    assert str(error.value) == "Vector analysis failed: ValueError."  # stderr can name host paths
-    assert "customer.pdf" in caplog.text
     assert not list(service.output_root.iterdir())
 
 

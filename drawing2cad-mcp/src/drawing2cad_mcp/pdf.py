@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 import json
-import logging
 import math
 import os
 from pathlib import Path
@@ -29,8 +28,6 @@ from pypdf import PdfReader
 from .vector.export import SCHEMA_VERSION
 from .vector.model import Kind
 from . import measurements
-
-LOG = logging.getLogger(__name__)
 
 
 class PdfError(ValueError):
@@ -254,10 +251,8 @@ class PdfService:
             except OSError as exc:
                 raise PdfError(f"Cannot start pdftoppm: {type(exc).__name__}.") from exc
             if result.returncode:
-                # stderr can name host paths. It goes to the log, not to the caller.
-                LOG.warning("pdftoppm failed (exit %s): %s", result.returncode,
-                            result.stderr.decode("utf-8", errors="replace")[-1500:])
-                raise PdfError(f"pdftoppm failed (exit {result.returncode}).")
+                diagnostic = result.stderr.decode("utf-8", errors="replace")[-1500:]
+                raise PdfError(f"pdftoppm failed (exit {result.returncode}): {diagnostic}")
             try:
                 with Image.open(prefix.with_suffix(".png")) as rendered:
                     if rendered.width * rendered.height > self.max_pixels:
@@ -379,12 +374,8 @@ class PdfService:
             except OSError as exc:
                 raise PdfError(f"Cannot start vector analysis: {type(exc).__name__}.") from exc
             if completed.returncode:
-                # The worker reports "Type: message". The message can name host paths,
-                # so it goes to the log and the caller gets the exception type.
                 detail = completed.stderr.decode("utf-8", errors="replace").strip()[-1000:]
-                LOG.warning("Vector analysis failed (exit %s): %s", completed.returncode, detail)
-                kind = detail.rpartition("\n")[2].partition(":")[0]
-                raise PdfError(f"Vector analysis failed: {kind if kind.isidentifier() else 'worker exited without a result'}.")
+                raise PdfError(f"Vector analysis failed: {detail or 'worker exited without a result'}")
             if not result_path.is_file() or result_path.stat().st_size > 64 * 1024 * 1024:
                 raise PdfError("Vector analysis produced no result or exceeded the 64 MiB result limit.")
             try:

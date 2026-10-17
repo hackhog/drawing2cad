@@ -9,6 +9,7 @@ import {
   FIXTURE_ASSUMPTIONS, FIXTURE_OPERATIONS, FIXTURE_UNCERTAINTIES, fixtureAnalysis, fixtureParameters, fixtureValidation,
 } from "./fixtures";
 import { sha256Hex } from "./http";
+import { isActive } from "./release";
 import type { ParameterChange, WebApi } from "./webApi";
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
@@ -90,6 +91,17 @@ export class FixtureApi implements WebApi {
     };
     this.sources.set(source.source_id, source);
     return source;
+  }
+
+  async deleteSource(sourceId: string): Promise<void> {
+    await this.latency();
+    this.source(sourceId);
+    const records = [...this.runs.values()].filter((r) => r.source.source_id === sourceId);
+    if ((await Promise.all(records.map((r) => this.view(r)))).some(isActive)) {
+      throw new ApiFailure({ code: "RUN_ACTIVE", message: "Für diese Zeichnung läuft noch ein Lauf." }, 409);
+    }
+    for (const r of records) this.runs.delete(r.runId);
+    this.sources.delete(sourceId);
   }
 
   async getAnalysis(sourceId: string): Promise<ExtractResult> {

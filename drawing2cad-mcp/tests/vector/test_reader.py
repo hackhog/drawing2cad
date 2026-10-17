@@ -84,14 +84,39 @@ def test_pdf_handle_closes_after_read_or_error(tmp_path, monkeypatch, fail):
     assert documents[0].is_closed
 
 
-def test_filled_curve_is_a_symbol_and_not_a_glyph(tmp_path):
+def test_filled_curve_retains_closed_contour_and_does_not_abort(tmp_path):
     path = tmp_path / "filled-curve.pdf"
     with pymupdf.open() as document:
         page = document.new_page(width=420 / PT_TO_MM, height=297 / PT_TO_MM)
         page.draw_circle((150, 150), 2, color=None, fill=(0, 0, 0))
-        page.draw_rect((200, 150, 203, 154), color=None, fill=(0, 0, 0))
         document.save(path)
 
-    _, glyphs, _, _ = reader.read_pdf(path)
+    before = path.read_bytes()
+    strokes, glyphs, _, _ = reader.read_pdf(path)
+    assert strokes == []
     assert len(glyphs) == 1
-    assert glyphs[0].bbox[0] == pytest.approx(200 * PT_TO_MM)
+    contour = glyphs[0].contours[0]
+    assert len(contour) == 65
+    assert contour[0] == pytest.approx(contour[-1])
+    assert len(extract(path).texts) == 1
+    assert path.read_bytes() == before
+
+
+def test_mixed_filled_line_and_curve_retains_subpaths():
+    p = pymupdf.Point
+    contours = reader._contours([
+        ("l", p(100, 100), p(110, 100)),
+        ("c", p(110, 100), p(120, 100), p(120, 110), p(110, 110)),
+        ("l", p(110, 110), p(100, 100)),
+        ("c", p(200, 200), p(201, 200), p(201, 201), p(200, 200)),
+    ])
+    assert len(contours) == 2
+    assert len(contours[0]) == 19
+    assert len(contours[1]) == 17
+    assert all(contour[0] == contour[-1] for contour in contours)
+    assert contours[0][1] == (110 * PT_TO_MM, 100 * PT_TO_MM)
+
+
+def test_unknown_filled_operation_fails_explicitly():
+    with pytest.raises(ValueError, match="unsupported glyph geometry"):
+        reader._contours([("unknown",)])

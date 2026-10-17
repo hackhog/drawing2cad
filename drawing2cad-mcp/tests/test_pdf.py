@@ -291,11 +291,10 @@ def test_timeout_cleanup(tmp_path, source, monkeypatch):
     assert list((tmp_path / "out").iterdir()) == []
 
 
-def test_render_error_cleanup(tmp_path, source, monkeypatch, caplog):
+def test_render_error_cleanup(tmp_path, source, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda path: "pdftoppm")
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, b"", b"bad PDF"))
     service = PdfService((tmp_path,), tmp_path / "out", None)
-    with pytest.raises(PdfError, match=r"pdftoppm failed \(exit 1\)\.$"):
+    with pytest.raises(PdfError, match="bad PDF"):
         service.render_page(source)
-    assert "bad PDF" in caplog.text
     assert list((tmp_path / "out").iterdir()) == []

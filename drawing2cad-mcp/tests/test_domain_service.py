@@ -20,6 +20,7 @@ from drawing2cad_mcp.domain_store import AccessContext, DomainError
 from drawing2cad_mcp.domain_tools import DOMAIN_SCHEMAS
 from drawing2cad_mcp.drawing_contract import description_digest
 from drawing2cad_mcp.drafting import render_drawing
+from drawing2cad_mcp.pdf import PdfError
 from test_cad_service import FakeRunner, coverage
 from test_drafting import drawing_fixture
 
@@ -74,6 +75,24 @@ def domain(tmp_path):
                                       "sources": [{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}]})
     yield service, source, description, spec, runner
     service.close()
+
+
+def test_pdf_failure_logs_redacted_diagnostic_and_returns_safe_recovery(domain, monkeypatch, caplog):
+    service, source, _, _, _ = domain
+    private_path = str(service.store.root / "private.pdf")
+
+    def fail(*args, **kwargs):
+        raise PdfError(f"Vector analysis failed: unsupported glyph at {private_path}")
+
+    monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", fail)
+    with pytest.raises(DomainError) as caught:
+        service.call(CTX, "drawing_extract", {"source_id": source["source_id"]})
+    assert caught.value.code == "PDF_PREPARATION_FAILED"
+    assert "unsupported glyph" in caplog.text
+    assert "drawing_extract" in caplog.text
+    assert private_path not in caplog.text
+    assert "unsupported glyph" not in caught.value.message
+    assert "PDF image tools" in caught.value.next_action
 
 
 def call(service, name, **args):
@@ -362,25 +381,19 @@ def test_worker_error_details_cannot_expose_external_server_paths(domain):
     assert "C:/Users/private" not in json.dumps(public)
 
 
-def test_pdf_errors_keep_the_reason_without_host_paths(domain, monkeypatch):
-    from drawing2cad_mcp.pdf import PdfError
+def test_pdf_diagnostic_log_has_no_macos_or_resolved_storage_paths(domain, monkeypatch, caplog):
     service, source, *_ = domain
-    with pytest.raises(DomainError) as error:
-        service.call(CTX, "pdf_render_page", {"source_id": source["source_id"], "page": 2})
-    assert error.value.code == "PDF_PREPARATION_FAILED"
-    assert "between 1 and 1" in error.value.message
+    private = (str(service.store.root.resolve()), "/private/var/folders/x", "/Volumes/share")
 
     def fail(**_):
-        raise PdfError(f"Vector analysis failed: cannot read {service.store.root.resolve()}/x.pdf, "
-                       "/opt/private/worker.py, /private/var/folders/x/a.pdf or /Volumes/share/b.pdf")
+        raise PdfError("Vector analysis failed: cannot read " + ", ".join(f"{path}/a.pdf" for path in private))
 
     monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", fail)
-    with pytest.raises(DomainError) as error:
+    with pytest.raises(DomainError):
         service.call(CTX, "drawing_extract", {"source_id": source["source_id"]})
-    assert error.value.message.startswith("Vector analysis failed")
-    assert str(service.store.root) not in error.value.message
-    for private in (str(service.store.root.resolve()), "/opt/private", "/private/var", "/Volumes/share"):
-        assert private not in error.value.message
+    assert "Vector analysis failed" in caplog.text
+    for path in private:
+        assert path not in caplog.text
 
 
 def test_export_trace_hashes_match_public_payloads(domain):

@@ -25,6 +25,7 @@ const RECOVERY: Record<string, string> = {
   UPLOAD_ABORTED: "Upload erneut starten.",
   NOT_FOUND: "Die Kennung ist unbekannt oder abgelaufen. Zurück zur Übersicht.",
   REVISION_CONFLICT: "Ein neuerer Stand liegt vor. Ansicht neu laden und die Änderung erneut eintragen.",
+  RUN_ACTIVE: "Warten, bis der Lauf beendet ist, und dann erneut löschen.",
   CAPABILITY_UNAVAILABLE: "Diese Funktion bietet der verbundene Dienst noch nicht an.",
   INVALID_PARAMETER: "Wert prüfen: Zahl im zulässigen Bereich eingeben.",
 };

@@ -15,6 +15,7 @@ export class HttpApi implements WebApi {
   uploadSource(file: File, onProgress: (fraction: number) => void): Promise<Source> {
     return uploadFile<Source>("/api/sources", file, onProgress);
   }
+  deleteSource(sourceId: string): Promise<void> { return request(`/api/sources/${id(sourceId)}`, { method: "DELETE" }); }
   getAnalysis(sourceId: string): Promise<ExtractResult> { return request(`/api/sources/${id(sourceId)}/analysis`); }
   listRuns(sourceId: string): Promise<Run[]> { return request(`/api/sources/${id(sourceId)}/runs`); }
   createRun(sourceId: string): Promise<Run> { return request(`/api/sources/${id(sourceId)}/runs`, { method: "POST" }); }
