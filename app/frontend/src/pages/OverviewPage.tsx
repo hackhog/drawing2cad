@@ -14,6 +14,7 @@ import { useApi } from "@/lib/apiContext";
 import type { Source } from "@/lib/contract";
 import type { ExtractResult } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
+import { errorCode, recoveryFor } from "@/lib/errors";
 import { bytes, explainedShare, fmt, partName, pct } from "@/lib/format";
 import { analysisQuery, sourcesQuery } from "@/lib/queries";
 import { analysisStatus, uploadStatus } from "@/lib/status";
@@ -132,7 +133,7 @@ export function OverviewPage() {
               </TableHeader>
               <TableBody>
                 {sources.map((source, i) => (
-                  <SourceRow key={source.source_id} source={source} analysis={analyses[i]?.data} failed={analyses[i]?.isError ?? false} />
+                  <SourceRow key={source.source_id} source={source} analysis={analyses[i]?.data} error={analyses[i]?.error ?? null} />
                 ))}
                 {uploads.map((upload) => <UploadRow key={upload.id} upload={upload} />)}
               </TableBody>
@@ -146,15 +147,22 @@ export function OverviewPage() {
 
 const NUM = "text-right tabular-nums";
 
-function SourceRow({ source, analysis, failed }: { source: Source; analysis: ExtractResult | undefined; failed: boolean }) {
+export function SourceRow({ source, analysis, error }: { source: Source; analysis: ExtractResult | undefined; error: Error | null }) {
   const navigate = useNavigate();
-  const [tone, label] = analysisStatus(analysis, failed);
+  const [tone, label] = analysisStatus(analysis, error !== null);
   const open = () => void navigate({ to: "/sources/$sourceId", params: { sourceId: source.source_id } });
   const d = analysis?.drawing;
   return (
     <TableRow tabIndex={0} onClick={open} onKeyDown={(e) => e.key === "Enter" && open()} className="cursor-pointer">
       <TableCell className="font-semibold text-card-foreground" title={`SHA-256 ${source.sha256}`}>{partName(source.filename)}</TableCell>
-      <TableCell><StatusBadge tone={tone}>{label}</StatusBadge></TableCell>
+      <TableCell>
+        <StatusBadge tone={tone} title={error?.message}>{label}</StatusBadge>
+        {error && (
+          <p className="mt-1 max-w-md text-xs text-flag" role="alert">
+            Analyse fehlgeschlagen ({errorCode(error)}): {error.message} {recoveryFor(error)}
+          </p>
+        )}
+      </TableCell>
       <TableCell className={NUM}>{analysis ? pct(explainedShare(analysis).share) : "–"}</TableCell>
       <TableCell className={NUM}>{d ? fmt(d.views.length) : "–"}</TableCell>
       <TableCell className={NUM}>{d ? fmt(d.text_blocks.length) : "–"}</TableCell>

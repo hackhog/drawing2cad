@@ -195,8 +195,10 @@ class DomainService:
             raise DomainError(error.code, self._redact(message)) from None
         except StepError as error:
             raise DomainError(error.code, "The STEP inspection failed. Check the artifact and expected hash.") from None
-        except PdfError:
-            raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.") from None
+        except PdfError as error:
+            LOG.warning("PDF operation %s failed: %s", name, self._redact(str(error)))
+            raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.",
+                              next_action="Inspect the server diagnostic. Use PDF image tools if the vector profile does not support this page.") from None
         except Exception:
             LOG.exception("Domain operation %s failed", name)
             raise DomainError("DOMAIN_OPERATION_FAILED", "The domain operation failed. No private process details are returned.") from None

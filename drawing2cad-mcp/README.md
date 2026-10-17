@@ -521,6 +521,8 @@ It still requires the supported full-page CropBox, zero MediaBox origin, and Use
 The normal PDF text, page, and crop tools retain their separate page-transform support.
 
 The glyph reader uses the bundled NX glyph templates. It does not perform OCR.
+Filled outlines can contain lines, rectangles, quadrilaterals, and cubic Bézier curves.
+Each filled cubic curve becomes 16 line segments for glyph matching. This approximation does not define CAD geometry.
 Unknown characters can appear as `?` or as an incorrect known character.
 The reader does not read stroke text in the title block.
 Obtain the drawing scale, tolerances, and manufacturing notes from verified source observations.
@@ -530,6 +532,8 @@ The analysis runs in a separate process for each request.
 `pdf.timeout_seconds` limits that process. The service terminates it when the timeout expires.
 The source snapshot and internal response are temporary data. The operation creates no persistent JSON export or colored overlay.
 For visual review, use `pdf_render_page` and `pdf_crop_region`.
+If PDF preparation fails, the domain service logs a bounded diagnostic with private storage paths removed.
+The public error gives a recovery action without returning worker diagnostics. The web overview displays the error and recovery action.
 
 Create the model through the maintained part tools. Use the drawing tools to create and review the dimensioned technical drawing.
 Its creation can precede or follow construction; final revisions must agree.

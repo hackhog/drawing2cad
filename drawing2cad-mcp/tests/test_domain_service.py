@@ -20,6 +20,7 @@ from drawing2cad_mcp.domain_store import AccessContext, DomainError
 from drawing2cad_mcp.domain_tools import DOMAIN_SCHEMAS
 from drawing2cad_mcp.drawing_contract import description_digest
 from drawing2cad_mcp.drafting import render_drawing
+from drawing2cad_mcp.pdf import PdfError
 from test_cad_service import FakeRunner, coverage
 from test_drafting import drawing_fixture
 
@@ -74,6 +75,24 @@ def domain(tmp_path):
                                       "sources": [{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}]})
     yield service, source, description, spec, runner
     service.close()
+
+
+def test_pdf_failure_logs_redacted_diagnostic_and_returns_safe_recovery(domain, monkeypatch, caplog):
+    service, source, _, _, _ = domain
+    private_path = str(service.store.root / "private.pdf")
+
+    def fail(*args, **kwargs):
+        raise PdfError(f"Vector analysis failed: unsupported glyph at {private_path}")
+
+    monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", fail)
+    with pytest.raises(DomainError) as caught:
+        service.call(CTX, "drawing_extract", {"source_id": source["source_id"]})
+    assert caught.value.code == "PDF_PREPARATION_FAILED"
+    assert "unsupported glyph" in caplog.text
+    assert "drawing_extract" in caplog.text
+    assert private_path not in caplog.text
+    assert "unsupported glyph" not in caught.value.message
+    assert "PDF image tools" in caught.value.next_action
 
 
 def call(service, name, **args):
