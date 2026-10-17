@@ -72,7 +72,7 @@ The technical drawing and 3D model can be created in either order.
 Their final revisions must agree.
 
 [ADR 0014](docs/adr/0014-headless-build123d-metric-prototype.md) defines the backend decision, sandbox boundary, evaluation set, and acceptance criteria.
-A server-side geometry pass is separate from independent STEP analysis and an NX opening test.
+A server-side geometry pass is separate from independent STEP analysis and an optional opening test in a target CAD system.
 Missing tests remain `not_tested`.
 [ADR 0016](docs/adr/0016-shared-domain-service-and-drawing-delivery.md) defines the M2 service boundary and drawing limits.
 The drawing adapter renders supplied 2D view geometry with native DXF dimensions. It does not derive arbitrary projections or sections from a solid.

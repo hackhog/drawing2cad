@@ -10,7 +10,7 @@ A correct JSON input does not prove that the resulting solid matches the drawing
 ## M1 prototype
 
 The table separates claims and their evidence. It does not make every claim a prerequisite for the hackathon metric.
-The metric requires three parts, passing MCP validations, complete source review, and an actual NX opening result for each final STEP.
+The metric requires three parts, passing MCP validations, and complete source review. A target-CAD opening test is optional.
 AP242 and semantic PMI are optional M3 capabilities. Complete-service drawing acceptance applies to the domain profile.
 
 | Claim | Required evidence |

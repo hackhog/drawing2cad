@@ -216,7 +216,7 @@ After a lost response, inspect stored state and artifacts before another mutatio
 The build creates the first STEP candidate and validates its import in a fresh worker.
 `export_step` releases that candidate only after dimension checks, complete source-review coverage, and the current drawing-review gate.
 The coverage record is a reviewer attestation, not automatic proof of source interpretation.
-The geometry test is separate from independent STEP conformance analysis and opening in NX.
+The geometry test is separate from independent STEP conformance analysis and an optional opening test in a target CAD system.
 Unavailable external tests remain `not_tested`.
 They prevent a complete metric pass where required.
 

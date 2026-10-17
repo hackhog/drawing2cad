@@ -154,7 +154,7 @@ A permitted domain host uses `artifact_get` and `artifact_read` to download outp
 The bounded local-model runner returns artifact IDs and hashes to that host; it cannot call these download tools.
 Local-path tools return server output paths.
 Artifacts are immutable snapshots. A later run revision does not replace an earlier artifact ID.
-Keep unexecuted NX, independent conformance, model comparison, and PMI tests as `not_tested`.
+Keep unexecuted target-CAD opening, independent conformance, model comparison, and PMI tests as `not_tested`.
 A successful server operation is not a complete metric pass when required external checks are missing.
 
 ## Legacy evidence and STEP tools

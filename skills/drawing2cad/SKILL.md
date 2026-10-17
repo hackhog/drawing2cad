@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.15.0"
+  version: "0.15.1"
 ---
 
 # drawing2cad
@@ -26,12 +26,12 @@ metadata:
 12. Domain only: correct failures and repeat step 11. Compare source, model, and drawing, then record an accepted `drawing_review`.
 13. Call `export_step` with the current revision and complete, truthful source-review `coverage`; require a successful release.
 14. Call `part_export_review` with the current revision. Retain STEP, description, review list, hashes, manifest, and actual results.
-15. Repeat for three parts. Require all MCP validations to pass; obtain an NX opening result for each final STEP hash separately.
+15. Repeat for three parts. Require all MCP validations to pass for each final STEP hash.
 
 Each local-model trial authorizes one PDF. Use three trials for three PDFs; use distinct runs for separate parts in one authorized PDF.
 Use the live argument schemas. Local sources require `path`, `sha256`, and `role`; domain sources require `source_id`, `sha256`, and `role`.
 The acting agent can supply the identified source-review attestation. A separate reviewer is optional for the metric, when available.
-Missing NX evidence is `not_tested`. MCP validation alone does not establish the complete metric result.
+An opening test in a target CAD system is optional and separate from the metric. Record it only when it was actually run.
 
 ## Optional, profile-dependent extensions
 
