@@ -429,7 +429,9 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <rect width="100%" height="100%" fill="url(#grid)"/>
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Demo container (docker compose)" x="630" y="10" width="220" height="274" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Frontend container" x="270" y="170" width="210" height="114" rx="12" class="c-region" stroke-width="1"/>
+
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="Backend container" x="630" y="10" width="220" height="274" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
@@ -482,8 +484,8 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="115" y="246" class="t-muted" font-size="9" text-anchor="middle">browser, drawing PDFs</text>
         </g>
 
-        <g id="node-webui" data-node-id="webui" data-node-label="Demo UI" tabindex="0" role="button" aria-label="Focus Demo UI, React, Vite, three.js, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="React, Vite, three.js" data-node-context="Architecture component">
-          <title>Demo UI · React, Vite, three.js · Architecture component</title>
+        <g id="node-webui" data-node-id="webui" data-node-label="Demo UI" tabindex="0" role="button" aria-label="Focus Demo UI, React, three.js, nginx, Frontend container" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="React, three.js, nginx" data-node-context="Frontend container">
+          <title>Demo UI · React, three.js, nginx · Frontend container</title>
           <rect x="300" y="200" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="300" y="200" width="150" height="64" rx="6" class="c-frontend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(306 206) scale(0.6875)">
@@ -493,11 +495,11 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
           <text data-node-label="" x="375" y="230" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Demo UI</text>
-        <text x="375" y="246" class="t-muted" font-size="9" text-anchor="middle">React, Vite, three.js</text>
+        <text x="375" y="246" class="t-muted" font-size="9" text-anchor="middle">React, three.js, nginx</text>
         </g>
 
-        <g id="node-api" data-node-id="api" data-node-label="Demo API" tabindex="0" role="button" aria-label="Focus Demo API, FastAPI :8000, review flags, Demo container (docker compose)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="FastAPI :8000, review flags" data-node-context="Demo container (docker compose)">
-          <title>Demo API · FastAPI :8000, review flags · Demo container (docker compose)</title>
+        <g id="node-api" data-node-id="api" data-node-label="Demo API" tabindex="0" role="button" aria-label="Focus Demo API, FastAPI :8000, review flags, Backend container" aria-pressed="false" data-node-kind="backend" data-node-sublabel="FastAPI :8000, review flags" data-node-context="Backend container">
+          <title>Demo API · FastAPI :8000, review flags · Backend container</title>
           <rect x="660" y="200" width="160" height="64" rx="6" class="c-mask"/>
           <rect x="660" y="200" width="160" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(666 206) scale(0.6875)">
@@ -507,8 +509,8 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="740" y="246" class="t-muted" font-size="9" text-anchor="middle">FastAPI :8000, review flags</text>
         </g>
 
-        <g id="node-mesher" data-node-id="mesher" data-node-label="STEP mesher" tabindex="0" role="button" aria-label="Focus STEP mesher, cascadio, OpenCASCADE, Demo container (docker compose)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="cascadio, OpenCASCADE" data-node-context="Demo container (docker compose)">
-          <title>STEP mesher · cascadio, OpenCASCADE · Demo container (docker compose)</title>
+        <g id="node-mesher" data-node-id="mesher" data-node-label="STEP mesher" tabindex="0" role="button" aria-label="Focus STEP mesher, cascadio, OpenCASCADE, Backend container" aria-pressed="false" data-node-kind="backend" data-node-sublabel="cascadio, OpenCASCADE" data-node-context="Backend container">
+          <title>STEP mesher · cascadio, OpenCASCADE · Backend container</title>
           <rect x="665" y="40" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="665" y="40" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(671 46) scale(0.6875)">
@@ -628,9 +630,14 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Demo container (docker compose)">
-          <rect data-graph-role="structural-frame-label-mask" x="634" y="19" width="179.8000186" height="17" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="638" y="32.12903325806452" class="t-cloud" font-size="9.129033258064515" font-weight="600">Demo container (docker compose)</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Frontend container">
+          <rect data-graph-role="structural-frame-label-mask" x="274" y="179" width="108.59355918709676" height="17" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="278" y="192.1290332580645" class="t-cloud" font-size="9.129033258064515" font-weight="600">Frontend container</text>
+        </g>
+
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="Backend container">
+          <rect data-graph-role="structural-frame-label-mask" x="634" y="19" width="103.11613923225805" height="17" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="638" y="32.12903325806452" class="t-cloud" font-size="9.129033258064515" font-weight="600">Backend container</text>
         </g>
 
         <!-- Legend -->

@@ -10,7 +10,7 @@
       "url": "https://github.com/hackhog/drawing2cad.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "beca319067b1a43acc62e4909a5e9255cf270a00"
+      "revision": "93f3ed2deab3b7c6214bd9242270573113b3a325"
     }
   },
   "components": [
@@ -20,27 +20,26 @@
       "sources": [{ "path": "compose.yaml", "line": 1, "label": "local demo URL" }]
     },
     {
-      "id": "webui", "type": "frontend", "label": "Demo UI", "sublabel": "React, Vite, three.js",
+      "id": "webui", "type": "frontend", "label": "Demo UI", "sublabel": "React, three.js, nginx",
       "pos": [300, 200], "size": [150, 64],
       "sources": [
-        { "path": "app/web/src/App.tsx", "line": 18, "label": "steps 1-4" },
-        { "path": "app/web/src/lib/api.ts", "line": 52, "end_line": 57, "label": "API calls" },
-        { "path": "app/web/src/components/ModelViewer.tsx", "line": 30, "label": "3D viewer" }
+        { "path": "app/frontend/src/lib/api.ts", "line": 52, "end_line": 57, "label": "API calls" },
+        { "path": "app/frontend/src/components/ModelViewer.tsx", "line": 30, "label": "3D viewer" },
+        { "path": "app/frontend/nginx.conf", "line": 15, "end_line": 20, "label": "/api to backend" }
       ]
     },
     {
       "id": "api", "type": "backend", "label": "Demo API", "sublabel": "FastAPI :8000, review flags",
       "pos": [660, 200], "size": [160, 64],
       "sources": [
-        { "path": "app/src/drawing_demo/api.py", "line": 39, "end_line": 67, "label": "POST /api/extract" },
-        { "path": "app/src/drawing_demo/review.py", "line": 51, "label": "review flags" },
-        { "path": "app/src/drawing_demo/api.py", "line": 96, "label": "serves built UI" }
+        { "path": "app/backend/src/drawing_demo/api.py", "line": 37, "end_line": 65, "label": "POST /api/extract" },
+        { "path": "app/backend/src/drawing_demo/review.py", "line": 51, "label": "review flags" }
       ]
     },
     {
       "id": "mesher", "type": "backend", "label": "STEP mesher", "sublabel": "cascadio, OpenCASCADE",
       "pos": [665, 40], "size": [150, 64],
-      "sources": [{ "path": "app/src/drawing_demo/api.py", "line": 70, "end_line": 84, "label": "POST /api/model" }]
+      "sources": [{ "path": "app/backend/src/drawing_demo/api.py", "line": 68, "end_line": 82, "label": "POST /api/model" }]
     },
     {
       "id": "extractor", "type": "backend", "label": "drawing_extractor", "sublabel": "strokes, views, glyph text",
@@ -85,7 +84,8 @@
     }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Demo container (docker compose)", "wraps": ["api", "mesher"] }
+    { "kind": "region", "label": "Frontend container", "wraps": ["webui"] },
+    { "kind": "region", "label": "Backend container", "wraps": ["api", "mesher"] }
   ],
   "connections": [
     { "id": "upload", "from": "engineer", "to": "webui", "label": "upload PDFs", "variant": "emphasis" },
