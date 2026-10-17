@@ -5,10 +5,6 @@ timeout_seconds = 90
 
 [server]
 transport = "stdio"
-expose_freecad_proxy = false
-
-[freecad]
-enabled = false
 
 [cad]
 enabled = true

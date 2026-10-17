@@ -1,12 +1,15 @@
 # Linear view of native operations
 
-> Deprecated development reference. Do not use this FreeCAD profile for new production runs.
-> Its code and recorded hashes are preserved as historical evidence.
-> Use [the current workflow](managed-workflow.md) for maintained MCP operations.
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
 > Earlier drawing-first statements below do not apply to the current workflow.
 
 
-This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
 
 
 A native `App::DocumentObjectGroup` can show original operations as direct children in an explicit order. Their `Base`, `Tool`, and profile dependencies remain. When an operation is expanded, these dependencies are also accessible. Expand the group and collapse its operations to produce the default linear view. This creates no link copies or new final solids.

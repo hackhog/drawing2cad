@@ -1,12 +1,15 @@
 # Inline AP242 procedural construction adapter
 
-> Deprecated development reference. Do not use this FreeCAD profile for new production runs.
-> Its code and recorded hashes are preserved as historical evidence.
-> Use [the current workflow](managed-workflow.md) for maintained MCP operations.
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
 > Earlier drawing-first statements below do not apply to the current workflow.
 
 
-This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
 
 
 Calculate edge fingerprints from `e.copy(True, False).BoundBox`, without copied triangulation. Display triangulation can change bounding-box extremes. Keep the 1e-6 matching tolerance and curve-distance checks in both directions.

@@ -81,8 +81,8 @@ Load [target-format-exports.md](references/target-format-exports.md) only for re
 
 For AP242, test STEP-only reconstruction, parameter changes, semantic associations, and graphical PMI separately.
 Limited STEP readers do not prove geometry, full EXPRESS conformity, or general PMI support.
-Legacy FreeCAD proxy and inline adapter references are deprecated for new production runs.
-They are not a dependency of this sequence.
+The current MCP has no FreeCAD proxy. Historical inline adapter calls are unavailable.
+Use only its headless build123d worker for CAD execution.
 
 Keep generated files and reports in configured output storage.
 Use [model-agnostic-workflow.md](references/model-agnostic-workflow.md) for budgets, retries, and self-contained handoff.

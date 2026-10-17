@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1263" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1063" role="img" aria-labelledby="title desc">
 <title id="title">Drawing2CAD: M1 service and delivery milestones</title><desc id="desc">Generated from the versioned architecture JSON. Dashed connections identify optional or legacy paths.</desc>
-<rect width="1280" height="1263" fill="#f6f8fb"/><g font-family="Arial, Helvetica, sans-serif">
+<rect width="1280" height="1063" fill="#f6f8fb"/><g font-family="Arial, Helvetica, sans-serif">
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#61758b"/></marker></defs>
 <text x="40" y="45" font-size="24" fill="#17263d" font-weight="700" text-anchor="start">Drawing2CAD: M1 service and delivery milestones</text>
 <text x="40" y="70" font-size="14" fill="#526477" font-weight="400" text-anchor="start">Current M1 runtime and explicit later milestones</text>
@@ -28,8 +28,6 @@
 <path d="M860,632 H940 V512 H1020" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="940" y="562" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">validated STEP</text>
 <text x="940" y="577" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">candidate</text>
-<path d="M420,544 V672 H420 V800" fill="none" stroke="#61758b" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
-<text x="420" y="662" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">explicit opt-in</text>
 <g id="engineer"><rect x="40" y="140" width="170" height="64" rx="8" fill="#ffffff" stroke="#c5d1df" stroke-width="1.5"/>
 <rect x="40" y="150" width="4" height="44" rx="2" fill="#176ba0"/>
 <text x="125" y="164" font-size="15" fill="#17263d" font-weight="700" text-anchor="middle">Engineer</text>
@@ -75,66 +73,61 @@
 <text x="1120" y="504" font-size="15" fill="#17263d" font-weight="700" text-anchor="middle">Part and artifact store</text>
 <text x="1120" y="523" font-size="11.5" fill="#526477" font-weight="400" text-anchor="middle">JSON, STEP, reports, trace</text>
 </g>
-<g id="legacy"><rect x="320" y="800" width="200" height="64" rx="8" fill="#ffffff" stroke="#c5d1df" stroke-width="1.5"/>
-<rect x="320" y="810" width="4" height="44" rx="2" fill="#176ba0"/>
-<text x="420" y="824" font-size="15" fill="#17263d" font-weight="700" text-anchor="middle">Legacy FreeCAD proxy</text>
-<text x="420" y="843" font-size="11.5" fill="#526477" font-weight="400" text-anchor="middle">deprecated development path</text>
-</g>
-<rect x="40" y="944" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
-<text x="56" y="972" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M1: metric prototype</text>
-<text x="56" y="998" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">One MCP image includes PDF and CAD</text>
-<text x="56" y="1015" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">dependencies</text>
-<text x="56" y="1032" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="56" y="1049" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Editable JSON is the construction</text>
-<text x="56" y="1066" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">source</text>
-<text x="56" y="1083" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="56" y="1100" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Granular tools and full builds use</text>
-<text x="56" y="1117" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">one feature graph</text>
-<text x="56" y="1134" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="56" y="1151" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Fresh-worker STEP import is separate</text>
-<text x="56" y="1168" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">from external checks</text>
-<text x="56" y="1185" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<rect x="346" y="944" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
-<text x="362" y="972" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">Worker boundary</text>
-<text x="362" y="998" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Landlock filesystem rules and seccomp</text>
-<text x="362" y="1015" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">syscall restrictions</text>
-<text x="362" y="1032" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="362" y="1049" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Per-job process, directory, resource</text>
-<text x="362" y="1066" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">limits and timeout</text>
-<text x="362" y="1083" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="362" y="1100" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">CAD execution fails when the sandbox</text>
-<text x="362" y="1117" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">is unavailable</text>
-<text x="362" y="1134" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="362" y="1151" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">No Docker socket or CAD GUI is</text>
-<text x="362" y="1168" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">required</text>
-<text x="362" y="1185" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<rect x="652" y="944" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
-<text x="668" y="972" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M2: complete service, pending</text>
-<text x="668" y="998" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">One Python application serves MCP and</text>
-<text x="668" y="1015" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">the web API</text>
-<text x="668" y="1032" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="668" y="1049" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">PDF uploads return source IDs;</text>
-<text x="668" y="1066" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">outputs use artifact IDs</text>
-<text x="668" y="1083" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="668" y="1100" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">React, shadcn, TanStack Router and</text>
-<text x="668" y="1117" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Query</text>
-<text x="668" y="1134" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="668" y="1151" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Deliver a reviewed technical drawing</text>
-<text x="668" y="1168" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">and matching model</text>
-<text x="668" y="1185" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<rect x="958" y="944" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
-<text x="974" y="972" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M3: AP242, pending</text>
-<text x="974" y="998" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">AP242 construction and editable</text>
-<text x="974" y="1015" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">import adapters</text>
-<text x="974" y="1032" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="974" y="1049" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">STEP-only reconstruction and</text>
-<text x="974" y="1066" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">parameter-change tests</text>
-<text x="974" y="1083" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="974" y="1100" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Semantic PMI and graphical PMI</text>
-<text x="974" y="1117" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">verified separately</text>
-<text x="974" y="1134" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="974" y="1151" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">JSON sidecars and end bodies do not</text>
-<text x="974" y="1168" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">prove these claims</text>
-<text x="974" y="1185" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="40" y="1243" font-size="11" fill="#526477" font-weight="400" text-anchor="start">Source: docs/diagrams/drawing2cad-overview.json | ADR 0014</text>
+<rect x="40" y="744" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<text x="56" y="772" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M1: metric prototype</text>
+<text x="56" y="798" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">One MCP image includes PDF and CAD</text>
+<text x="56" y="815" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">dependencies</text>
+<text x="56" y="832" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="56" y="849" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Editable JSON is the construction</text>
+<text x="56" y="866" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">source</text>
+<text x="56" y="883" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="56" y="900" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Granular tools and full builds use</text>
+<text x="56" y="917" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">one feature graph</text>
+<text x="56" y="934" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="56" y="951" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Fresh-worker STEP import is separate</text>
+<text x="56" y="968" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">from external checks</text>
+<text x="56" y="985" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<rect x="346" y="744" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<text x="362" y="772" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">Worker boundary</text>
+<text x="362" y="798" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Landlock filesystem rules and seccomp</text>
+<text x="362" y="815" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">syscall restrictions</text>
+<text x="362" y="832" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="362" y="849" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Per-job process, directory, resource</text>
+<text x="362" y="866" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">limits and timeout</text>
+<text x="362" y="883" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="362" y="900" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">CAD execution fails when the sandbox</text>
+<text x="362" y="917" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">is unavailable</text>
+<text x="362" y="934" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="362" y="951" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">No Docker socket or CAD GUI is</text>
+<text x="362" y="968" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">required</text>
+<text x="362" y="985" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<rect x="652" y="744" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<text x="668" y="772" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M2: complete service, pending</text>
+<text x="668" y="798" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">One Python application serves MCP and</text>
+<text x="668" y="815" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">the web API</text>
+<text x="668" y="832" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="668" y="849" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">PDF uploads return source IDs;</text>
+<text x="668" y="866" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">outputs use artifact IDs</text>
+<text x="668" y="883" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="668" y="900" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">React, shadcn, TanStack Router and</text>
+<text x="668" y="917" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Query</text>
+<text x="668" y="934" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="668" y="951" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Deliver a reviewed technical drawing</text>
+<text x="668" y="968" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">and matching model</text>
+<text x="668" y="985" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<rect x="958" y="744" width="282" height="269" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<text x="974" y="772" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M3: AP242, pending</text>
+<text x="974" y="798" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">AP242 construction and editable</text>
+<text x="974" y="815" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">import adapters</text>
+<text x="974" y="832" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="974" y="849" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">STEP-only reconstruction and</text>
+<text x="974" y="866" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">parameter-change tests</text>
+<text x="974" y="883" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="974" y="900" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Semantic PMI and graphical PMI</text>
+<text x="974" y="917" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">verified separately</text>
+<text x="974" y="934" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="974" y="951" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">JSON sidecars and end bodies do not</text>
+<text x="974" y="968" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">prove these claims</text>
+<text x="974" y="985" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="40" y="1043" font-size="11" fill="#526477" font-weight="400" text-anchor="start">Source: docs/diagrams/drawing2cad-overview.json | ADR 0014</text>
 </g></svg>

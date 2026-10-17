@@ -6,7 +6,7 @@ import sys
 import pytest
 
 from drawing2cad_mcp.evaluation_client import _resolve, replay
-from test_proxy import UPSTREAM
+from protocol_fixtures import UPSTREAM
 
 
 async def test_trace_contains_exact_request_and_response(tmp_path):

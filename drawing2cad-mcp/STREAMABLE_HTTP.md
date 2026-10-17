@@ -1,7 +1,7 @@
 # Streamable HTTP setup and operation
 
 Use this guide to run `drawing2cad-mcp` as an HTTP service and connect an MCP client or LiteLLM.
-The guide applies to version 0.3.0 and later versions with the same configuration interface.
+The guide applies to version 0.5.0 and later versions with the same configuration interface.
 
 The connection path is:
 
@@ -20,7 +20,7 @@ The CAD child retains its own network and filesystem restrictions.
 The HTTP transport does not yet supply persistent uploads or artifact downloads.
 These belong to the M2 unified service.
 The [existing demo](../app/README.md) has a separate UI and API; it does not host this MCP endpoint.
-The optional FreeCAD proxy is deprecated for new production runs.
+The current MCP executes CAD only through the headless build123d worker. It has no FreeCAD proxy.
 
 ## 1. Prepare the installation
 
@@ -30,7 +30,7 @@ Prefer the maintained Docker image. Host installation must not bypass worker res
 Use a client that supports MCP Streamable HTTP.
 
 Run the commands from the repository root.
-For an existing installation, keep its virtual environment and local configuration.
+For an existing installation, update its dependencies and migrate its local configuration.
 First, enter the `drawing2cad-mcp` directory.
 Run only the package installation command to update its dependencies.
 
@@ -73,10 +73,12 @@ Keep this deployment file outside version control.
 | `pdf.timeout_seconds` | Set the time limit for each Poppler or vector-analysis process. |
 | `cad.enabled` | Enable only the maintained worker with its required sandbox. |
 | `cad.allow_build_code` | Keep `false` unless verified in-memory execution is required. |
-| `freecad.enabled` | Keep `false` for M1 production. Legacy development use requires explicit upstream configuration. |
-| `freecad.command` and `freecad.args` | Set the existing FreeCAD MCP launcher and its arguments. |
-| `freecad.cwd` and `freecad.env` | Set these optional fields only when the upstream requires them. |
-| `freecad.timeout_seconds` | Set the permitted duration of an upstream operation. |
+| `cad.timeout_seconds` and `cad.memory_mb` | Set finite limits for each worker process. |
+| `cad.concurrency` | Set the maximum number of concurrent CAD workers in this server process. |
+
+Remove the old `[freecad]` section and `server.expose_freecad_proxy` setting during migration.
+The current configuration rejects both, including disabled values.
+The generic example disables CAD execution. The Docker configuration enables its supported build123d worker.
 
 Relative configuration paths use the TOML file's directory.
 PDF tool calls require absolute paths on the server filesystem.
@@ -173,19 +175,14 @@ After an interrupted call, inspect the model before you repeat that call.
 5. Call `drawing2cad_status` with these arguments:
 
 ```json
-{
-  "refresh_freecad": true
-}
+{}
 ```
 
 The result must contain `transport: "streamable-http"`.
-The local catalog contains PDF, STEP inspection, capability, and managed workflow tools.
-To expose development tools with the `freecad_` prefix, set both `freecad.enabled=true` and `server.expose_freecad_proxy=true`.
-Raw proxy calls bypass managed evidence gates. They are hidden by default.
-The upstream determines their number and schemas.
-
-`freecad.connected` confirms the upstream MCP connection.
-It does not prove that CAD execution is available.
+The local catalog contains PDF, STEP inspection, part construction, review, and capability tools.
+Legacy `workflow_*` evidence tools require explicit configuration; they are separate from current part revision gates.
+The removed `freecad_*` tools are unavailable and return `UNKNOWN_TOOL`.
+Transport readiness does not prove that CAD execution is available.
 Call `cad_capabilities` and `cad_worker_probe`, then inspect their actual results.
 The `drawing_analysis` field reports the built-in engine, profile, schema version, and process timeout.
 A browser page or ordinary GET request is not an MCP readiness test.
@@ -306,10 +303,10 @@ HTTP transport does not change the evidence or review requirements.
 | HTTP 403 | Compare the supplied Origin header with `allowed_origins`. |
 | HTTP 404 | Use `/mcp`; the service has no `/sse`, download, or health route. |
 | HTTP 413 | Reduce the request body below the 4 MiB limit. |
-| No `freecad_*` tools | For the optional development profile, verify `server.expose_freecad_proxy`, `freecad.enabled`, the launcher, its arguments, and refreshed status. |
+| Configuration rejects `freecad` fields | Remove the obsolete section and `server.expose_freecad_proxy`, including disabled values. |
+| `CAD_DISABLED` | Enable `[cad]` only in a deployment with the supported Linux sandbox. |
+| `SANDBOX_UNAVAILABLE` | Use the maintained Docker profile and inspect the worker probe. Do not use an unsandboxed fallback. |
 | Vector analysis rejects the page layout | Use the normal PDF image tools. The vector profile accepts orthogonal page rotation, but still requires the supported full-page boxes and UserUnit 1. |
-| `catalog_stale=true` | Restore the upstream connection, then refresh status and list the tools again. |
-| FreeCAD tool fails after discovery | Verify addon access separately; upstream MCP discovery does not prove CAD execution. |
 | PDF path rejected | Use an existing absolute server path inside a permitted input directory. |
 | Poppler unavailable | Install `pdftoppm` or set its actual executable path in the configuration. |
 | Timeout or lost response | Inspect the model and artifacts before you repeat a CAD operation. |
@@ -321,10 +318,10 @@ Use the [stdio registration example](litellm-stdio.example.json) for LiteLLM's s
 ## Operating limits
 
 - Part mutations use explicit stored revisions. Coordinate changes to the same part.
-- A configured legacy FreeCAD proxy has shared document state; its individual upstream calls are serialized.
+- Per-run locks protect part operations. A competing call can return `RUN_BUSY`.
 - Stateless HTTP supplies no MCP session ID or stream resumption. The part store is separate from transport state.
 - Returned artifact paths refer to server files. MCP image blocks remain available to remote clients.
-- Bearer authentication does not provide user-specific file isolation or restrict the upstream's Python execution permissions.
+- Bearer authentication does not provide user-specific file isolation. CAD workers retain their separate sandbox restrictions.
 - The server does not automatically retry interrupted CAD calls.
 
 ## Validate the deployment

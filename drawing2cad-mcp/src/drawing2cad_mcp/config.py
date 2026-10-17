@@ -4,7 +4,7 @@ from pathlib import Path
 import tomllib
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PdfSettings(BaseModel):
@@ -17,30 +17,12 @@ class PdfSettings(BaseModel):
     max_pixels: int = Field(default=40000000, gt=0, strict=True)
 
 
-class FreeCADSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    enabled: bool = True
-    command: str | None = None
-    args: list[str] = Field(default_factory=list)
-    env: dict[str, str] = Field(default_factory=dict)
-    cwd: Path | None = None
-    timeout_seconds: float = Field(default=120, gt=0, le=7200, allow_inf_nan=False)
-    startup_timeout_seconds: float = Field(default=10, gt=0, le=120, allow_inf_nan=False)
-
-    @model_validator(mode="after")
-    def require_command(self):
-        if self.enabled and not (self.command and self.command.strip()):
-            raise ValueError("freecad.command is required when freecad.enabled=true")
-        return self
-
-
 class ServerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     transport: Literal["stdio", "streamable-http"] = "stdio"
     preview_max_pixels: int = Field(default=4000000, gt=0, le=16000000, strict=True)
     preview_max_bytes: int = Field(default=6000000, gt=0, le=12000000, strict=True)
     pdf_concurrency: int = Field(default=2, ge=1, le=4, strict=True)
-    expose_freecad_proxy: bool = False
     expose_legacy_workflow: bool = False
     max_step_bytes: int = Field(default=33554432, gt=0, le=268435456, strict=True)
 
@@ -67,7 +49,6 @@ class CadSettings(BaseModel):
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pdf: PdfSettings
-    freecad: FreeCADSettings = Field(default_factory=lambda: FreeCADSettings(enabled=False))
     server: ServerSettings = Field(default_factory=ServerSettings)
     http: HTTPSettings = Field(default_factory=HTTPSettings)
     cad: CadSettings = Field(default_factory=CadSettings)
@@ -85,10 +66,7 @@ class Settings(BaseModel):
 
         settings.pdf.allowed_roots = [resolve(p) for p in settings.pdf.allowed_roots]
         settings.pdf.output_root = resolve(settings.pdf.output_root)
-        if settings.freecad.cwd is not None:
-            settings.freecad.cwd = resolve(settings.freecad.cwd)
-        for section, field in ((settings.pdf, "pdftoppm"), (settings.freecad, "command")):
-            value = getattr(section, field)
-            if value and ("/" in value or "\\" in value):
-                setattr(section, field, str(resolve(Path(value))))
+        value = settings.pdf.pdftoppm
+        if value and ("/" in value or "\\" in value):
+            settings.pdf.pdftoppm = str(resolve(Path(value)))
         return settings

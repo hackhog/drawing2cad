@@ -130,5 +130,5 @@ These tools use an authorized path and its exact-byte `expected_sha256`.
 Their parsing success does not prove geometry, full EXPRESS conformity, or general PMI support.
 A metadata append is not CAD export or semantic-PMI authoring.
 
-Legacy FreeCAD inline adapters are deprecated.
-Do not load them for the normal M1 tool sequence.
+Historical FreeCAD inline adapters are unavailable through the current MCP.
+Do not load them for the current tool sequence.

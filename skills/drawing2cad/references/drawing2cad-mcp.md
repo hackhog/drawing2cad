@@ -69,6 +69,6 @@ Use `drawing2cad_status` and `cad_capabilities` to identify the installed servic
 A reachable HTTP endpoint does not prove worker readiness.
 Use `cad_worker_probe` and inspect actual results.
 
-Legacy `freecad_*` proxy tools are deprecated for new production runs.
-Their upstream privileges are not constrained by the PDF path allowlist.
-Do not use them as a fallback for a failed M1 sandbox.
+CAD execution uses only the headless build123d worker.
+The FreeCAD proxy has been removed; `freecad_*` calls return `UNKNOWN_TOOL`.
+Do not use historical adapter instructions as a fallback for a failed sandbox.

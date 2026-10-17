@@ -133,20 +133,6 @@
         200,
         64
       ]
-    },
-    {
-      "id": "legacy",
-      "type": "external",
-      "label": "Legacy FreeCAD proxy",
-      "sublabel": "deprecated development path",
-      "pos": [
-        320,
-        800
-      ],
-      "size": [
-        200,
-        64
-      ]
     }
   ],
   "boundaries": [
@@ -226,13 +212,6 @@
       "from": "worker",
       "to": "artifacts",
       "label": "validated STEP candidate"
-    },
-    {
-      "id": "proxy",
-      "from": "mcp",
-      "to": "legacy",
-      "label": "explicit opt-in",
-      "variant": "dashed"
     }
   ],
   "cards": [

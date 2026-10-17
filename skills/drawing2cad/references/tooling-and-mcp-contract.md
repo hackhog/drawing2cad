@@ -1,26 +1,28 @@
 # Tool inventory, common MCP interface, and CAD service design
 
-> Deprecated development reference. Do not use this FreeCAD profile for new production runs.
-> Its code and recorded hashes are preserved as historical evidence.
-> Use [the current workflow](managed-workflow.md) for maintained MCP operations.
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
 > Earlier drawing-first statements below do not apply to the current workflow.
 
 
-This is the optional FreeCAD development profile and a historical adapter inventory. The normal skill uses the backend-neutral MCP tools in [managed-workflow.md](managed-workflow.md). Do not load this inventory for ordinary evidence or STEP inspection calls.
+## Historical record
 
-`drawing2cad-mcp` supplies PDF preparation, maintained STEP readers, and managed evidence tools. It can expose the configured FreeCAD MCP as an explicit development option. See [drawing2cad-mcp.md](drawing2cad-mcp.md) for use instructions. The live catalog contains local PDF tools and dynamically forwarded `freecad_*` tools. The table below describes the current upstream interface. The `cad_*` tools in Sections 6–9 remain a **design proposal, not an implementation**. AP242 functions remain documented inline components. There is no general drawing parser or universal parametric STEP service.
+This inventory records the former FreeCAD development interface. It is not the current tool catalog.
+The former server forwarded FreeCAD tools and shared one upstream connection between clients.
+Its PDF path rules did not constrain upstream Python execution.
+That proxy, its configuration, and its tool surface have been removed.
+The historical calls below are unavailable through the current MCP.
 
-The implemented client transports are stdio and Streamable HTTP at `/mcp`.
-The configured FreeCAD upstream still uses stdio. HTTP clients share one upstream proxy in each server process.
-Stateless HTTP means that the transport has no MCP session ID. It does not mean isolated CAD documents or independent execution.
-The HTTP application owns startup and shutdown of that proxy. It can join a future shared Python backend through its ASGI factory.
-Transport authentication uses an optional bearer token on loopback and a required token for non-loopback listeners.
-Host and Origin validation restrict incoming HTTP requests. These controls do not provide tenant isolation or a sandbox for upstream Python.
-The transport adds no job store, artifact download service, browser interface, or headless CAD worker.
+The tables and procedures preserve the former interface and its proposed extensions.
+Their terms such as `current`, `live catalog`, and `optional profile` refer to that historical system.
+The `cad_*` names in Sections 6–9 describe an earlier design proposal, not the current API.
+Do not use this inventory to discover capabilities or execute a new run.
 
-The complete production pipeline must run on a headless server. It must prepare the PDF, create and verify the dimensioned drawing, and build editable 3D operations. It must then export AP242 with semantic PMI, reconstruct from STEP alone, test parameter changes, and render verification images. No phase can require FreeCADGui, a Qt GUI dispatcher, Xvfb, or an offscreen FreeCAD GUI. A browser client can show server outputs. It must not supply a required CAD execution step.
-
-[model-agnostic-workflow.md](model-agnostic-workflow.md) defines the process and mandatory evidence. [model-contract.md](model-contract.md) defines model content. For this optional profile only, use FreeCAD tools through the common MCP. The default workflow does not require this backend. Inline Python is permitted. Do not create ad hoc `.py`, `.FCMacro`, `.ps1`, `.bat`, or other executable model helper files. The versioned Python server requested by the user is a separate software component. Its PDF path allowlist does not constrain arbitrary Python code in the FreeCAD proxy.
+Use [drawing2cad-mcp.md](drawing2cad-mcp.md) for the current interface and [managed-workflow.md](managed-workflow.md) for supported operations.
+The current server uses a headless build123d worker, versioned part descriptions, and separate validation gates.
+Retained inline code supplies provenance for maintained STEP readers. It does not restore a FreeCAD execution path.
 
 ## 1. Evidence and inventory limits
 

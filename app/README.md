@@ -108,8 +108,9 @@ The existing drawing response remains compatible with the React viewer.
 
 The STEP viewer uses `cascadio` for display conversion only.
 It does not create STEP data or verify AP242, editable construction, or semantic PMI.
-The demo does not include a headless FreeCAD worker.
-Use the drawing-first workflow and separate CAD validation for model production.
+The demo supplies PDF analysis and STEP display; it does not execute CAD construction.
+Use the headless build123d worker through `drawing2cad-mcp` for model production and separate CAD validation.
+The complete service must also deliver a technical drawing. Drawing and model creation can occur in either order.
 
 ## Structure and validation
 

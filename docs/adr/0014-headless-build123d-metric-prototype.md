@@ -47,7 +47,7 @@ DXF with native dimensions and a PDF preview is the proposed format pair, subjec
 
 | Candidate | Useful capability | Workflow cost or limit | Decision |
 |---|---|---|---|
-| FreeCAD | Native parametric document and established feature objects. | Existing proxy uses an external runtime. Recorded GUI trials do not prove the complete headless pipeline. | Keep legacy inspection and adapters as deprecated development references. |
+| FreeCAD | Native parametric document and established feature objects. | The former proxy required an external runtime. Recorded GUI trials did not prove the complete headless pipeline. | Remove the proxy. Retain historical adapter code only for provenance and maintained reader origins. |
 | CadQuery | Python construction and STEP/DXF exchange through OpenCascade. | The project needs a separate feature description and review model. Exchange does not preserve its parametric source automatically. | Suitable alternative, not the selected M1 backend. |
 | build123d | Python construction, section/projection operations, and STEP/DXF exchange through OCP/OpenCascade. | Drawing layout, semantic PMI, and transferable construction need maintained adapters. | Select for M1, as required by the updated issue. |
 
@@ -60,6 +60,11 @@ Agents use only drawing2cad-mcp.
 The server translates one versioned feature description into backend operations.
 Granular calls and full-description builds use the same representation.
 Keep backend code out of the skill.
+
+The current execution backend is headless build123d only.
+Remove the FreeCAD transport, tool surface, and configuration instead of retaining an optional execution path.
+Old `[freecad]` and `server.expose_freecad_proxy` configuration fields are rejected, including disabled values.
+Historical adapter references remain unavailable through the current MCP. Preserve their code and recorded hashes.
 
 ## Sandbox decision
 

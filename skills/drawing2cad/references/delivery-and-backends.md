@@ -47,10 +47,11 @@ The selected M1 backend is build123d with OCP/OpenCascade.
 The maintained server translates the JSON feature description into backend operations.
 Granular calls and full-description builds must use the same feature representation.
 
-The legacy FreeCAD proxy and inline adapters are deprecated for new production runs.
-They remain historical development references.
+The current MCP executes CAD only through its headless build123d worker.
+The FreeCAD proxy has been removed. Historical inline adapter calls are unavailable.
+Retained adapter references document provenance and the origins of maintained readers.
 Their recorded code and hashes must not be rewritten or presented as new test results.
-Do not load or execute them for the normal M1 workflow.
+Do not load or execute them for the current workflow.
 
 The backend decision does not prove universal feature coverage or complete PMI support.
 Use the current tool catalog and actual test evidence for capability claims.

@@ -23,7 +23,6 @@ SCOPE = {
     "enforcement_scope": "managed_evidence_transitions_only",
     "cad_execution": False,
     "cad_validation": "unavailable",
-    "raw_proxy_outside_scope": True,
     "review_evidence": "identified_attestation_not_cad_validation",
 }
 MAX_ARTIFACT_BYTES = 104857600

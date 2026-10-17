@@ -1,7 +1,6 @@
-"""Exercise managed tool dispatch and the optional development boundary."""
+"""Exercise native and legacy tool dispatch boundaries."""
 
 from hashlib import sha256
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 from mcp.types import CallToolRequestParams
@@ -20,23 +19,20 @@ def app(tmp_path):
     return Application(Settings(pdf=PdfSettings(allowed_roots=[tmp_path], output_root=tmp_path / "out")))
 
 
-async def test_hidden_proxy_never_starts_discovers_or_dispatches(app):
-    proxy = Mock(start=AsyncMock(), close=AsyncMock(), list_tools=AsyncMock(),
-                 call_tool=AsyncMock(), cached_tools=[], status=Mock(return_value={"connected": False}))
-    app.proxy = proxy
+async def test_removed_proxy_has_no_catalog_schema_or_dispatch(app):
+    assert not hasattr(app, "proxy")
     async with app.lifespan(app.server):
         names = {tool.name for tool in (await app.on_list_tools(None)).tools}
         assert "part_create" in names and "step_inspect" in names
         assert "workflow_create_run" not in names
         assert not any(name.startswith("freecad_") for name in names)
-        await app.status(refresh=True)
+        status = await app.status()
+        assert "freecad" not in status
+        assert "development_proxy" not in status["capabilities"]
         result = await call(app, "freecad_execute_code", code="raise AssertionError()")
         assert result.is_error
-        assert result.structured_content["error"]["code"] == "RAW_PROXY_DISABLED"
+        assert result.structured_content["error"]["code"] == "UNKNOWN_TOOL"
         assert app.get_schema("freecad_execute_code") is None
-    proxy.start.assert_not_awaited()
-    proxy.list_tools.assert_not_awaited()
-    proxy.call_tool.assert_not_awaited()
 
 
 async def test_capabilities_distinguish_state_checks_from_cad(app, tmp_path):

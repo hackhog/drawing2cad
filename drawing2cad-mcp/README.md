@@ -3,7 +3,7 @@
 This server supplies PDF preparation, drawing measurements, versioned part construction, and validated STEP through one MCP interface.
 The M1 backend is build123d with OCP/OpenCascade.
 A restricted child process executes each build or fresh STEP import.
-The FreeCAD proxy is a deprecated development option and remains hidden by default.
+CAD execution uses only the headless build123d worker. The server has no FreeCAD proxy.
 
 Use the [Streamable HTTP guide](STREAMABLE_HTTP.md) for HTTP transport and client registration.
 Use [ADR 0014](../docs/adr/0014-headless-build123d-metric-prototype.md) for the selected sandbox and milestone boundaries.
@@ -61,7 +61,6 @@ Use the live catalog for exact schemas and limits.
 | `part_export_review` | Review records, coverage, manifest, and event evidence. |
 | `workflow_*` | Legacy structural evidence profile; hidden unless `server.expose_legacy_workflow=true`. |
 | `step_*` | Bounded STEP inspection and application-property tools; not full conformance analysis. |
-| `freecad_*` | Deprecated upstream proxy, only when explicitly exposed. |
 
 The server can prefix tool names with its client namespace.
 PDF results contain `structuredContent` and equivalent text metadata.
@@ -157,7 +156,6 @@ Install Python 3.11 or later and Poppler with `pdftoppm`.
 Installation includes PyMuPDF 1.28.2 for vector analysis.
 For CAD work, use the M1 Docker image with its supported Linux sandbox.
 A local `[cad]` installation does not bypass the sandbox requirement.
-The deprecated FreeCAD proxy requires its own upstream only when explicitly enabled.
 
 On Windows, run these commands from this directory:
 
@@ -180,12 +178,14 @@ Set the TOML configuration:
 
 - `[pdf]`: permitted source directories, output directory, and optional absolute Poppler path. Without that path, the server searches `PATH` for `pdftoppm`.
 - `[cad]`: enable the maintained worker and set finite timeout, memory, concurrency, and call-budget limits. Keep `allow_build_code=false` unless its verified scope is needed.
-- `[freecad]`: deprecated development proxy configuration. Keep `enabled=false` for M1 production runs.
-- `[server]`: transport, preview limits, PDF concurrency, `max_step_bytes`, and optional `expose_freecad_proxy`. The default transport is `stdio`.
+- `[server]`: transport, preview limits, PDF concurrency, `max_step_bytes`, and optional `expose_legacy_workflow`. The default transport is `stdio`.
 - `[http]`: listener address, port, permitted Host and Origin headers, and the bearer-token environment variable.
 
 Relative **configuration paths** use the TOML directory as their base. PDF tool calls use **absolute file paths**.
 The `.local.toml` file is specific to this computer. The portable example has no user-specific paths.
+Remove the old `[freecad]` section and `server.expose_freecad_proxy` setting when migrating.
+The current configuration rejects these fields, including disabled values.
+The generic example disables CAD execution; the Docker configuration enables the supported build123d worker.
 
 ## Start Streamable HTTP
 
@@ -205,13 +205,13 @@ The standard command keeps stdio if the configuration does not select HTTP.
 The server uses the MCP SDK's stateless Streamable HTTP transport with streamed responses.
 It does not require an `Mcp-Session-Id` header.
 Each HTTP request body has a limit of 4 MiB.
-The server has no result store, stream resumption, or automatic replay of interrupted requests.
+The transport has no stream resumption or automatic replay of interrupted requests.
+Part revisions, build results, and release records are stored separately from transport state.
 A lost response does not prove that an operation failed or stopped.
-Inspect the actual model and artifacts before you repeat a CAD call.
+Use `part_read` and inspect artifacts before you repeat a CAD call.
+Part operations use a per-run lock and expected revisions.
+Coordinate edits to the same run; a busy run returns `RUN_BUSY`.
 This transport setting does not make CAD operations stateless.
-One server process has one shared FreeCAD proxy. Its upstream calls run in sequence.
-Coordinate document access between clients. Separate server processes do not share a CAD write lock.
-Run one server process for one shared FreeCAD upstream until a worker coordinator exists.
 
 ### Listener access
 
@@ -235,19 +235,18 @@ The address `127.0.0.1` in a LiteLLM container refers to that container.
 For connections across an untrusted network, put the endpoint behind a TLS reverse proxy.
 Preserve the permitted Host header and request streaming through that proxy.
 
-The HTTP endpoint uses the same PDF and FreeCAD permissions as stdio.
+The HTTP endpoint uses the same PDF path rules, part revision gates, and CAD worker restrictions as stdio.
 It does not add user-specific file isolation, a web interface, or artifact downloads.
 Returned `artifact.path` values refer to the server filesystem.
 MCP image blocks remain available to remote clients.
-The HTTP transport does not remove the current upstream's GUI dependency.
 
 For a future shared Python backend, use `drawing2cad_mcp.http.create_http_app(application)` as the ASGI application factory.
 Pass a configured `Application` and run the returned application's lifespan.
-It owns upstream startup and shutdown. Do not start a second copy for each request.
+The lifespan manages the MCP application. Reuse that application for requests.
 
 ## Register with an agent
 
-Register only this server. The M1 worker is part of its image. The deprecated upstream starts only when explicitly configured.
+Register only this server. The M1 worker and CAD dependencies are part of its image.
 For LiteLLM, use [litellm-mcp.example.json](litellm-mcp.example.json) and the [registration procedure](#register-with-litellm).
 For an HTTP client with an `mcpServers` configuration, use the server URL:
 
@@ -285,7 +284,7 @@ Codex uses TOML. For HTTP, use a URL and an optional token variable:
 url = "http://127.0.0.1:8000/mcp"
 bearer_token_env_var = "DRAWING2CAD_HTTP_TOKEN"
 startup_timeout_sec = 30
-tool_timeout_sec = 1920
+tool_timeout_sec = 300
 ```
 
 Omit `bearer_token_env_var` for the local listener without authentication.
@@ -296,12 +295,12 @@ The stdio alternative is:
 command = 'C:\Projekt\drawing2cad-mcp\.venv\Scripts\python.exe'
 args = ["-m", "drawing2cad_mcp", "--config", 'C:\Projekt\drawing2cad-mcp\drawing2cad-mcp.local.toml', "--transport", "stdio"]
 startup_timeout_sec = 30
-tool_timeout_sec = 1920
+tool_timeout_sec = 300
 ```
 
-The example client timeout matches the local upstream timeout of 1900 seconds.
-For different values, set the client timeout longer than the expected operation.
-To supply only this interface, disable the existing direct FreeCAD entry.
+The example allows 300 seconds for a tool call.
+Set the client timeout above the total duration of all worker phases in that call.
+A build can include both construction and fresh STEP import, each with its own worker timeout.
 After configuration changes, reload the MCP connection in the client.
 See the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
@@ -326,7 +325,7 @@ It is not a stdio UI JSON block or a complete LiteLLM configuration file.
 4. Set the example's `url` to an address that the LiteLLM process can reach.
 5. Register the JSON with the LiteLLM management API, or enter its values in the Admin UI.
 6. Assign the necessary MCP access in LiteLLM and list the tools.
-7. Call `drawing2cad_status` with `refresh_freecad=true` through the registered tool name.
+7. Call `drawing2cad_status` with `{}` through the registered tool name.
 
 For the UI, open **MCP Servers → Add New MCP Server**.
 Select **Streamable HTTP** and enter the server name, alias, URL, and authentication settings.
@@ -452,18 +451,14 @@ See [ADR 0013](../docs/adr/0013-vector-analysis-in-mcp.md) for the feature compa
 - The server verifies resolved PDF paths against permitted directories, file-size limits, page limits, and pixel limits.
 - Poppler and vector analysis each use `pdf.timeout_seconds`. That timeout does not apply to the in-process pypdf parser.
 - This server is not an isolated service for unrestricted hostile PDF inputs.
-- The proxy preserves schemas, images, resource blocks, structured results, and error status.
-- It is a **tool proxy**. It does not forward upstream resource lists, prompts, sampling, or elicitation.
-- `freecad.connected` confirms the MCP transport. A suitable FreeCAD call is necessary to verify addon operation.
-- If the upstream server is unavailable, the PDF tools stay available.
-- The proxy can retain a previously discovered catalog with `catalog_stale=true`.
-- Each server process runs its FreeCAD calls in sequence.
-- Clients with separate server processes must coordinate access to shared CAD documents.
-- The proxy does **not automatically retry** failed or canceled CAD calls.
-- An operation that has started can have changed the model. Read its actual state before a retry.
-- `freecad_execute_code` retains the upstream permissions.
-- The PDF path restrictions do not restrict Python code that executes in FreeCAD.
-- The proxy adds no AP242 or PMI capabilities and no implementation for CAD execution without a GUI.
+- PDF preparation remains available when CAD execution is disabled or its sandbox is unavailable.
+- CAD calls use the maintained build123d worker. There is no external CAD proxy or GUI dispatcher.
+- Part revisions and per-run locks prevent conflicting mutations. They do not provide user-specific storage isolation.
+- The server does not automatically retry failed or canceled CAD calls.
+- An operation that has started can have changed stored state. Use `part_read` before a retry.
+- `build_code` requires configuration and a verified sandbox. Its exact inline payload is part of the construction evidence.
+- M1 STEP geometry export does not establish AP242 construction or semantic PMI.
+- Removed `freecad_*` calls return `UNKNOWN_TOOL`. Historical adapters do not supply a current execution path.
 
 ## Tests and skill
 
@@ -477,7 +472,7 @@ $testRun = '../output/tests-' + [guid]::NewGuid().ToString('N')
 Without Poppler, the test suite skips image-render tests.
 Without the sample drawings in `../resources/Drawing2CAD/`, it skips the vector sample tests.
 It can skip symbolic-link tests if the operating system does not permit symbolic links.
-The suite uses synthetic PDFs, explicit CAD descriptions, and isolated test processes. It does not change FreeCAD models.
+The suite uses synthetic PDFs, explicit CAD descriptions, and isolated test processes.
 It tests rotation, CropBox/MediaBox, UserUnit, detail pixels, source identity, errors, transport fidelity, and cancellation without automatic retry.
 
 The project skill is at `../skills/drawing2cad`.

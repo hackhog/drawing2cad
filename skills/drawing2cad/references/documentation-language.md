@@ -55,7 +55,7 @@ These technical nouns identify project concepts. They do not extend the approved
 | review marker | A visible reference to a review-register entry. It is separate from original PMI. |
 | run manifest | The record of inputs, outputs, hashes, tool versions, phase results, and the next action. |
 | source evidence | A recorded observation or quotation from a permitted source. |
-| MCP proxy | The component that forwards tool calls to the configured MCP server. |
+| historical MCP proxy | The removed component that forwarded tool calls to an external CAD server. |
 
 Use exact software names when necessary: `build123d`, `OCP`, `OpenCascade`, `FreeCAD`, `STEP AP242`, and `drawing2cad-mcp`.
 Define a new technical term at first use. Use the same term for the same concept in subsequent text.

@@ -2,7 +2,7 @@
 
 > Extended target contract for later AP242 adapter work. It is not the M1 part-description schema.
 > Use the live `part_validate` schema for M1. Do not claim these fields are implemented merely because they are documented.
-> Legacy FreeCAD references below are deprecated development evidence.
+> FreeCAD references below are historical evidence. The current MCP has no FreeCAD proxy.
 
 
 The contract contains declarative data, not executable code.

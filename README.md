@@ -100,8 +100,8 @@ Export a temporary STEP candidate and re-import it in a fresh worker.
 Keep original resources unchanged.
 Do not use a verification STEP as an unreported construction input.
 
-The legacy FreeCAD proxy and inline adapters are deprecated for new production runs.
-The current skill does not depend on a FreeCAD GUI or arbitrary inline FreeCAD code.
+The current MCP executes CAD only through the headless build123d worker.
+The FreeCAD proxy has been removed. Historical adapter references remain for provenance; their calls are unavailable through the current MCP.
 
 ## Documentation and version control
 

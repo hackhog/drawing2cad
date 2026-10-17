@@ -1,4 +1,4 @@
-"""Facade contracts and a full client -> stdio server -> upstream round trip."""
+"""Native tool contracts and full client-to-server stdio round trips."""
 
 import base64
 from io import BytesIO
@@ -13,12 +13,13 @@ from mcp.types import CallToolRequestParams
 from PIL import Image
 import pytest
 import drawing2cad_mcp
+from pydantic import ValidationError
 
-from drawing2cad_mcp.config import FreeCADSettings, PdfSettings, ServerSettings, Settings
+from drawing2cad_mcp.config import PdfSettings, ServerSettings, Settings
 from drawing2cad_mcp.server import LOCAL_TOOLS, STROKE_KINDS, Application
 from drawing2cad_mcp.vector import Kind
 from test_pdf import make_pdf
-from test_proxy import UPSTREAM
+from test_part_schema import sample_description
 
 SAMPLE = Path(__file__).resolve().parents[2] / "resources" / "Drawing2CAD" / "Maschinenteil" / "Maschinenteil_dwg.pdf"
 
@@ -34,29 +35,31 @@ async def invoke(app, name, **args):
     return await app.on_call_tool(None, CallToolRequestParams(name=name, arguments=args))
 
 
-async def test_status_and_pdf_work_without_freecad(app, tmp_path):
+async def test_status_and_pdf_use_native_tools(app, tmp_path):
     source = make_pdf(tmp_path / "test.pdf")
     result = await invoke(app, "pdf_info", path=str(source))
     assert not result.is_error
     assert result.structured_content["page_count"] == 2
     assert json.loads(result.content[0].text) == result.structured_content
     status = await invoke(app, "drawing2cad_status")
-    assert status.structured_content["freecad"]["configured"] is False
+    assert "freecad" not in status.structured_content
+    assert "development_proxy" not in status.structured_content["capabilities"]
+    assert not hasattr(app, "proxy")
     assert len((await app.on_list_tools(None)).tools) == len(LOCAL_TOOLS)
 
 
-async def test_unavailable_enabled_upstream_does_not_block_pdf(tmp_path):
-    app = Application(Settings(pdf=PdfSettings(allowed_roots=[tmp_path], output_root=tmp_path / "out"),
-                               server=ServerSettings(expose_freecad_proxy=True),
-                               freecad=FreeCADSettings(command="drawing2cad-nonexistent-test-command")))
-    source = make_pdf(tmp_path / "test.pdf")
-    async with app.lifespan(app.server):
-        assert len((await app.on_list_tools(None)).tools) == len(LOCAL_TOOLS)
-        assert not (await invoke(app, "pdf_info", path=str(source))).is_error
-        status = (await invoke(app, "drawing2cad_status")).structured_content
-        assert status["freecad"]["configured"]
-        assert not status["freecad"]["connected"]
-        assert status["freecad"]["last_error"]
+@pytest.mark.parametrize("removed", ['[freecad]\nenabled=false\n', '[server]\nexpose_freecad_proxy=false\n'])
+def test_removed_proxy_configuration_is_rejected(tmp_path, removed):
+    config = tmp_path / "removed.toml"
+    config.write_text('[pdf]\nallowed_roots=["sources"]\noutput_root="out"\n' + removed, encoding="utf-8")
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        Settings.load(config)
+
+
+def test_removed_application_proxy_argument_is_rejected(tmp_path):
+    settings = Settings(pdf=PdfSettings(allowed_roots=[tmp_path], output_root=tmp_path / "out"))
+    with pytest.raises(TypeError, match="proxy"):
+        Application(settings, proxy=object())
 
 
 @pytest.mark.parametrize("name,args", [
@@ -67,6 +70,7 @@ async def test_unavailable_enabled_upstream_does_not_block_pdf(tmp_path):
     ("drawing_extract", {"path": "a.pdf", "stroke_kinds": ["contour"]}),
     ("drawing_extract", {"path": "a.pdf", "include_strokes": True, "stroke_kinds": ["bogus"]}),
     ("drawing_extract", {"path": "a.pdf", "include_strokes": True, "stroke_kinds": []}),
+    ("drawing2cad_status", {"refresh_freecad": True}),
 ])
 async def test_local_schema_validation(app, name, args):
     result = await invoke(app, name, **args)
@@ -74,9 +78,10 @@ async def test_local_schema_validation(app, name, args):
     assert result.structured_content["error"]["code"] == "INVALID_ARGUMENTS"
 
 
-async def test_unknown_disabled_and_outside_root_errors(app):
+async def test_unknown_removed_and_outside_root_errors(app):
     assert (await invoke(app, "missing")).structured_content["error"]["code"] == "UNKNOWN_TOOL"
-    assert (await invoke(app, "freecad_echo")).structured_content["error"]["code"] == "FREECAD_DISABLED"
+    assert (await invoke(app, "freecad_echo")).structured_content["error"]["code"] == "UNKNOWN_TOOL"
+    assert app.get_schema("freecad_echo") is None
     failure = await invoke(app, "pdf_info", path=str(Path(sys.executable).with_suffix(".pdf")))
     assert failure.is_error
     assert "outside" in failure.structured_content["error"]["message"]
@@ -139,20 +144,18 @@ async def test_inline_preview_and_full_resolution_artifact(app, tmp_path):
 
 def test_config_resolves_paths_relative_to_file(tmp_path):
     config = tmp_path / "config.toml"
-    config.write_text('[pdf]\nallowed_roots=["sources"]\noutput_root="out"\n[freecad]\nenabled=false\n', encoding="utf8")
+    config.write_text('[pdf]\nallowed_roots=["sources"]\noutput_root="out"\n', encoding="utf8")
     settings = Settings.load(config)
     assert settings.pdf.allowed_roots == [tmp_path / "sources"]
     assert settings.pdf.output_root == tmp_path / "out"
 
 
-async def test_full_stdio_facade_preserves_proxy_and_pdf(tmp_path):
+async def test_full_stdio_server_exposes_native_part_and_pdf_tools(tmp_path):
     source = make_pdf(tmp_path / "test.pdf")
     config = tmp_path / "config.toml"
     quote = json.dumps
     config.write_text(
-        f'[pdf]\nallowed_roots=[{quote(str(tmp_path))}]\noutput_root={quote(str(tmp_path / "out"))}\n'
-        f'[freecad]\nenabled=true\ncommand={quote(sys.executable)}\n'
-        f'args=["-u","-c",{quote(UPSTREAM)}]\n[server]\nexpose_freecad_proxy=true\n', encoding="utf8")
+        f'[pdf]\nallowed_roots=[{quote(str(tmp_path))}]\noutput_root={quote(str(tmp_path / "out"))}\n', encoding="utf8")
     parameters = StdioServerParameters(command=sys.executable,
                                       args=["-m", "drawing2cad_mcp", "--config", str(config)],
                                       env={"PYTHONPATH": str(Path(drawing2cad_mcp.__file__).resolve().parents[1])})
@@ -160,18 +163,24 @@ async def test_full_stdio_facade_preserves_proxy_and_pdf(tmp_path):
         async with ClientSession(*streams) as session:
             await session.initialize()
             catalog = (await session.list_tools()).tools
-            assert len(catalog) == len(LOCAL_TOOLS) + 5
+            assert len(catalog) == len(LOCAL_TOOLS)
+            assert not any(tool.name.startswith("freecad_") for tool in catalog)
             capabilities = await session.call_tool("cad_capabilities", {})
             assert not capabilities.structured_content["workflow"]["available"]
             assert capabilities.structured_content["cad"]["backend"] == "build123d"
-            echo = next(tool for tool in catalog if tool.name == "freecad_echo")
-            assert echo.output_schema["required"] == ["value"]
-            result = await session.call_tool("freecad_echo", {"value": "facade round trip"})
-            assert result.structured_content == {"value": "facade round trip"}
-            assert result.content[1].type == "image"
-            assert result.content[1].data == "aGVsbG8="
-            assert result.content[2].resource.text == "preserved"
-            assert result.meta["marker"] == 42
-            assert (await session.call_tool("freecad_error", {})).is_error
+            assert "development_proxy" not in capabilities.structured_content
+            schema = await session.call_tool("part_schema", {})
+            assert not schema.is_error
+            assert schema.structured_content["schema"]["additionalProperties"] is False
+            validated = await session.call_tool("part_validate", {"description": sample_description()})
+            assert validated.structured_content["status"] == "pass"
+            removed = await session.call_tool("freecad_execute_code", {"code": "raise AssertionError()"})
+            assert removed.is_error and removed.structured_content["error"]["code"] == "UNKNOWN_TOOL"
+            status = await session.call_tool("drawing2cad_status", {})
+            assert "freecad" not in status.structured_content
+            assert "development_proxy" not in status.structured_content["capabilities"]
             pdf = await session.call_tool("pdf_info", {"path": str(source)})
             assert pdf.structured_content["page_count"] == 2
+            text = await session.call_tool("pdf_read_text", {"path": str(source)})
+            assert text.structured_content["source"] == pdf.structured_content["source"]
+            assert "Dimension 42 mm" in text.structured_content["pages"][0]["text"]

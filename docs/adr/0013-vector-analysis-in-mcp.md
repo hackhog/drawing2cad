@@ -12,6 +12,7 @@ Their original observations remain historical evidence. They are not new test re
 
 The later [ADR 0014](0014-headless-build123d-metric-prototype.md) replaces the drawing-first order and selects the M1 CAD backend.
 The extraction observations below remain historical evidence.
+ADR 0014 also removes the FreeCAD proxy. Its tools and configuration described below are no longer available.
 
 ## Context
 

@@ -40,7 +40,8 @@
 - Record independent STEP analysis and target-CAD opening separately. `not_tested` never means `pass`.
 - The production target is a fully headless Docker service. No required phase may depend on a CAD GUI or GUI dispatcher.
 - Use only a verified sandbox profile for CAD execution. Do not silently fall back to an unsandboxed host process.
-- The FreeCAD proxy and inline adapters are deprecated development references. Do not use them for new production runs.
+- The current MCP executes CAD only through the headless build123d worker. It has no FreeCAD proxy.
+- Keep historical adapter code and recorded hashes unchanged. Historical FreeCAD calls are unavailable through the current MCP.
 - Do not create ad hoc model scripts, macros, or executable helper files. This restriction does not prohibit authorized development of versioned MCP server code.
 - Use only permitted sources. Do not use verification resources as unreported construction inputs. Keep original resources unchanged.
 - Give suitable independent review tasks to subagents. Run changes to the same model in sequence. Review their results before delivery.

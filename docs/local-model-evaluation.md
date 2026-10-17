@@ -41,7 +41,7 @@ Example plan fields:
 Add the required source and storage mounts and container restrictions to the server arguments.
 Use a separate volume and run prefix for each trial.
 The source path must name the authorized PDF inside that server.
-The client denies other PDF paths, other run prefixes, FreeCAD calls, and code execution tools.
+The client denies other PDF paths, other run prefixes, and tools outside its allowlist, including code execution tools.
 
 If Ollama has no published host port, replace `ollama_url` with:
 
