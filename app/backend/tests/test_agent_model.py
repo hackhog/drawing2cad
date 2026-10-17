@@ -199,3 +199,18 @@ def test_a_rate_limit_after_the_turn_deadline_is_reported(monkeypatch):
     with pytest.raises(RuntimeError, match="HTTP 429"):
         make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 100)
     assert clock[0] < 100
+
+
+def test_only_recent_tool_results_and_schemas_stay_complete():
+    large = "x" * (model.SHORTENED_TOOL_CHARS * 3)
+    messages = [{"role": "assistant", "content": "", "tool_calls": [
+        {"id": f"c{i}", "function": {"name": "t", "arguments": {}}} for i in range(model.KEPT_TOOL_RESULTS + 2)]}]
+    messages += [{"role": "tool", "tool_name": "part_schema", "content": large},
+                 {"role": "tool", "tool_name": "drawing_extract", "content": large}]
+    messages += [{"role": "tool", "tool_name": "part_read", "content": large} for _ in range(model.KEPT_TOOL_RESULTS)]
+    tools = [m for m in to_openai(messages) if m["role"] == "tool"]
+    assert tools[0]["content"] == large  # A schema stays complete.
+    assert tools[1]["content"].startswith("x" * model.SHORTENED_TOOL_CHARS) and model.SHORTENED_TOOL_NOTE in tools[1]["content"]
+    assert len(tools[1]["content"]) < len(large)
+    assert all(m["content"] == large for m in tools[2:])  # The latest results stay complete.
+    assert [m["tool_call_id"] for m in tools] == [f"c{i}" for i in range(model.KEPT_TOOL_RESULTS + 2)]
