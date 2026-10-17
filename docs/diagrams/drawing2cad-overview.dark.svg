@@ -450,19 +450,23 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
           <path data-graph-role="automatic-crossover-underlay" d="M 815 432 L 945 432" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="agent" data-edge-to="mcp" data-edge-label="MCP stdio" data-edge-key="4" data-edge-id="stdio" data-composition-points="815,432;945,432" data-composition-crossover="halo" data-composition-independent="true" d="M 815 432 L 945 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-edge-from="agent" data-edge-to="mcp" data-edge-label="stdio or HTTP" data-edge-key="4" data-edge-id="stdio" data-composition-points="815,432;945,432" data-composition-crossover="halo" data-composition-independent="true" d="M 815 432 L 945 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1020 400 L 1020 264" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="mcp" data-edge-to="extractor" data-edge-label="drawing_extract" data-edge-key="5" data-edge-id="tool" data-composition-points="1020,400;1020,264" data-composition-crossover="halo" data-composition-independent="true" d="M 1020 400 L 1020 264" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1020 580 L 1020 464" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="litellm" data-edge-to="mcp" data-edge-label="HTTP /mcp" data-edge-key="5" data-edge-id="litellm-http" data-composition-points="1020,580;1020,464" data-composition-crossover="halo" data-composition-independent="true" d="M 1020 580 L 1020 464" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
-          <path data-graph-role="automatic-crossover-underlay" d="M 1095 432 L 1225 432" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="mcp" data-edge-to="freecad" data-edge-label="freecad_* proxy" data-edge-key="6" data-edge-id="proxy" data-composition-points="1095,432;1225,432" data-composition-crossover="halo" data-composition-independent="true" d="M 1095 432 L 1225 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 1020 400 L 1020 264" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="mcp" data-edge-to="extractor" data-edge-label="drawing_extract" data-edge-key="6" data-edge-id="tool" data-composition-points="1020,400;1020,264" data-composition-crossover="halo" data-composition-independent="true" d="M 1020 400 L 1020 264" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
+          <path data-graph-role="automatic-crossover-underlay" d="M 1095 432 L 1225 432" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="mcp" data-edge-to="freecad" data-edge-label="stdio proxy" data-edge-key="7" data-edge-id="proxy" data-composition-points="1095,432;1225,432" data-composition-crossover="halo" data-composition-independent="true" d="M 1095 432 L 1225 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:8">
           <path data-graph-role="automatic-crossover-underlay" d="M 1300 464 L 1300 580" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="freecad" data-edge-to="step" data-edge-label="export" data-edge-key="7" data-edge-id="export" data-composition-points="1300,464;1300,580" data-composition-crossover="halo" data-composition-independent="true" d="M 1300 464 L 1300 580" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-edge-from="freecad" data-edge-to="step" data-edge-label="export" data-edge-key="8" data-edge-id="export" data-composition-points="1300,464;1300,580" data-composition-crossover="halo" data-composition-independent="true" d="M 1300 464 L 1300 580" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
 
         <!-- Components -->
@@ -538,15 +542,27 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="740" y="446" class="t-muted" font-size="9" text-anchor="middle">drawing2cad skill</text>
         </g>
 
-        <g id="node-mcp" data-node-id="mcp" data-node-label="drawing2cad-mcp" tabindex="0" role="button" aria-label="Focus drawing2cad-mcp, stdio MCP, PDF tools, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="stdio MCP, PDF tools" data-node-context="Architecture component">
-          <title>drawing2cad-mcp · stdio MCP, PDF tools · Architecture component</title>
+        <g id="node-litellm" data-node-id="litellm" data-node-label="LiteLLM" tabindex="0" role="button" aria-label="Focus LiteLLM, optional MCP client, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="optional MCP client" data-node-context="Architecture component">
+          <title>LiteLLM · optional MCP client · Architecture component</title>
+          <rect x="945" y="580" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="945" y="580" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(951 586) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" x="1020" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">LiteLLM</text>
+        <text x="1020" y="626" class="t-muted" font-size="9" text-anchor="middle">optional MCP client</text>
+        </g>
+
+        <g id="node-mcp" data-node-id="mcp" data-node-label="drawing2cad-mcp" tabindex="0" role="button" aria-label="Focus drawing2cad-mcp, stdio + HTTP /mcp, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="stdio + HTTP /mcp" data-node-context="Architecture component">
+          <title>drawing2cad-mcp · stdio + HTTP /mcp · Architecture component</title>
           <rect x="945" y="400" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="945" y="400" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(951 406) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" x="1020" y="430" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">drawing2cad-mcp</text>
-        <text x="1020" y="446" class="t-muted" font-size="9" text-anchor="middle">stdio MCP, PDF tools</text>
+        <text x="1020" y="446" class="t-muted" font-size="9" text-anchor="middle">stdio + HTTP /mcp</text>
         </g>
 
         <g id="node-freecad" data-node-id="freecad" data-node-label="FreeCAD MCP" tabindex="0" role="button" aria-label="Focus FreeCAD MCP, upstream CAD tools, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="upstream CAD tools" data-node-context="Architecture component">
@@ -561,8 +577,8 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="1300" y="446" class="t-muted" font-size="9" text-anchor="middle">upstream CAD tools</text>
         </g>
 
-        <g id="node-step" data-node-id="step" data-node-label="STEP AP242" tabindex="0" role="button" aria-label="Focus STEP AP242, parametric model export, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="parametric model export" data-node-context="Architecture component">
-          <title>STEP AP242 · parametric model export · Architecture component</title>
+        <g id="node-step" data-node-id="step" data-node-label="STEP AP242" tabindex="0" role="button" aria-label="Focus STEP AP242, export and adapter tests, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="export and adapter tests" data-node-context="Architecture component">
+          <title>STEP AP242 · export and adapter tests · Architecture component</title>
           <rect x="1225" y="580" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="1225" y="580" width="150" height="64" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1231 586) scale(0.6875)">
@@ -570,7 +586,7 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" x="1300" y="610" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">STEP AP242</text>
-        <text x="1300" y="626" class="t-muted" font-size="9" text-anchor="middle">parametric model export</text>
+        <text x="1300" y="626" class="t-muted" font-size="9" text-anchor="middle">export and adapter tests</text>
         </g>
 
         <!-- Connection labels -->
@@ -590,19 +606,23 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
           <rect x="846.2" y="212" width="67.6" height="14" rx="3" class="c-mask"/>
           <text x="880" y="222" class="t-edge-default" font-size="8" text-anchor="middle">extract(pdf)</text>
         </g>
-        <g data-edge-from="agent" data-edge-to="mcp" data-edge-label="MCP stdio" data-edge-key="4" data-edge-id="stdio">
-          <rect x="853.4" y="412" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="880" y="422" class="t-edge-default" font-size="8" text-anchor="middle">MCP stdio</text>
+        <g data-edge-from="agent" data-edge-to="mcp" data-edge-label="stdio or HTTP" data-edge-key="4" data-edge-id="stdio">
+          <rect x="843.8" y="412" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="880" y="422" class="t-edge-default" font-size="8" text-anchor="middle">stdio or HTTP</text>
         </g>
-        <g data-edge-from="mcp" data-edge-to="extractor" data-edge-label="drawing_extract" data-edge-key="5" data-edge-id="tool">
+        <g data-edge-from="litellm" data-edge-to="mcp" data-edge-label="HTTP /mcp" data-edge-key="5" data-edge-id="litellm-http">
+          <rect x="993.4" y="560" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="1020" y="570" class="t-edge-default" font-size="8" text-anchor="middle">HTTP /mcp</text>
+        </g>
+        <g data-edge-from="mcp" data-edge-to="extractor" data-edge-label="drawing_extract" data-edge-key="6" data-edge-id="tool">
           <rect x="979" y="380" width="82" height="14" rx="3" class="c-mask"/>
           <text x="1020" y="390" class="t-edge-default" font-size="8" text-anchor="middle">drawing_extract</text>
         </g>
-        <g data-edge-from="mcp" data-edge-to="freecad" data-edge-label="freecad_* proxy" data-edge-key="6" data-edge-id="proxy">
-          <rect x="1119" y="412" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="1160" y="422" class="t-edge-default" font-size="8" text-anchor="middle">freecad_* proxy</text>
+        <g data-edge-from="mcp" data-edge-to="freecad" data-edge-label="stdio proxy" data-edge-key="7" data-edge-id="proxy">
+          <rect x="1128.6" y="412" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="1160" y="422" class="t-edge-default" font-size="8" text-anchor="middle">stdio proxy</text>
         </g>
-        <g data-edge-from="freecad" data-edge-to="step" data-edge-label="export" data-edge-key="7" data-edge-id="export">
+        <g data-edge-from="freecad" data-edge-to="step" data-edge-label="export" data-edge-key="8" data-edge-id="export">
           <rect x="1255.1999999999998" y="515" width="38.8" height="14" rx="3" class="c-mask"/>
           <text x="1274.6" y="525" class="t-edge-dashed" font-size="8" text-anchor="middle">export</text>
         </g>

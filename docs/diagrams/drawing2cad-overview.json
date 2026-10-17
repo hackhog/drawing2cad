@@ -10,7 +10,7 @@
       "url": "https://github.com/hackhog/drawing2cad.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "992c18edfd8fbee6f564a1a001b58703bf447bfa"
+      "revision": "beca319067b1a43acc62e4909a5e9255cf270a00"
     }
   },
   "components": [
@@ -57,9 +57,15 @@
       "sources": [{ "path": "skills/drawing2cad/SKILL.md", "line": 15, "label": "drawing first, STEP last" }]
     },
     {
-      "id": "mcp", "type": "backend", "label": "drawing2cad-mcp", "sublabel": "stdio MCP, PDF tools",
+      "id": "litellm", "type": "external", "label": "LiteLLM", "sublabel": "optional MCP client",
+      "pos": [945, 580], "size": [150, 64],
+      "sources": [{ "path": "drawing2cad-mcp/litellm-mcp.example.json", "line": 1, "end_line": 7, "label": "HTTP registration example" }]
+    },
+    {
+      "id": "mcp", "type": "backend", "label": "drawing2cad-mcp", "sublabel": "stdio + HTTP /mcp",
       "pos": [945, 400], "size": [150, 64],
       "sources": [
+        { "path": "drawing2cad-mcp/src/drawing2cad_mcp/http.py", "line": 63, "end_line": 86, "label": "Streamable HTTP and shared lifecycle" },
         { "path": "drawing2cad-mcp/src/drawing2cad_mcp/server.py", "line": 66, "label": "drawing_extract tool" },
         { "path": "drawing2cad-mcp/src/drawing2cad_mcp/pdf.py", "line": 345, "label": "extract_drawing()" }
       ]
@@ -69,11 +75,11 @@
       "pos": [1225, 400], "size": [150, 64],
       "sources": [
         { "path": "drawing2cad-mcp/src/drawing2cad_mcp/server.py", "line": 210, "end_line": 213, "label": "freecad_* routing" },
-        { "path": "drawing2cad-mcp/src/drawing2cad_mcp/proxy.py", "line": 49, "label": "FreeCADProxy" }
+        { "path": "drawing2cad-mcp/src/drawing2cad_mcp/proxy.py", "line": 232, "label": "stdio upstream connection" }
       ]
     },
     {
-      "id": "step", "type": "database", "label": "STEP AP242", "sublabel": "parametric model export",
+      "id": "step", "type": "database", "label": "STEP AP242", "sublabel": "export and adapter tests",
       "pos": [1225, 580], "size": [150, 64],
       "sources": [{ "path": "skills/drawing2cad/SKILL.md", "line": 15, "label": "export STEP last" }]
     }
@@ -86,14 +92,16 @@
     { "id": "http", "from": "webui", "to": "api", "label": "/api/extract, /api/model", "variant": "emphasis" },
     { "id": "mesh", "from": "api", "to": "mesher", "label": "STEP to GLB" },
     { "id": "extract", "from": "api", "to": "extractor", "label": "extract(pdf)" },
-    { "id": "stdio", "from": "agent", "to": "mcp", "label": "MCP stdio" },
+    { "id": "stdio", "from": "agent", "to": "mcp", "label": "stdio or HTTP" },
+    { "id": "litellm-http", "from": "litellm", "to": "mcp", "label": "HTTP /mcp" },
     { "id": "tool", "from": "mcp", "to": "extractor", "label": "drawing_extract" },
-    { "id": "proxy", "from": "mcp", "to": "freecad", "label": "freecad_* proxy" },
+    { "id": "proxy", "from": "mcp", "to": "freecad", "label": "stdio proxy" },
     { "id": "export", "from": "freecad", "to": "step", "label": "export", "variant": "dashed" }
   ],
   "cards": [
     { "dot": "cyan", "title": "Demo flow", "items": ["1 Drawing, 2 Recognized, 3 Review, 4 3D model", "Review lists unclear strokes and '?' text: marked, not guessed", "Tab 4 shows a pipeline STEP, meshed to GLB on the server"] },
     { "dot": "emerald", "title": "Extractor", "items": ["Reads vector paths of BCT drawing PDFs, no text layer needed", "Text from glyph templates, no OCR, no model, no key", "One library for the demo API and the MCP tool"] },
-    { "dot": "rose", "title": "Rules", "items": ["Ground-truth STEP files are never a pipeline input", "Drawing first, then 3D model, STEP export last", "Uploaded PDFs stay in a temp directory, not stored"] }
+    { "dot": "rose", "title": "Rules", "items": ["Ground-truth STEP files are never a pipeline input", "Drawing first, then 3D model, STEP export last", "Uploaded PDFs stay in a temp directory, not stored"] },
+    { "dot": "cyan", "title": "MCP transport", "items": ["Streamable HTTP clients share one FreeCAD proxy and CAD state", "Stdio remains available; HTTP does not make FreeCAD headless", "A fully headless CAD worker remains a production requirement"] }
   ]
 }

@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Builds the archify diagrams in docs/diagrams and their SVG export for the README (ADR 0011)",
   "scripts": {
+    "diagrams": "node diagrams.mjs",
     "build": "node diagrams.mjs",
     "check": "node diagrams.mjs --check"
   },

@@ -179,9 +179,9 @@ With FreeCAD enabled, it also contains the tools discovered from the upstream, w
 The upstream determines their number and schemas.
 
 `freecad.connected` confirms the upstream MCP connection.
-The `extractor.available` field reports whether the optional extractor distribution is installed.
 It does not prove that the FreeCAD addon can execute operations.
 Use a suitable read-only FreeCAD tool from the discovered catalog to verify runtime access.
+The `extractor.available` field reports whether the optional extractor distribution is installed.
 A browser page or ordinary GET request is not an MCP readiness test.
 
 ## 7. Connect LiteLLM
