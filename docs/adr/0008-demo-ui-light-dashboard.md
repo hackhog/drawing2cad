@@ -40,6 +40,11 @@ Addendum 2026-10-17 (2): the tiles were first above the sheet and took height fr
 one drawing. Thus, there are two pages (`<body data-view>`): *Overview* (tiles and table, start page, updates while the PDFs are read)
 and *Drawing* (only the sheet and the review list; the key numbers of the drawing are in the header).
 
+Addendum 2026-10-17 (3): the app window with window dots, outer margin and rounded frame took screen space from the sheet and
+the tables and had no function. The UI now fills the full browser window. The sidebar has a footer with the processing mode
+("Lokal, ohne KI"), a button that clears the batch (disabled while a drawing waits or runs), and a workstation row for display only.
+There is no settings page, because there are no settings yet ([issue #22](https://github.com/hackhog/drawing2cad/issues/22)).
+
 ## Consequences
 
 **Positive:**

@@ -7,9 +7,12 @@ interface Props {
   shownId: number | null; // nur gesetzt, wenn die Seite „Zeichnung“ offen ist
   onOverview: () => void;
   onShow: (job: Job) => void;
+  onClear: () => void;
 }
 
-export function Sidebar({ jobs, shownId, onOverview, onShow }: Props) {
+export function Sidebar({ jobs, shownId, onOverview, onShow, onClear }: Props) {
+  // Clear only when nothing is in progress, so no running request writes into an empty list
+  const busy = jobs.some((j) => j.state === "wait" || j.state === "run");
   return (
     <aside className="nav">
       <div className="brand">
@@ -37,6 +40,19 @@ export function Sidebar({ jobs, shownId, onOverview, onShow }: Props) {
           );
         })}
       </ul>
+
+      <footer className="nav-foot">
+        <div className="nav-status">
+          <span>Lokal, ohne KI</span>
+          <button type="button" disabled={!jobs.length || busy} onClick={onClear} title="Alle Zeichnungen aus der Liste entfernen">
+            Leeren
+          </button>
+        </div>
+        <div className="profile">
+          <span className="avatar" aria-hidden="true">KO</span>
+          <div><strong>Konstruktion</strong><small>Demo-Arbeitsplatz</small></div>
+        </div>
+      </footer>
     </aside>
   );
 }
