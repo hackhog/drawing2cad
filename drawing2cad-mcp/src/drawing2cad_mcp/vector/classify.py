@@ -24,7 +24,8 @@ from .geometry import Grid, angle_diff, expand, point_segment_distance
 from .model import Arc, Kind, Line, Point, Stroke
 
 _TOUCH = 0.06  # mm: endpoint contact tolerance
-_CUTTING_PLANE_WIDTH = 0.45  # mm
+_CUTTING_PLANE_WIDTH = 0.45  # mm: lower limit for a cutting-plane line
+_CUTTING_PLANE_MARGIN = 0.05  # mm above the dominant line width
 _ARROW_MAX_SIDE = 10.0  # mm
 _ARROW_MAX_BASE = 4.5  # mm
 _DIM_ARROW_MAX_BASE = 2.0  # mm; larger arrowheads indicate cutting planes
@@ -43,8 +44,11 @@ def classify(strokes: list[Stroke]) -> list[ArrowHead]:
     for s in strokes:
         grid.insert(s.id, expand(s.bbox(), _TOUCH))
 
+    # A cutting plane is thicker than the contour lines of the drawing.
+    # Some templates draw part contours with 0.5 mm; those lines are contour candidates.
+    cutting_width = max(_CUTTING_PLANE_WIDTH, _contour_width(strokes) + _CUTTING_PLANE_MARGIN)
     for s in strokes:
-        if s.width_mm >= _CUTTING_PLANE_WIDTH:
+        if s.width_mm >= cutting_width:
             s.kind = Kind.CUTTING_PLANE
 
     arrows = _find_arrows(strokes, grid)
@@ -402,6 +406,19 @@ def _extend_centerlines(strokes: list[Stroke]) -> None:
         if not nearby or s.geom.length > min(_DASH_LIMIT * max(nearby), _MAX_DASH) or contacts(s, strokes, grid):
             continue
         s.kind = Kind.CENTERLINE
+
+
+_CONTOUR_MIN_WIDTH = 0.3  # mm: thinner lines are dimension, hatch, or center lines
+
+
+def _contour_width(strokes: list[Stroke]) -> float:
+    """Return the thick line width with the greatest total length. Part contours use this width.
+    Thin lines are excluded, because hatching and dimensions can have a greater total length."""
+    total: dict[float, float] = defaultdict(float)
+    for s in strokes:
+        if s.width_mm >= _CONTOUR_MIN_WIDTH:
+            total[round(s.width_mm, 3)] += s.geom.length
+    return max(total, key=total.__getitem__) if total else 0.0
 
 
 def _dominant_width(strokes: list[Stroke]) -> float:

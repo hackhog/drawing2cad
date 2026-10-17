@@ -116,11 +116,15 @@ async def test_drawing_extract_on_sample(tmp_path):
     assert "strokes" not in plain
     assert all("stroke_ids" not in view and view["stroke_count"] > 0 for view in plain["views"])
     full = (await invoke(app, "drawing_extract", path=str(SAMPLE), include_strokes=True)).structured_content
-    assert len(full["strokes"]) == plain["summary"]["strokes"]
+    # Strokes come in pages. The page reports the total, and the first page is bounded.
+    assert full["strokes_page"]["total_matching"] == plain["summary"]["strokes"]
+    assert len(full["strokes"]) == min(500, plain["summary"]["strokes"])
     assert [len(view["stroke_ids"]) for view in full["views"]] == [view["stroke_count"] for view in plain["views"]]
-    contours = (await invoke(app, "drawing_extract", path=str(SAMPLE), include_strokes=True,
-                             stroke_kinds=["contour"])).structured_content["strokes"]
-    assert len(contours) == plain["summary"]["by_kind"]["contour"]
+    contour_page = (await invoke(app, "drawing_extract", path=str(SAMPLE), include_strokes=True,
+                                 stroke_kinds=["contour"], stroke_limit=2000)).structured_content
+    contours = contour_page["strokes"]
+    assert contour_page["strokes_page"]["total_matching"] == plain["summary"]["by_kind"]["contour"]
+    assert len(contours) == min(2000, plain["summary"]["by_kind"]["contour"])
     assert {stroke["kind"] for stroke in contours} == {"contour"}
     assert not list((tmp_path / "out").iterdir())  # The snapshot is removed.
 
