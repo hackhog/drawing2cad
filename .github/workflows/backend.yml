@@ -1,0 +1,35 @@
+# Test the web backend (ADR 0018) and build its container image.
+# The tests use a scripted model; this workflow needs no secrets and calls no model endpoint.
+# This workflow does not commit or deploy artifacts.
+name: Backend
+
+on:
+  pull_request:
+    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', '.github/workflows/backend.yml']
+  push:
+    branches: [main]
+    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', '.github/workflows/backend.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Poppler
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.11.1         # Same version as app/backend/Dockerfile.
+          python-version: '3.12'  # Same version as the backend image.
+      - run: uv sync --locked
+      - run: uv run pytest
+      - name: Build the container image
+        working-directory: .
+        run: docker build -f app/backend/Dockerfile -t drawing2cad-backend:ci .
