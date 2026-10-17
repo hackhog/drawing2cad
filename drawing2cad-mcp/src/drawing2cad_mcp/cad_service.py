@@ -154,7 +154,15 @@ class CadService:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, path)
+            # Windows refuses to replace a file that a lock-free reader has open. Retry for a short time.
+            for attempt in range(50):
+                try:
+                    os.replace(temporary, path)
+                    break
+                except PermissionError:
+                    if os.name != "nt" or attempt == 49:
+                        raise
+                    time.sleep(0.02)
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
@@ -365,18 +373,24 @@ class CadService:
             raise CadError("INVALID_WORKER_ARTIFACT", "The worker did not produce a bounded regular STEP candidate.")
         return path
 
+    def check_build(self, name, arguments, state):
+        """Reject a build before it changes state. A rejected call keeps the build, release, and reviews."""
+        if not self.settings.enabled:
+            raise CadError("CAD_DISABLED", "Enable the configured CAD worker before construction.")
+        if name == "build_code" and not (self.settings.allow_build_code and self._probe and self._probe.get("status") == "pass"):
+            raise CadError("BUILD_CODE_DISABLED", "Enable build_code and pass the sandbox probe in this server process first. Use build_from_description.")
+        if name == "build_from_description" and arguments.get("pmi") is not None and arguments.get("export_profile", "ap214") != "ap242":
+            raise CadError("PMI_PROFILE_REQUIRED", "PMI requires the AP242 export profile. Set export_profile to ap242 or remove pmi.")
+        if state["call_count"] >= state["step_budget"]:
+            raise CadError("STEP_BUDGET_EXHAUSTED", "The run reached its tool-call budget. Review its recorded trace before a new run.")
+        self._sources(state["sources"])
+
     def _build(self, name, arguments):
         def action(state, directory):
-            if not self.settings.enabled:
-                raise CadError("CAD_DISABLED", "Enable the configured CAD worker before construction.")
-            self._sources(state["sources"])
+            self.check_build(name, arguments, state)
             state["build"], state["release"], state["source_review"] = None, None, None
-            if name == "build_code" and not (self.settings.allow_build_code and self._probe and self._probe.get("status") == "pass"):
-                raise CadError("BUILD_CODE_DISABLED", "Enable build_code and pass the sandbox probe in this server process first.")
             options = {"code": arguments["code"]} if name == "build_code" else {
                 "export_profile": arguments.get("export_profile", "ap214"), "pmi": arguments.get("pmi")}
-            if options.get("pmi") is not None and options.get("export_profile") != "ap242":
-                raise CadError("PMI_PROFILE_REQUIRED", "PMI requires the AP242 export profile.")
             result = self.runner.run("build_code" if name == "build_code" else "build", description=state["description"], **options)
             if result.get("status") != "pass":
                 return {"status": "fail", "build": result, "validation": {"status": "not_tested"}}

@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import sqlite3
@@ -28,8 +29,19 @@ MAX_ARGUMENT_BYTES = 262_144
 MAX_RESULT_BYTES = 1_048_576
 
 
+LOG = logging.getLogger(__name__)
+
+
 class JobCancelled(Exception):
     """The dispatcher confirms that it stopped without unreported effects."""
+
+
+class JobFailed(DomainError):
+    """The operation ran and failed its checks. Its public report stays in the job result."""
+
+    def __init__(self, code: str, message: str, result: dict[str, Any]):
+        super().__init__(code, message)
+        self.result = result
 
 
 def _now() -> str:
@@ -352,11 +364,18 @@ class JobService:
                 self._finish(job_id, "succeeded", result=encoded)
             except JobCancelled:
                 self._finish(job_id, "cancelled")
+            except JobFailed as error:
+                try:
+                    report = _encode(error.result, MAX_RESULT_BYTES, "JOB_RESULT_INVALID")
+                except DomainError:
+                    report = None
+                self._finish(job_id, "failed", result=report, error=error.to_dict())
             except DomainError as error:
                 # Domain errors are public contract errors. Other exception text
                 # can contain host paths, credentials, or worker tracebacks.
                 self._finish(job_id, "failed", error=error.to_dict())
             except BaseException:
+                LOG.exception("Job %s (%s) failed", job_id, row["operation"])
                 self._finish(job_id, "failed", error={"code": "JOB_EXECUTION_FAILED", "message": "The job failed. Inspect the run state before you retry."})
             finally:
                 with self._active_lock:

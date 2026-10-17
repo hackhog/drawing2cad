@@ -45,7 +45,9 @@ async def test_status_and_pdf_use_native_tools(app, tmp_path):
     assert "freecad" not in status.structured_content
     assert "development_proxy" not in status.structured_content["capabilities"]
     assert not hasattr(app, "proxy")
-    assert len((await app.on_list_tools(None)).tools) == len(LOCAL_TOOLS)
+    listed = [tool.name for tool in (await app.on_list_tools(None)).tools]
+    # build_code is disabled by default and is therefore not offered.
+    assert "build_code" not in listed and len(listed) == len(LOCAL_TOOLS) - 1
 
 
 @pytest.mark.parametrize("removed", ['[freecad]\nenabled=false\n', '[server]\nexpose_freecad_proxy=false\n'])
@@ -163,8 +165,8 @@ async def test_full_stdio_server_exposes_native_part_and_pdf_tools(tmp_path):
         async with ClientSession(*streams) as session:
             await session.initialize()
             catalog = (await session.list_tools()).tools
-            assert len(catalog) == len(LOCAL_TOOLS)
-            assert not any(tool.name.startswith("freecad_") for tool in catalog)
+            assert len(catalog) == len(LOCAL_TOOLS) - 1  # build_code is disabled by default.
+            assert not any(tool.name.startswith("freecad_") or tool.name == "build_code" for tool in catalog)
             capabilities = await session.call_tool("cad_capabilities", {})
             assert not capabilities.structured_content["workflow"]["available"]
             assert capabilities.structured_content["cad"]["backend"] == "build123d"

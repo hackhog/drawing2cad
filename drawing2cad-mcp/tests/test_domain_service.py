@@ -396,3 +396,61 @@ def test_failed_step_inspection_removes_private_snapshot(domain):
     parent = service.store.namespace_root(CTX) / "inspection"
     assert list(parent.iterdir()) == []
     assert artifact_bytes(service, artifact)
+
+
+def test_rejected_build_keeps_release_and_drawing_review(domain):
+    service, source, *_ = domain
+    render_and_build(domain)
+    call(service, "export_step", coverage=coverage(source))
+    before = service.call(CTX, "part_read", {"run_id": "plate"})
+    assert before["part"]["release"] and before["drawing"]["review"]
+    with pytest.raises(DomainError) as error:
+        call(service, "build_code", code="result = None")
+    assert error.value.code == "BUILD_CODE_DISABLED"
+    after = service.call(CTX, "part_read", {"run_id": "plate"})
+    assert after["part"]["release"] == before["part"]["release"]
+    assert after["part"]["build"] == before["part"]["build"]
+    assert after["drawing"]["review"] == before["drawing"]["review"]
+
+
+def test_errors_keep_feature_and_field_without_host_paths(domain):
+    service, *_ = domain
+    error = service._public({"error": {
+        "code": "FILLET_EDGE_COUNT", "feature_id": "fillet-1",
+        "message": r"Edge count differs at /features/3/edges. See C:\Users\someone\worker\a.py and /tmp/worker/b.py"}})["error"]
+    assert error["code"] == "FILLET_EDGE_COUNT" and error["feature_id"] == "fillet-1"
+    assert "/features/3/edges" in error["message"]
+    assert "someone" not in error["message"] and "/tmp/" not in error["message"]
+    with pytest.raises(DomainError) as invalid:
+        service.call(CTX, "part_read", {"run_id": 5})
+    assert invalid.value.code == "INVALID_ARGUMENT"
+    assert invalid.value.target == "/run_id" and "is not of type" in invalid.value.message
+
+
+def test_failed_job_keeps_its_public_report(domain):
+    service, _, _, _, runner = domain
+    runner.fail_operation = "build"
+    job = service.call(CTX, "job_submit", {"operation": "build_from_description", "arguments": {"run_id": "plate", "expected_revision": 1}, "idempotency_key": "failed-report"})
+    service.start()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        current = service.call(CTX, "job_get", {"job_id": job["job_id"]})
+        if current["state"] == "failed":
+            break
+        time.sleep(0.02)
+    assert current["state"] == "failed", current
+    assert current["result"]["status"] == "fail"
+    assert current["result"]["build"]["error"]["code"] == "TEST_WORKER_FAILED"
+
+
+def test_reads_during_active_operation_return_a_snapshot(domain):
+    service, *_ = domain
+    with service._run_lock(CTX, "plate"):
+        started = time.monotonic()
+        part = service.call(CTX, "part_read", {"run_id": "plate"})
+        drawing = service.call(CTX, "drawing_read", {"run_id": "plate"})
+        elapsed = time.monotonic() - started
+    assert elapsed < 5
+    assert part["read_mode"] == drawing["read_mode"] == "snapshot_during_active_operation"
+    assert part["part"]["revision"] == 1 and part["run_id"] == "plate"
+    assert "read_mode" not in service.call(CTX, "part_read", {"run_id": "plate"})
