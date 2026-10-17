@@ -89,6 +89,10 @@ For example, a positive Y extrusion can map positive local y to negative global 
 Check the transformed profile bounds before construction, especially for non-Z and negative-axis features.
 Extrusions support a bounded draft angle. Blind holes can include an explicit drill-tip angle.
 The blind depth is the cylindrical depth; the conical tip extends beyond it.
+Schema 1.2 permits `thread.length` on a plain blind hole. Measure this length from the hole entry along the inward axis.
+Keep `depth` as the full cylindrical tap-drill depth. For example, a 9 mm M6 thread in a 14 mm blind bore uses one hole feature with `thread.length` set to 9 mm and `depth` set to 14 mm.
+The length must be positive and no greater than the bore depth. If length is absent, the thread length is unspecified.
+The build and fresh STEP import check the entry, tap-drill diameter, and full cylindrical depth against this attribute. This check does not verify helical geometry or semantic PMI.
 Schema 1.1 also supports tapered cuts and pockets. Use [draft-and-fillets.md](draft-and-fillets.md) for their direction and validation rules.
 
 Geometry checks include cylindrical diameters and lengths, circular edges, cone angle and width,

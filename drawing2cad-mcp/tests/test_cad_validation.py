@@ -58,3 +58,51 @@ def test_independent_hole_axial_length_detects_wrong_depth(tmp_path):
     assert validated["status"] == "fail"
     check = next(item for item in validated["checks"] if item["check"] == "blind_depth")
     assert check["actual_axial_lengths"] == pytest.approx([2])
+
+
+def test_explicit_thread_length_checks_final_and_imported_bore(tmp_path):
+    description = sample_description()
+    description["schema_version"] = "1.2"
+    description["features"][0]["height"] = 20
+    description["measurements"] = []
+    description["features"].append({"id": "tap", "type": "hole", "position": [5, 5, 20],
+                                    "diameter": 5, "extent": "blind", "depth": 14,
+                                    "thread": {"designation": "M6", "pitch": 1, "length": 9},
+                                    "evidence_ids": ["drawing"]})
+    built = build(description, tmp_path)
+    assert built["status"] == "pass"
+    direct = next(item for item in built["checks"] if item["check"] == "thread_attribute_bore_consistency")
+    assert direct["status"] == "pass"
+    assert direct["actual_bores"][0]["axial_bounds_from_entry_mm"] == pytest.approx([0, 14])
+    imported = validate_step(built["candidate_step"], description)
+    assert imported["status"] == "pass"
+    assert next(item for item in imported["checks"] if item["check"] == "thread_attribute_bore_consistency")["status"] == "pass"
+
+    wrong_depth = deepcopy(description)
+    wrong_depth["features"][1]["depth"] = 13
+    assert next(item for item in validate_step(built["candidate_step"], wrong_depth)["checks"]
+                if item["check"] == "thread_attribute_bore_consistency")["status"] == "fail"
+    wrong_position = deepcopy(description)
+    wrong_position["features"][1]["position"] = [12, 5, 20]
+    assert next(item for item in validate_step(built["candidate_step"], wrong_position)["checks"]
+                if item["check"] == "thread_attribute_bore_consistency")["status"] == "fail"
+    wrong_entry_station = deepcopy(description)
+    wrong_entry_station["features"][1]["position"] = [5, 5, 19]
+    assert next(item for item in validate_step(built["candidate_step"], wrong_entry_station)["checks"]
+                if item["check"] == "thread_attribute_bore_consistency")["status"] == "fail"
+
+
+def test_later_cut_cannot_remove_declared_thread_bore(tmp_path):
+    description = sample_description()
+    description["schema_version"] = "1.2"
+    description["features"][0]["height"] = 20
+    description["measurements"] = []
+    description["features"].append({"id": "tap", "type": "hole", "position": [5, 5, 20],
+                                    "diameter": 5, "extent": "blind", "depth": 14,
+                                    "thread": {"designation": "M6", "pitch": 1, "length": 9},
+                                    "evidence_ids": ["drawing"]})
+    description["features"].append({"id": "later_cut", "type": "cut", "profile": {"shape": "cylinder", "diameter": 7, "depth": 4},
+                                    "origin": [5, 5, 14], "axis": "-Z", "evidence_ids": ["drawing"]})
+    result = build(description, tmp_path)
+    assert result["status"] == "fail"
+    assert next(item for item in result["checks"] if item["check"] == "thread_attribute_bore_consistency")["status"] == "fail"

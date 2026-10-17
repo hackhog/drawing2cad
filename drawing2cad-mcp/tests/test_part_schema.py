@@ -105,3 +105,54 @@ def test_union_errors_use_input_json_pointers():
     description["features"][0]["height"] = "not a dimension"
     result = part_validate(description)
     assert all(item["pointer"] == "/features/0/height" for item in result["defects"])
+
+
+def _threaded_blind_hole():
+    description = sample_description()
+    description["schema_version"] = "1.2"
+    description["features"].append({"id": "tap", "type": "hole", "position": [5, 5, 5],
+                                    "diameter": 5, "extent": "blind", "depth": 14,
+                                    "thread": {"designation": "M6", "pitch": 1, "length": 9},
+                                    "evidence_ids": ["drawing"]})
+    return description
+
+
+def test_explicit_thread_length_and_legacy_serialization():
+    description = _threaded_blind_hole()
+    assert part_validate(description)["status"] == "pass"
+    assert parse_description(description).model_dump()["features"][1]["thread"]["length"] == 9
+    description["features"][1]["thread"].pop("length")
+    assert part_validate(description)["status"] == "pass"
+    assert "length" not in parse_description(description).model_dump()["features"][1]["thread"]
+    description["schema_version"] = "1.0"
+    assert part_validate(description)["status"] == "pass"
+
+
+@pytest.mark.parametrize("value", [0, -1, 15, {"parameter": "missing"}, {"parameter": "length"}])
+def test_invalid_thread_length_or_parameter(value):
+    description = _threaded_blind_hole()
+    description["features"][1]["thread"]["length"] = value
+    assert part_validate(description)["status"] == "fail"
+
+
+def test_thread_length_parameter_and_version_rules():
+    description = _threaded_blind_hole()
+    description["parameters"].append({"name": "thread_length", "value": 9, "unit": "mm", "evidence_ids": ["drawing"]})
+    description["features"][1]["thread"]["length"] = {"parameter": "thread_length"}
+    assert part_validate(description)["status"] == "pass"
+    description["parameters"][-1]["unit"] = "deg"
+    assert part_validate(description)["status"] == "fail"
+    description["parameters"][-1]["unit"] = "mm"
+    description["schema_version"] = "1.1"
+    assert any(item["code"] == "schema_version" for item in part_validate(description)["defects"])
+
+
+@pytest.mark.parametrize("change", [
+    lambda hole: hole.update(extent="through", depth=None),
+    lambda hole: hole.update(style="counterbore", counter_diameter=7, counter_depth=2),
+    lambda hole: hole.update(style="countersink", counter_diameter=7, angle=90),
+])
+def test_explicit_thread_length_rejects_unsupported_holes(change):
+    description = _threaded_blind_hole()
+    change(description["features"][1])
+    assert part_validate(description)["status"] == "fail"

@@ -41,7 +41,10 @@ For `outer_diameter`, put `position` on the cylinder axis at the required axial 
 The check uses the outer cylindrical face at that station.
 It fails if no face contains the station, or if different diameters meet there at a shoulder.
 At a part end, a station on the face boundary is valid.
-For `hole`, `position` identifies the axis. It does not select an axial station.
+For a `hole` measurement, `position` identifies the axis. It does not select an axial station.
+For a hole feature, `position` identifies the entry. With explicit `thread.length`, the bore check uses this entry station.
+The thread attribute check requires a full concave cylinder at that entry, with the declared tap-drill diameter and full bore depth.
+It runs on the final shape and the fresh STEP import. It does not verify thread flanks or semantic PMI.
 
 A technical release records passing geometry checks and an identified source-review attestation.
 Its coverage counts do not prove that every source feature was identified.

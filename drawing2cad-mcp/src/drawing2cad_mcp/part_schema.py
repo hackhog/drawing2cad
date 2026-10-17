@@ -7,7 +7,7 @@ import math
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-PART_SCHEMA_VERSION = "1.1"
+PART_SCHEMA_VERSION = "1.2"
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")]
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-100000, le=100000, strict=True)]
 Positive = Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False, strict=True)]
@@ -170,6 +170,8 @@ class ThreadData(ClosedModel):
     pitch: Positive
     hand: Literal["right", "left"] = "right"
     representation: Literal["tap_drill"] = "tap_drill"
+    length: Scalar | None = Field(default=None, exclude_if=lambda value: value is None,
+        description="Explicit thread length in mm from the hole entry along its signed axis. The drill tip is excluded. Only plain blind holes support this field. Omission leaves thread length unspecified.")
 
 
 class HoleFeature(Feature):
@@ -206,6 +208,8 @@ class HoleFeature(Feature):
             raise ValueError("A counterbore must not specify angle.")
         if self.style == "countersink" and self.counter_depth is not None:
             raise ValueError("A countersink depth is derived from diameter and angle.")
+        if self.thread is not None and self.thread.length is not None and (self.extent != "blind" or self.style != "plain"):
+            raise ValueError("Explicit thread length requires a plain blind hole.")
         return self
 
 
@@ -362,7 +366,7 @@ class ReviewFlag(ClosedModel):
 
 
 class PartDescription(ClosedModel):
-    schema_version: Literal["1.0", "1.1"]
+    schema_version: Literal["1.0", "1.1", "1.2"]
     name: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$")]
     units: Literal["mm"]
     coordinate_system: Literal["right_handed_xyz"]
@@ -486,6 +490,17 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
             if parameters[name].unit != unit:
                 defect("parameter_unit", pointer, f"This feature value requires {unit}.")
     for index, feature in enumerate(part.features):
+        if isinstance(feature, HoleFeature) and feature.thread is not None and feature.thread.length is not None:
+            pointer = f"/features/{index}/thread/length"
+            if part.schema_version != "1.2":
+                defect("schema_version", pointer, "Explicit thread length requires schema_version 1.2.")
+            try:
+                length = resolve(feature.thread.length, part)
+                depth = resolve(feature.depth, part)
+                if length <= 0 or length > depth:
+                    defect("invalid_dimension", pointer, "Thread length must be positive and no greater than the cylindrical bore depth.")
+            except (ValueError, StopIteration, TypeError):
+                pass
         if part.schema_version == "1.0" and (
             isinstance(feature, CutFeature) and (isinstance(feature.profile, ProfileCut) or feature.taper_angle != 0.0)
             or isinstance(feature, CylinderFeature) and feature.taper_angle != 0.0
