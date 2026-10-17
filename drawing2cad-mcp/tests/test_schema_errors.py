@@ -30,8 +30,9 @@ def test_required_and_additional_properties_do_not_repeat_input_names():
     schema = {"type": "object", "required": ["run_id"], "additionalProperties": False, "properties": {"run_id": {}}}
     _, missing = describe(_error({**schema, "additionalProperties": True}, {}))
     assert "run_id" in missing
+    assert "'required'" in missing
     _, extra = describe(_error(schema, {"run_id": "a", PRIVATE: 1}))
-    assert "secret" not in extra
+    assert "secret" not in extra and "'additionalProperties'" in extra
 
 
 def test_root_pointer_is_empty_and_combinators_name_their_rule():

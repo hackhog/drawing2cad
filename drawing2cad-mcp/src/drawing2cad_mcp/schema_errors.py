@@ -29,9 +29,9 @@ def describe(error: ValidationError) -> tuple[str, str]:
     if rule == "required" and isinstance(error.instance, dict):
         # Property names come from the schema.
         missing = [name for name in error.validator_value if name not in error.instance]
-        return target, f"The object at {location} lacks the required properties {missing}."
+        return target, f"The object at {location} fails the schema rule 'required': it lacks the properties {missing}."
     if rule == "additionalProperties":
-        return target, f"The object at {location} contains a property that the schema does not permit."
+        return target, f"The object at {location} fails the schema rule 'additionalProperties': it contains a property that the schema does not permit."
     if rule == "oneOf":
         return target, f"The value at {location} fails the schema rule 'oneOf': exactly one permitted form must match."
     if rule == "anyOf":
