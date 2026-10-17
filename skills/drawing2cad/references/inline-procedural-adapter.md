@@ -1,6 +1,8 @@
 # Inline AP242 procedural construction adapter
 
-The 2026-10-16 history review verified a bounding-box correction. Calculate edge fingerprints from `e.copy(True, False).BoundBox`, without copied triangulation. A previously displayed circle had a mesh-dependent Y maximum of 24.9346711067 instead of the exact 25 mm. The correction removes dependence on the display state. The 1e-6 matching tolerance and curve-distance checks in both directions remain unchanged.
+Calculate edge fingerprints from `e.copy(True, False).BoundBox`, without copied triangulation. Display triangulation can change bounding-box extremes. Keep the 1e-6 matching tolerance and curve-distance checks in both directions.
+
+This reference contains reusable adapter code only. It supplies no part data, historical results, or case-specific test functions. The generic representation label below replaces a former case-specific label. Revalidate the changed code before use. No live CAD test was run during this cleanup.
 
 This document contains inline MCP code. It is not an executable script file. Send the Python blocks through the FreeCAD proxy of `drawing2cad-mcp`. Supply them to an isolated headless FreeCADCmd process through standard input. Do not save them as .py files.
 
@@ -460,7 +462,7 @@ def sth_export_constructive(step_path,contract_path,build_path,out_path):
         nodeids[name]=result;ordered.append(result)
     if contract['root']!=operations[-1]['id']:raise ValueError('Root must end sequence')
     seq=add('PROCEDURAL_SHAPE_REPRESENTATION_SEQUENCE',['Complete editable construction',ordered,[],'Ordered standard operations; final element is result'])
-    proc=add('PROCEDURAL_SHAPE_REPRESENTATION',['Maschinenteil editable construction',[seq],context])
+    proc=add('PROCEDURAL_SHAPE_REPRESENTATION',['Editable construction',[seq],context])
     rel=add('EXPLICIT_PROCEDURAL_SHAPE_REPRESENTATION_RELATIONSHIP',['Constructive and evaluated shape','Construction of the single product shape',proc,P21Ref(mainrep)])
     suffix='\n'+'\n'.join(out)+'\n'
     end=original.rfind('ENDSEC;')
@@ -1011,54 +1013,36 @@ def sth_rebuild_step(step_path,fcstd_path=None,docname='AP242NativeRebuild'):
         A.closeDocument(doc.Name)
         raise
 
-def sth_verify_replay(step_path,report_path,fcstd_path=None,docname='AP242Replay'):
-    doc,root,objects,report,decoded=sth_rebuild_step(step_path,None,docname)
-    original=root.Shape.copy();before=original.Volume
-    tool=objects['CrossBoreTool1'];old=tool.Radius.Value
-    if abs(old-1.25)>1e-9:raise ValueError('Unexpected test baseline radius')
-    tool.Radius=1.0;doc.recompute()
-    edited=sth_shape_metrics(root.Shape)
-    actual=root.Shape.Volume-before
-    expected=math.pi*(old*old-1.0)*30.0
-    if not edited['valid'] or edited['solids']!=1 or abs(actual-expected)>1e-5:raise ValueError('Cross bore edit failed '+str(actual))
-    tool.Radius=old;doc.recompute();restore=sth_symdiff(original,root.Shape)
-    if restore>1e-5:raise ValueError('Radius restore failed')
-    fillet=objects['HubFrontR2'];saved=list(fillet.Edges)
-    fillet.Edges=[(i,1.8,1.8) for i,a,b in saved];doc.recompute()
-    changed=sth_shape_metrics(root.Shape)
-    if not changed['valid'] or changed['solids']!=1 or abs(changed['volume_mm3']-before)<1e-5:raise ValueError('Fillet radius edit failed')
-    fillet.Edges=saved;doc.recompute();filletrestore=sth_symdiff(original,root.Shape)
-    if filletrestore>1e-5:raise ValueError('Fillet restore failed')
-    report['parameter_edit_tests']=[
-       {'node':'CrossBoreTool1','parameter':'Radius','old_mm':old,'new_mm':1.0,'expected_volume_delta_mm3':expected,'actual_volume_delta_mm3':actual,'changed_shape':edited,'restored_symmetric_difference_mm3':restore,'passed':True},
-       {'node':'HubFrontR2','parameter':'Edges radii','old_mm':2.0,'new_mm':1.8,'changed_shape':changed,'restored_symmetric_difference_mm3':filletrestore,'passed':True}]
-    report['authoring_roundtrip']='not_tested'
-    if fcstd_path:doc.saveAs(fcstd_path);report['derived_fcstd']=fcstd_path
-    with open(report_path,'w',encoding='utf-8') as f:json.dump(report,f,ensure_ascii=False,indent=2)
-    A.closeDocument(doc.Name)
-    return report
-
 ```
 
 Entry point: `sth_rebuild_step(step_path, fcstd_path=None)`. It returns the document, final feature, feature map, proof report, and decoded neutral operations.
 
-`sth_verify_replay` is specific to Maschinenteil validation. It also changes the first cross-bore radius and the front fillet radius, then restores each. Run it in two separate new FreeCADCmd processes.
+## Verification for the current input
 
-The 2026-10-16 preflight found 53 native editable operations, four native fillets with 24 selected edges, and one valid solid. Volume was 68474.48859372552 mm3. Reconstruction symmetric difference was 0.
+Define parameter-change tests in the run test policy before reconstruction.
+Use operation IDs and expected results from independent permitted evidence.
+Do not use values from a previous part or infer an expected result from the changed model.
 
-A radius change from 1.25 to 1.0 changed volume by 53.01437599075143 mm3. The expected change was 53.01437602932776. Changing HubFrontR2 radius from 2.0 to 1.8 produced valid geometry and changed volume. Both restores had symmetric difference 0. Final PMI-master replay reports are separate artifacts.
+1. Reconstruct from STEP alone in a new headless process.
+2. Compare the operation graph, nominal parameters, and geometry with independent expected data.
+3. Change one permitted parameter and recompute all dependent operations.
+4. Compare the changed geometry with the expected result under the defined tolerances.
+5. Restore the parameter and verify the original geometry.
+6. Apply the selected change again, recompute, and verify the expected changed geometry.
+7. Export an edited AP242 candidate with the updated operation graph.
+8. Import that candidate in another new headless process.
+9. Verify construction, parameters, geometry, original PMI, and review markers separately.
 
-## Additional edit-to-STEP test
-
-A separate fresh process decoded only the preflight STEP. It changed CrossBoreTool1 Radius from 1.25 to 1.0. It extracted all 53 native parameters and exact fillet edge topology from the reconstructed document. Then it exported a new constructive AP242.
-
-A further new process imported only that edited STEP. It produced 53 native operations, volume 68527.50296971627 mm3, symmetric difference 0, and changed native radius 1.0. No source FCStd or source contract was used.
-
-See construction_probe/edit_roundtrip/roundtrip_export_report.json and roundtrip_fresh_import_report.json. This verifies geometry and construction authoring for the tested subset. It does not verify automatic PMI updates after edits.
+Record `GuiUp=0`, input and output hashes, tool versions, and actual test results.
+A successful geometry reconstruction does not prove automatic PMI updates after an edit.
+This reference contains no ready-made case oracle and no current release evidence.
 
 ## Reuse boundary
 
-The export and import functions implement only the stated entity subset. The verification function sth_verify_replay and sample part names are specific to Maschinenteil. Do not reuse its numeric test oracle for another drawing. Derive new checks from that approved source.
+The export and import functions implement only the stated entity subset.
+They preserve existing PMI entities during the initial append operation.
+They do not create semantic PMI from a drawing or update PMI after parameter changes.
+A separately verified PMI writer is necessary for those operations.
 
 The adapter restores explicit operations and nominal parameters. It does not claim:
 
@@ -1066,23 +1050,3 @@ The adapter restores explicit operations and nominal parameters. It does not cla
 - Universal topological naming under arbitrary edits.
 - Full EXPRESS validation.
 - Tested adapters for other CAD systems.
-
-## Final revision04 verification
-
-Final master: Maschinenteil_AP242_Master.step.
-SHA256: f274ad0508606801171c1d30e67203be693711960ef13b8a5b1d1b4ee12a40fe.
-
-Two independent new FreeCADCmd processes (GuiUp=0) read only this STEP and passed. Each run found:
-
-- 53 native editable operations.
-- Four fillets with 24 exact selected edge references.
-- One product transfer root.
-- One valid solid.
-- Final symmetric difference 0.
-
-Both radius edit and restore tests passed in both runs.
-
-Operation graph SHA256: 5494395cd7874deb10d8ddda788f1922f5bca4af56d0f2d44b50b4edbdb47326.
-Frozen contract04 SHA256: 839f88e17b19721062b37af50882caed8b1ca9a2da343f69371d4eb4be487c01.
-
-Reports: Maschinenteil_STEP_Replay_1_Pruefung.json, Maschinenteil_STEP_Replay_2_Pruefung.json, Maschinenteil_AP242_Konstruktion_Gesamtpruefung.json.

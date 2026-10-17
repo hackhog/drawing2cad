@@ -1,10 +1,10 @@
 /* Heller Dashboard-Stil (ADR 0008): App-Fenster mit Seitenleiste, Übersicht mit Kennzahl-Kacheln und Tabelle,
-   Zeichnungsseite mit Blatt und Prüfliste, Toasts. <body data-view> wählt die Seite,
-   <body data-step> den Schritt des geführten Ablaufs aus ADR 0007. */
+   Zeichnungsseite mit Blatt und Prüfliste, Toasts. <div class="shell" data-view> wählt die Seite,
+   data-step den Schritt des geführten Ablaufs aus ADR 0007 (React setzt beide, ADR 0010). */
 
 @font-face {
   font-family: "Plus Jakarta Sans";
-  src: url("fonts/PlusJakartaSans.woff2") format("woff2");
+  src: url("./assets/PlusJakartaSans.woff2") format("woff2");
   font-weight: 400 800;
   font-display: swap;
 }
@@ -37,7 +37,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { height: 100%; }
+html, body, #root, .shell { height: 100%; }
 body { margin: 0; background: var(--page); color: var(--text); font: 13px/1.45 var(--sans); }
 button { font: inherit; color: inherit; }
 svg path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -78,7 +78,7 @@ svg path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: 
 .nav-item[aria-current="true"] { background: var(--active-bg); color: var(--ink); font-weight: 600; }
 .nav-item[aria-current="true"] svg { color: var(--gauge); }
 
-/* Seiten: <body data-view="overview|drawing"> */
+/* Seiten: <div class="shell" data-view="overview|drawing"> */
 [data-view="overview"] :is(.board, #fit) { display: none; }
 [data-view="drawing"] .overview { display: none; }
 
@@ -192,7 +192,7 @@ svg path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: 
 .count:not(:empty) { margin-left: 4px; padding: 1px 7px; border-radius: 999px; background: var(--warn-bg); color: var(--bad); border: 1px solid var(--warn-line); font-size: 11px; }
 
 .kinds { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-body:not([data-step="2"]) .kinds { display: none; }
+.shell:not([data-step="2"]) .kinds { display: none; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: pointer;
   border: 1px solid var(--line); border-radius: 999px; background: var(--card); font-size: 12px; font-weight: 500;
@@ -204,6 +204,18 @@ body:not([data-step="2"]) .kinds { display: none; }
 .viewer { position: relative; flex: 1; min-height: 260px; overflow: hidden; border-radius: 8px; background: #fbfbfc; border: 1px solid var(--line); }
 .viewer svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .viewer svg.panning { cursor: grabbing; }
+
+/* Reiter 4: 3D-Modell (ADR 0010) */
+.model-viewer { cursor: grab; }
+.model-viewer canvas { display: block; }
+.model-drop {
+  position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 10px; padding: 24px;
+  text-align: center; color: var(--muted); font-size: 14px; font-weight: 500;
+}
+.model-drop.drag { background: var(--active-bg); }
+.model-drop small { font-size: 12px; font-weight: 400; color: var(--faint); max-width: 420px; }
+.model-drop .error { color: var(--flag); }
+.model-name { position: absolute; left: 10px; top: 10px; padding: 2px 10px; border-radius: 999px; background: var(--pill-bg); color: var(--pill-ink); font-size: 11px; font-weight: 600; }
 
 .story { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; }
 .story p { margin: 0; color: var(--text); font-size: 13.5px; }
@@ -229,14 +241,14 @@ tbody tr[data-state="done"]:hover, tbody tr[data-state="flag"]:hover { backgroun
   flex: 1; display: grid; place-items: center; margin: 0; padding: 40px 24px; text-align: center;
   border: 1.5px dashed var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 14px; font-weight: 500;
 }
-body[data-has-jobs] .empty-drop, body:not([data-has-jobs]) .table-wrap { display: none; }
+.shell[data-has-jobs] .empty-drop, .shell:not([data-has-jobs]) .table-wrap { display: none; }
 
 /* SVG-Ebenen (Koordinaten in mm) */
 .viewer svg path { stroke-linecap: butt; }
 .paper { fill: #fff; }
 .page { opacity: .3; }
-body[data-step="1"] .page { opacity: 1; }
-body[data-step="1"] .overlay { display: none; }
+.shell[data-step="1"] .page { opacity: 1; }
+.shell[data-step="1"] .overlay { display: none; }
 .k path { vector-effect: non-scaling-stroke; stroke-width: 1.2; }
 .k-contour path { stroke-width: 1.6; }
 .k-unclear path { stroke-width: 2.4; }
@@ -260,7 +272,7 @@ body[data-step="1"] .overlay { display: none; }
 .list .item strong { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list .item span { color: var(--muted); font-size: 12px; }
 .list time { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
-body[data-step="3"] .flags-card { border-color: var(--warn-line); box-shadow: 0 0 0 3px var(--warn-bg); }
+.shell[data-step="3"] .flags-card { border-color: var(--warn-line); box-shadow: 0 0 0 3px var(--warn-bg); }
 
 /* --- Toasts ------------------------------------------------------------------------- */
 

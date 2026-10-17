@@ -11,15 +11,20 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import cascadio
 import pymupdf
 from drawing_extractor import extract
 from drawing_extractor.export import SCHEMA_VERSION, to_dict
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Response, UploadFile
 from fastapi.staticfiles import StaticFiles
 
 from .review import review_flags
 
 MAX_PDF_BYTES = 20 * 1024 * 1024
+MAX_STEP_BYTES = 50 * 1024 * 1024
+# Vernetzungs-Toleranzen in Modell-Einheiten (mm): fein genug für Bohrungen, Antwort bleibt unter 1 MB
+STEP_TOL_LINEAR = 0.05
+STEP_TOL_ANGULAR = 0.3
 PAGE_PX_PER_MM = 4.0
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -62,6 +67,23 @@ def extract_drawing(file: UploadFile) -> dict[str, Any]:
     }
 
 
+@app.post("/api/model")
+def step_to_glb(file: UploadFile) -> Response:
+    """STEP aus der Pipeline → GLB für den 3D-Viewer (Reiter 4). Nur Umwandlung, keine Ablage."""
+    step_bytes = file.file.read(MAX_STEP_BYTES + 1)
+    if len(step_bytes) > MAX_STEP_BYTES:
+        raise HTTPException(413, f"STEP größer als {MAX_STEP_BYTES // (1024 * 1024)} MB")
+    if not step_bytes.lstrip().startswith(b"ISO-10303-21"):
+        raise HTTPException(415, "Keine STEP-Datei")
+    try:
+        glb = cascadio.load(step_bytes, tol_linear=STEP_TOL_LINEAR, tol_angular=STEP_TOL_ANGULAR)
+    except Exception as exc:
+        raise HTTPException(422, f"STEP konnte nicht gelesen werden: {exc}") from exc
+    if not glb.startswith(b"glTF"):
+        raise HTTPException(422, "STEP enthält keine Körper")
+    return Response(glb, media_type="model/gltf-binary")
+
+
 def _render_page(pdf: Path) -> bytes:
     zoom = PAGE_PX_PER_MM * 25.4 / 72.0
     with pymupdf.open(pdf) as doc:
@@ -69,5 +91,6 @@ def _render_page(pdf: Path) -> bytes:
         return pix.tobytes("png")
 
 
-# Zuletzt einhängen, damit /api/* Vorrang hat
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+# Zuletzt einhängen, damit /api/* Vorrang hat. static/ ist die Build-Ausgabe von web/ (ADR 0010); ohne Build
+# (z. B. API-Tests ohne Node) startet die API trotzdem, nur die Oberfläche fehlt.
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True, check_dir=False), name="ui")

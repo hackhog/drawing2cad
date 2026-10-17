@@ -12,6 +12,9 @@ Use English for new explanatory code comments and tool documentation.
 Keep original drawings, source quotations, measured data, file paths, identifiers, and schema fields unchanged.
 Keep verified reference code and records from completed runs unchanged.
 If an English account of a historical run is necessary, create a separate report with a reference to the original record.
+Keep project records outside the reusable skill package. Do not link project data from this skill.
+If a skill revision removes project-specific content, preserve its original evidence separately.
+Revalidate changed adapter code. Do not apply old code hashes to changed blocks.
 
 This rule applies to documentation. It does not change the user's language for normal conversation.
 

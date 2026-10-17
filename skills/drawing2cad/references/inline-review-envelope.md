@@ -1,6 +1,6 @@
 # Inline container for adapter and review data
 
-This extension stores user interface mappings and review markers in the same STEP master model. Construction remains in the evaluable standard operation entities. The 31 original PMI in the Maschinenteil case keep their meaning.
+This extension stores user interface mappings and review markers in the same STEP master model. Construction remains in the evaluable standard operation entities. Preserve all original PMI and verify their meanings separately.
 
 The additional JSON properties contain **application-specific adapter data**. They are not standardized parametric STEP constraints or additional drawing requirements. An external CAD adapter must explicitly implement these schemas.
 
@@ -9,6 +9,8 @@ First, load the parser block from `inline-procedural-adapter.md` inline. Execute
 `append_adapter_properties` copies an existing candidate to a new name. It preserves all existing entities and appends standard entities for each property. It does not silently overwrite existing properties with the same name.
 
 If necessary, it divides JSON into numbered text segments of up to 4000 ASCII characters. A single large JSON string caused `input buffer overflow` in the tested OCCT-7.8.1 reader. Reassembled smaller segments preserve the same data.
+
+Supply metadata from the current permitted inputs. This reference contains no part-specific payload. Verify schema handling and round-trip preservation with the installed tool versions before release.
 
 ```python
 def read_adapter_properties(step_path, expected_schemas):

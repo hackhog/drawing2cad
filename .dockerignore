@@ -3,6 +3,8 @@
 !extractor/
 !app/
 **/.venv
+**/node_modules
+app/src/drawing_demo/static
 **/__pycache__
 **/.pytest_cache
 extractor/out

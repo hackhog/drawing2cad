@@ -15,6 +15,11 @@ The generic MCP does not enforce it.
 
 ## New construction from a drawing source
 
+For production, author and render the sheet on the headless server through MCP.
+Verify this method without `FreeCADGui`, `TechDrawGui`, or a display server.
+A GUI-generated preview does not prove headless drawing support.
+If this capability is missing, report the gap before the dependent model build.
+
 1. Read the permitted sources.
    Collect evidence from those sources.
    Distinguish the original drawing from the new working drawing.
