@@ -42,6 +42,9 @@ PAGE_PX_PER_MM = PAGE_DPI / 25.4
 CONTRACT_VERSION = "0.1.0-provisional"
 # Analyses are derived from immutable sources. The cache prevents a new page render for each request.
 ANALYSIS_CACHE_SIZE = 32
+# Each part_read is a recorded CAD call that counts against the step budget of its part run.
+# The UI polls runs, so the details of a finished run are read once and kept in memory.
+RESULT_CACHE_SIZE = 64
 # Run files open in a browser tab, so text formats are served as text instead of a download.
 TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt", ".md"}
 
@@ -65,7 +68,20 @@ class Services:
         self.runner = AgentRunner(self.backend, self.jobs, ModelSettings.from_env(), _skill_path(), mcp_url,
                                   os.environ.get(settings.http.token_env))
         self._analyses: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._results: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._lock = threading.Lock()
+
+    def result(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Part, review, artifacts, and report of a finished run, read once from the domain service."""
+        with self._lock:
+            if record["run_id"] in self._results:
+                return self._results[record["run_id"]]
+        result = part_result(self, record)
+        with self._lock:
+            self._results[record["run_id"]] = result
+            while len(self._results) > RESULT_CACHE_SIZE:
+                self._results.popitem(last=False)
+        return result
 
     def analysis(self, source: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
@@ -121,24 +137,31 @@ def _all(backend: DomainBackend, operation: str, **arguments: Any) -> list[dict[
             return items
 
 
-def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
-    """A web run record with the part, review, artifacts, and agent report of its domain part run."""
-    view = {key: record[key] for key in ("run_id", "source_id", "phase", "job", "error")}
-    view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
-    view.update(part=None, review=None, artifacts=[], simulated=False)
-    part_run = record["part_run_id"]
-    if part_run is None:
-        return view
+def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
+    """Part, review, artifacts, and agent report of the domain part run of a web run."""
     backend = services.backend
+    part_run = record["part_run_id"]
     state = backend.call("part_read", run_id=part_run)["part"]
     source = backend.call("source_get", source_id=record["source_id"])
     sheet = tuple(services.analysis(source)["drawing"]["sheet_size_mm"])
     review_items = part_validate(state["description"]).get("review_items", [])
     artifacts = (artifact_view(a, source["sha256"]) for a in _all(backend, "artifact_list", run_id=part_run))
-    view.update(part=part_view(state), review=review_view(state, review_items, sheet, released=bool(state.get("release"))),
-                artifacts=[a for a in artifacts if a is not None],
-                agent_report=backend.call("notes_read", run_id=part_run)["text"] or None)
-    return view
+    return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release"))),
+            "artifacts": [a for a in artifacts if a is not None],
+            "agent_report": backend.call("notes_read", run_id=part_run)["text"] or None}
+
+
+def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
+    """A web run record with the part, review, artifacts, and agent report of its domain part run.
+
+    An active run shows only its job state: a part_read during the run would use the agent's step budget.
+    """
+    view = {key: record[key] for key in ("run_id", "source_id", "phase", "job", "error")}
+    view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
+    view.update(part=None, review=None, artifacts=[], simulated=False)
+    if record["part_run_id"] is None or record["job"]["status"] in ("queued", "running"):
+        return view
+    return {**view, **services.result(record)}
 
 
 def services(request: Request) -> Services:

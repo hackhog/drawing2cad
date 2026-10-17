@@ -184,6 +184,28 @@ def test_a_restart_fails_unfinished_runs(environment):
         assert client.get(f"/api/runs/{run['run_id']}").json()["error"]["code"] == "RUN_INTERRUPTED"
 
 
+def test_polling_a_run_does_not_use_the_step_budget_of_its_part_run(environment):
+    # Each part_read is a recorded CAD call. The UI polls runs every second.
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        part_run = run["part_prefix"] + "-plate"
+        services.backend.call("part_create", run_id=part_run, description=description(source["source_id"], source["sha256"]),
+                              sources=[{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}])
+        services.jobs.update(run["run_id"], part_run_id=part_run, job={"status": "running"})
+        calls = []
+        original = services.backend.call
+        environment.setattr(services.backend, "call", lambda operation, **arguments: calls.append(operation) or original(operation, **arguments))
+        for _ in range(3):
+            assert client.get(f"/api/runs/{run['run_id']}").json()["part"] is None
+        assert "part_read" not in calls
+        services.jobs.update(run["run_id"], phase="done", job={"status": "succeeded"})
+        for _ in range(3):
+            assert client.get(f"/api/runs/{run['run_id']}").json()["part"]["revision"] == 1
+        assert calls.count("part_read") == 1
+
+
 class Server(uvicorn.Server):
     def install_signal_handlers(self):
         pass  # Keep the signal handlers of the test runner.
