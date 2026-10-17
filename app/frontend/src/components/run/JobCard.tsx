@@ -43,6 +43,12 @@ export function JobCard({ run }: { run: Run }) {
           <dt>Auftrag</dt><dd className="truncate font-mono text-[11px]">{run.job.job_id}</dd>
           <dt>Gestartet</dt><dd>{time(run.job.started_at)}</dd>
           <dt>Beendet</dt><dd>{run.job.finished_at ? time(run.job.finished_at) : "–"}</dd>
+          {run.iterations && (
+            <>
+              <dt>Runden</dt><dd>{run.iterations.model_turns}</dd>
+              <dt>Werkzeuge</dt><dd>{run.iterations.tool_requests} von {run.iterations.step_budget} Aufrufen</dd>
+            </>
+          )}
           {run.agent && (
             <>
               <dt>Modell</dt><dd className="truncate font-mono text-[11px]" title={run.agent.model}>{run.agent.model}</dd>

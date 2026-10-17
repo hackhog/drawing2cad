@@ -295,5 +295,7 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
     assert run["failed_phase"] == "modeling" and "Report" not in run["error"]["message"]
     assert run["part"]["revision"] == 1 and [p["name"] for p in run["part"]["parameters"]] == ["length", "thickness"]
     assert run["agent_report"] == "Report: part created, not built."
+    # Two model turns: one with two tool requests, one with the final answer.
+    assert run["iterations"] == {"model_turns": 2, "tool_requests": 2, "step_budget": runner_module.LIMITS["step_budget"]}
     assert run["review"]["release_state"] == "draft" and run["artifacts"] == []
     assert "summary.json" in files and "trace/trace.jsonl" in files

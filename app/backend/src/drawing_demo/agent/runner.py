@@ -33,6 +33,11 @@ LIMITS = {"step_budget": 45, "max_turns": 60, "model_timeout_seconds": 300, "tot
 MAX_NOTE_CHARS = 65536
 
 
+def iterations(turns: int, tool_requests: int) -> dict[str, int]:
+    """Model turns and tool requests of the agent loop so far, with the tool request budget."""
+    return {"model_turns": turns, "tool_requests": tool_requests, "step_budget": LIMITS["step_budget"]}
+
+
 class ProgressTrace(Trace):
     """The trace of `drive()`, plus a callback for each tool request and response."""
 
@@ -109,6 +114,7 @@ class AgentRunner:
                 requested["arguments"] = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
                 current = self.jobs.get(run_id)
                 self.jobs.update(run_id, phase=phase_for(name, current["phase"]),
+                                 iterations=iterations(data.get("turn", 0), data.get("request_number", 0)),
                                  job={"progress": min(0.95, data.get("request_number", 0) / LIMITS["step_budget"])})
             elif name == "part_create" and not data.get("response", {}).get("isError", True):
                 # Only a part run that the service created holds a result.
@@ -125,7 +131,9 @@ class AgentRunner:
 
     def finish(self, run_id: str, summary: dict[str, Any]) -> None:
         """Store the agent report as a note of the part run and set the final job state from the domain part state."""
-        part_run = self.jobs.get(run_id)["part_run_id"]
+        # The last model turn answers without a tool request; only the summary counts it.
+        part_run = self.jobs.update(run_id, iterations=iterations(summary.get("model_turns", 0),
+                                                                  summary.get("tool_requests", 0)))["part_run_id"]
         report = summary.get("final_text") or ""
         if part_run is not None and report:
             self.store_report(part_run, report)
