@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 
-from .contacts import TOUCH, contacts
+from .contacts import TOUCH, contacts, index_box
 from .geometry import Grid, UnionFind, expand, overlaps
 from .model import Kind, Line, Point, Stroke, TextBlock
 
@@ -39,7 +39,7 @@ def mark_annotations(strokes: list[Stroke], texts: list[TextBlock]) -> None:
         return
     grid = Grid()
     for s in strokes:
-        grid.insert(s.id, expand(s.bbox(), TOUCH))
+        grid.insert(s.id, expand(index_box(s), TOUCH))
     touching = {s.id: contacts(s, strokes, grid) for s in lines}
     _mark_table_separators([s for s in lines if not touching[s.id]], texts)
     _mark_edge_symbols(lines, texts, strokes, touching)
@@ -191,6 +191,10 @@ def _bracket(chain: list[Stroke]) -> tuple[tuple[float, float, float, float], in
 
 def _mark_parentheses(lines: list[Stroke], texts: list[TextBlock], touching: dict[int, set[int]]) -> None:
     brackets = [(chain, *found) for chain in _chains(lines, touching) if (found := _bracket(chain))]
+    # Parentheses next to at least one text block, keyed by chain identity:
+    # (chain, long-axis span, axis, inner end on the short axis).
+    opening: dict[int, tuple] = {}
+    closing: dict[int, tuple] = {}
     for text in texts:
         tx0, ty0, tx1, ty1 = text.bbox
         # Parentheses stand across the reading direction: vertical for horizontal text, horizontal for vertical text.
@@ -198,8 +202,6 @@ def _mark_parentheses(lines: list[Stroke], texts: list[TextBlock], touching: dic
         axis = 1 if min(reading, 180.0 - reading) <= 10.0 else 0 if abs(reading - 90.0) <= 10.0 else None
         if axis is None:
             continue
-        before: list[tuple[list[Stroke], tuple]] = []
-        after: list[tuple[list[Stroke], tuple]] = []
         for chain, box, chain_axis, bulge in brackets:
             if chain_axis != axis:
                 continue
@@ -210,20 +212,44 @@ def _mark_parentheses(lines: list[Stroke], texts: list[TextBlock], touching: dic
             near_end, far_end, text_start, text_end = (x1, x0, tx0, tx1) if axis == 1 else (y1, y0, ty0, ty1)
             # An opening parenthesis bulges away from the text, toward the lower coordinate.
             if bulge < 0 and 0 <= text_start - near_end + TOUCH <= _BRACKET_GAP:
-                before.append((chain, (lo, hi)))
+                opening.setdefault(id(chain), (chain, (lo, hi), axis, near_end))
             elif bulge > 0 and 0 <= far_end - text_end + TOUCH <= _BRACKET_GAP:
-                after.append((chain, (lo, hi)))
-        # Both parentheses of a pair are aligned with each other along their long axis.
-        pair = next(((a, b) for a, (alo, ahi) in before for b, (blo, bhi) in after
-                     if min(ahi, bhi) - max(alo, blo) >= 0.8 * min(ahi - alo, bhi - blo)), None)
-        if pair is None:
+                closing.setdefault(id(chain), (chain, (lo, hi), axis, far_end))
+    _wrap_pairs(opening, closing, texts)
+
+
+def _wrap_pairs(opening: dict, closing: dict, texts: list[TextBlock]) -> None:
+    """Pair aligned parentheses on the same axis. Wrap all text between them once.
+    Native text can split one value into several spans, for example '0,' and '07'."""
+    used: set[int] = set()
+    for key_open, (open_chain, (olo, ohi), axis, open_end) in opening.items():
+        candidates = [(close_end - open_end, key_close, close_chain)
+                      for key_close, (close_chain, (clo, chi), close_axis, close_end) in closing.items()
+                      if key_close not in used and close_axis == axis and close_end > open_end
+                      and min(ohi, chi) - max(olo, clo) >= 0.8 * min(ohi - olo, chi - clo)]
+        if not candidates:
             continue
-        for chain in pair:
-            for s in chain:
-                s.kind = Kind.ANNOTATION
+        _, key_close, close_chain = min(candidates, key=lambda c: c[0])
+        close_end = closing[key_close][3]
+        inner = []
+        for t in texts:
+            x0, y0, x1, y1 = t.bbox
+            start, end, lo, hi = (x0, x1, y0, y1) if axis == 1 else (y0, y1, x0, x1)
+            if start >= open_end - TOUCH and end <= close_end + TOUCH and min(hi, ohi) - max(lo, olo) >= 0.5 * min(hi - lo, ohi - olo):
+                inner.append(t)
+        if not inner:
+            continue
+        used.add(key_close)
+        for s in open_chain + close_chain:
+            s.kind = Kind.ANNOTATION
+        # Order the enclosed text in reading direction. Angles: 0 left to right, 90 bottom to top.
+        reverse = any(abs(t.angle_deg % 360.0 - (180.0 if axis == 1 else 90.0)) <= 10.0 for t in inner)
+        inner.sort(key=lambda t: t.bbox[0] if axis == 1 else t.bbox[1], reverse=reverse)
         # A dimension in parentheses is an auxiliary dimension. Keep that meaning in the text.
-        if not text.text.startswith("("):
-            text.text = "(" + text.text + ")"
+        if not inner[0].text.startswith("("):
+            inner[0].text = "(" + inner[0].text
+        if not inner[-1].text.endswith(")"):
+            inner[-1].text = inner[-1].text + ")"
 
 
 __all__ = ["mark_annotations"]

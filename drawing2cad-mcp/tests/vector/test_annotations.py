@@ -130,3 +130,23 @@ def test_brackets_on_different_axes_do_not_pair():
     mark_annotations(left + below, [text])
     assert {s.kind for s in left + below} == {Kind.CONTOUR}
     assert text.text == "7"
+
+
+def test_separator_tangent_to_a_partial_arc_stays_contour():
+    """Sampled arc bounds can miss the tangent point; the index must still find the contact."""
+    from drawing2cad_mcp.vector.model import Arc
+
+    # Horizontal separators; the arc apex touches the first one at (10, 10.08).
+    strokes = [_line(0, (0, 10.08), (20, 10.08), 0.34), _line(1, (0, 25), (20, 25), 0.34),
+               Stroke(2, Arc((10, 0.08), 10.0, 10.0, 180.0), 0.34, 2, Kind.CONTOUR)]
+    texts = [_text(n, (x, 12, x + 4, 23), "3,000") for n, x in enumerate((1, 7, 13))]
+    mark_annotations(strokes, texts)
+    assert strokes[0].kind is Kind.CONTOUR
+
+
+def test_one_pair_of_parentheses_wraps_split_text_once():
+    """Native text can split one value into spans. The pair wraps the complete value."""
+    strokes = _bracket(0, 0.4, -0.5) + _bracket(4, 7.6, 0.5)
+    first, second = _text(0, (0.9, 0.2, 3.9, 2.9), "0,"), _text(1, (4.0, 0.2, 7.1, 2.9), "07")
+    mark_annotations(strokes, [first, second])
+    assert (first.text, second.text) == ("(0,", "07)")

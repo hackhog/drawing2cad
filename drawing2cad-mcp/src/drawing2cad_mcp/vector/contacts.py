@@ -39,9 +39,19 @@ def _line_meets(g: Line, other) -> bool:
     return near - TOUCH <= arc.radius <= far + TOUCH
 
 
+def index_box(s: Stroke) -> tuple[float, float, float, float]:
+    """Return a conservative box for the spatial index.
+    An arc uses the box of its full circle, because sampled arc bounds can miss a tangent point."""
+    g = s.geom
+    if isinstance(g, Arc):
+        cx, cy = g.center
+        return cx - g.radius, cy - g.radius, cx + g.radius, cy + g.radius
+    return g.bbox()
+
+
 def contacts(s: Stroke, strokes: list[Stroke], grid: Grid) -> set[int]:
     """Return the IDs of other strokes that touch or cross this line at any point.
-    The grid indexes stroke IDs that equal list positions."""
+    The grid indexes stroke IDs that equal list positions, with boxes that contain index_box()."""
     g = s.geom
     out: set[int] = set()
     for i in grid.query(expand(g.bbox(), TOUCH)):
@@ -51,4 +61,4 @@ def contacts(s: Stroke, strokes: list[Stroke], grid: Grid) -> set[int]:
     return out
 
 
-__all__ = ["TOUCH", "contacts"]
+__all__ = ["TOUCH", "contacts", "index_box"]

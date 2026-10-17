@@ -19,7 +19,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 
-from .contacts import contacts
+from .contacts import contacts, index_box
 from .geometry import Grid, angle_diff, expand, point_segment_distance
 from .model import Arc, Kind, Line, Point, Stroke
 
@@ -41,7 +41,8 @@ def classify(strokes: list[Stroke]) -> list[ArrowHead]:
     """Set the kind of each stroke. Return the detected arrowheads."""
     grid = Grid()
     for s in strokes:
-        grid.insert(s.id, expand(s.bbox(), _TOUCH))
+        # Conservative arc boxes only add query candidates; each rule still tests the geometry.
+        grid.insert(s.id, expand(index_box(s), _TOUCH))
 
     for s in strokes:
         if s.width_mm >= _CUTTING_PLANE_WIDTH:
