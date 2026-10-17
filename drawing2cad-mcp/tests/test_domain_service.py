@@ -113,6 +113,36 @@ def test_domain_build_preserves_closed_edge_diagnostics(domain, monkeypatch):
     result = call(service, "build_from_description")
     assert result["build"]["error"]["details"] == details
     assert result["build"]["error"]["feature_id"] == "blend"
+    assert result["error"]["code"] == "EDGE_SELECTION"
+    assert result["feature_id"] == "blend"
+    assert result["checks"] == []
+
+
+def test_domain_build_failure_reports_only_executed_checks(domain, monkeypatch):
+    service, _, _, _, runner = domain
+    monkeypatch.setattr(runner, "run", lambda *_args, **_kwargs: {
+        "status": "fail", "error": {"code": "NO_MATERIAL_REMOVED", "message": "No cut.",
+                                   "feature_id": "end_relief"},
+        "checks": [{"check": "feature_execution", "feature_id": "base", "status": "pass"},
+                   {"check": "feature_execution", "feature_id": "end_relief", "status": "fail"},
+                   {"check": "step_reimport", "status": "not_tested"}]})
+    result = call(service, "build_from_description")
+    assert result["status"] == "fail"
+    assert result["error"] == {"code": "NO_MATERIAL_REMOVED", "message": "No cut.",
+                               "feature_id": "end_relief"}
+    assert result["checks"] == [{"check": "feature_execution", "feature_id": "base", "status": "pass", "phase": "build"},
+                                {"check": "feature_execution", "feature_id": "end_relief", "status": "fail", "phase": "build"}]
+
+
+def test_domain_build_timeout_has_no_invented_feature_or_checks(domain, monkeypatch):
+    service, _, _, _, runner = domain
+    monkeypatch.setattr(runner, "run", lambda *_args, **_kwargs: {
+        "status": "fail", "error": {"code": "WORKER_TIMEOUT", "message": "The worker exceeded its configured limit."}})
+    result = call(service, "build_from_description")
+    assert result["error"]["code"] == "WORKER_TIMEOUT"
+    assert result["feature_id"] is None
+    assert result["checks"] == []
+    assert result["validation"]["status"] == "not_tested"
 
 
 @pytest.mark.parametrize("mutation", [

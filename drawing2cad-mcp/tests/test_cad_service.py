@@ -204,15 +204,40 @@ def test_worker_failure_never_releases(setup_service, operation):
     runner.fail_operation = operation
     failed = service.build_from_description(run_id="example", expected_revision=1)
     assert failed["status"] == "fail"
+    assert failed["error"] == {"code": "TEST_WORKER_FAILED", "message": "Injected failure.", "feature_id": None}
+    assert failed["feature_id"] is None
+    assert all(check["status"] in {"pass", "fail"} for check in failed["checks"])
     if operation == "validate":
+        assert failed["checks"]
         checks = failed["build"]["build"]["checks"]
         assert [item["status"] for item in checks if item["check"] == "fresh_worker_reimport"] == ["fail"]
         assert [item["status"] for item in failed["build"]["validation"]["checks"] if item["check"] == "fresh_worker_reimport"] == ["fail"]
     else:
         assert failed["validation"]["status"] == "not_tested"
+        assert failed["checks"] == []
     with pytest.raises(CadError) as error:
         service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
     assert error.value.code == "VALIDATED_BUILD_REQUIRED"
+
+
+def test_ap242_schema_failure_reports_completed_checks(setup_service, monkeypatch):
+    service, runner, _, _ = setup_service
+    create(setup_service)
+    original = runner.run
+
+    def run(operation, **kwargs):
+        result = original(operation, **kwargs)
+        if operation == "validate":
+            result["step"]["schemas"] = ["AUTOMOTIVE_DESIGN"]
+        return result
+
+    monkeypatch.setattr(runner, "run", run)
+    failed = service.build_from_description(run_id="example", expected_revision=1, export_profile="ap242")
+    assert failed["status"] == "fail"
+    assert failed["error"]["code"] == "AP242_SCHEMA_REQUIRED"
+    assert failed["feature_id"] is None
+    assert {item["phase"] for item in failed["checks"]} == {"build", "validation", "agreement"}
+    assert failed["checks"][-1] == {"check": "ap242_schema_header", "status": "fail", "phase": "validation"}
 
 
 @pytest.mark.parametrize("field,code", [("same_worker", "FRESH_WORKER_REQUIRED"), ("path_override", "INVALID_WORKER_ARTIFACT")])
