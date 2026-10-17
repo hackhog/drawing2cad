@@ -51,6 +51,20 @@ describe("upload", () => {
   });
 });
 
+describe("delete", () => {
+  it("removes a source with its runs once no run is active", async () => {
+    const { api, advance } = setup();
+    const source = await api.uploadSource(pdf(), () => {});
+    const run = await api.createRun(source.source_id);
+    expect((await failureOf(api.deleteSource(source.source_id)))?.code).toBe("RUN_ACTIVE");
+    advance(1000);
+    await api.deleteSource(source.source_id);
+    expect(await api.listSources()).toEqual([]);
+    expect((await failureOf(api.getRun(run.run_id)))?.code).toBe("NOT_FOUND");
+    expect((await failureOf(api.deleteSource(source.source_id)))?.code).toBe("NOT_FOUND");
+  });
+});
+
 describe("run lifecycle", () => {
   it("passes the phases and releases artifacts of one revision", async () => {
     const { api, advance } = setup();

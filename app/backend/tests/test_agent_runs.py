@@ -180,6 +180,22 @@ def test_run_files_list_only_the_record_and_trace_of_the_run(environment):
         assert client.get(f"/api/runs/{run_id}/files/trace%2F..%2F..%2F..%2Fdomain").status_code == 404
 
 
+def test_deleting_a_source_removes_it_with_its_runs(environment):
+    with TestClient(api.create_app()) as client:
+        source, other = upload(client), upload(client)
+        jobs = client.app.state.services.jobs
+        run = jobs.add(source["source_id"])
+        kept = jobs.add(other["source_id"])
+        assert client.delete(f"/api/sources/{source['source_id']}").json()["detail"]["code"] == "RUN_ACTIVE"
+        jobs.update(run["run_id"], phase="failed", job={"status": "failed"})
+        assert client.delete(f"/api/sources/{source['source_id']}").status_code == 204
+        assert [s["source_id"] for s in client.get("/api/sources").json()] == [other["source_id"]]
+        assert client.get(f"/api/sources/{source['source_id']}").status_code == 404
+        assert client.get(f"/api/runs/{run['run_id']}").status_code == 404
+        assert client.get(f"/api/runs/{kept['run_id']}").status_code == 200
+        assert client.delete(f"/api/sources/{source['source_id']}").status_code == 404
+
+
 def test_a_restart_fails_unfinished_runs(environment):
     with TestClient(api.create_app()) as client:
         run = client.app.state.services.jobs.add(upload(client)["source_id"])
