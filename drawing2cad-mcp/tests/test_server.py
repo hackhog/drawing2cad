@@ -14,9 +14,12 @@ from PIL import Image
 import pytest
 
 from drawing2cad_mcp.config import FreeCADSettings, PdfSettings, ServerSettings, Settings
-from drawing2cad_mcp.server import Application
+from drawing2cad_mcp import pdf as pdf_module
+from drawing2cad_mcp.server import STROKE_KINDS, Application
 from test_pdf import make_pdf
 from test_proxy import UPSTREAM
+
+SAMPLE = Path(__file__).resolve().parents[2] / "resources" / "Drawing2CAD" / "Maschinenteil" / "Maschinenteil_dwg.pdf"
 
 
 @pytest.fixture
@@ -38,7 +41,7 @@ async def test_status_and_pdf_work_without_freecad(app, tmp_path):
     assert json.loads(result.content[0].text) == result.structured_content
     status = await invoke(app, "drawing2cad_status")
     assert status.structured_content["freecad"]["configured"] is False
-    assert len((await app.on_list_tools(None)).tools) == 5
+    assert len((await app.on_list_tools(None)).tools) == 6
 
 
 async def test_unavailable_enabled_upstream_does_not_block_pdf(tmp_path):
@@ -46,7 +49,7 @@ async def test_unavailable_enabled_upstream_does_not_block_pdf(tmp_path):
                                freecad=FreeCADSettings(command="drawing2cad-nonexistent-test-command")))
     source = make_pdf(tmp_path / "test.pdf")
     async with app.lifespan(app.server):
-        assert len((await app.on_list_tools(None)).tools) == 5
+        assert len((await app.on_list_tools(None)).tools) == 6
         assert not (await invoke(app, "pdf_info", path=str(source))).is_error
         status = (await invoke(app, "drawing2cad_status")).structured_content
         assert status["freecad"]["configured"]
@@ -59,6 +62,9 @@ async def test_unavailable_enabled_upstream_does_not_block_pdf(tmp_path):
     ("pdf_render_page", {"path": "a.pdf", "page": 0}),
     ("pdf_render_page", {"path": "a.pdf", "page": True}),
     ("pdf_crop_region", {"path": "a.pdf", "page": 1, "bbox": [0, 1, 2]}),
+    ("drawing_extract", {"path": "a.pdf", "stroke_kinds": ["contour"]}),
+    ("drawing_extract", {"path": "a.pdf", "include_strokes": True, "stroke_kinds": ["bogus"]}),
+    ("drawing_extract", {"path": "a.pdf", "include_strokes": True, "stroke_kinds": []}),
 ])
 async def test_local_schema_validation(app, name, args):
     result = await invoke(app, name, **args)
@@ -72,6 +78,41 @@ async def test_unknown_disabled_and_outside_root_errors(app):
     failure = await invoke(app, "pdf_info", path=str(Path(sys.executable).with_suffix(".pdf")))
     assert failure.is_error
     assert "outside" in failure.structured_content["error"]["message"]
+    failure = await invoke(app, "drawing_extract", path=str(Path(sys.executable).with_suffix(".pdf")))
+    assert failure.structured_content["error"]["code"] == "PDF_PREPARATION_FAILED"
+    assert "outside" in failure.structured_content["error"]["message"]
+
+
+async def test_drawing_extract_without_extractor(app, tmp_path, monkeypatch):
+    monkeypatch.setattr(pdf_module, "drawing_extractor", None)
+    result = await invoke(app, "drawing_extract", path=str(make_pdf(tmp_path / "test.pdf")))
+    assert result.structured_content["error"]["code"] == "EXTRACTOR_UNAVAILABLE"
+
+
+def test_stroke_kinds_schema_matches_extractor():
+    extractor = pytest.importorskip("drawing_extractor")
+    assert STROKE_KINDS == [kind.value for kind in extractor.Kind]
+
+
+async def test_drawing_extract_on_sample(tmp_path):
+    pytest.importorskip("drawing_extractor")
+    if not SAMPLE.is_file():
+        pytest.skip("Sample drawing is missing")
+    app = Application(Settings(pdf=PdfSettings(allowed_roots=[SAMPLE.parent], output_root=tmp_path / "out")))
+    plain = (await invoke(app, "drawing_extract", path=str(SAMPLE))).structured_content
+    assert plain["source"]["sha256"] == (await invoke(app, "pdf_info", path=str(SAMPLE))).structured_content["source"]["sha256"]
+    assert plain["summary"]["views"] == len(plain["views"]) > 0
+    assert plain["summary"]["text_blocks"] == len(plain["text_blocks"]) > 0
+    assert "strokes" not in plain
+    assert all("stroke_ids" not in view and view["stroke_count"] > 0 for view in plain["views"])
+    full = (await invoke(app, "drawing_extract", path=str(SAMPLE), include_strokes=True)).structured_content
+    assert len(full["strokes"]) == plain["summary"]["strokes"]
+    assert [len(view["stroke_ids"]) for view in full["views"]] == [view["stroke_count"] for view in plain["views"]]
+    contours = (await invoke(app, "drawing_extract", path=str(SAMPLE), include_strokes=True,
+                             stroke_kinds=["contour"])).structured_content["strokes"]
+    assert len(contours) == plain["summary"]["by_kind"]["contour"]
+    assert {stroke["kind"] for stroke in contours} == {"contour"}
+    assert not list((tmp_path / "out").iterdir())  # The snapshot is removed.
 
 
 async def test_inline_preview_and_full_resolution_artifact(app, tmp_path):
@@ -115,7 +156,7 @@ async def test_full_stdio_facade_preserves_proxy_and_pdf(tmp_path):
         async with ClientSession(*streams) as session:
             await session.initialize()
             catalog = (await session.list_tools()).tools
-            assert len(catalog) == 10
+            assert len(catalog) == 11
             echo = next(tool for tool in catalog if tool.name == "freecad_echo")
             assert echo.output_schema["required"] == ["value"]
             result = await session.call_tool("freecad_echo", {"value": "facade round trip"})
