@@ -5,6 +5,7 @@ import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Maximize, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { DeleteSourceButton } from "@/components/DeleteSourceButton";
 import { FlagList } from "@/components/FlagList";
 import { ModelFrame, ModelPanel } from "@/components/ModelPanel";
 import { PageHeader } from "@/components/PageHeader";
@@ -81,6 +82,7 @@ function SourceView({ sourceId }: { sourceId: string }) {
             </Button>
           )}
           <UploadButton label="Weitere PDFs" />
+          <DeleteSourceButton source={source} variant="header" onDeleted={() => navigate({ to: "/" })} />
         </>}
       />
 
