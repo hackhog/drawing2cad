@@ -362,6 +362,27 @@ def test_worker_error_details_cannot_expose_external_server_paths(domain):
     assert "C:/Users/private" not in json.dumps(public)
 
 
+def test_pdf_errors_keep_the_reason_without_host_paths(domain, monkeypatch):
+    from drawing2cad_mcp.pdf import PdfError
+    service, source, *_ = domain
+    with pytest.raises(DomainError) as error:
+        service.call(CTX, "pdf_render_page", {"source_id": source["source_id"], "page": 2})
+    assert error.value.code == "PDF_PREPARATION_FAILED"
+    assert "between 1 and 1" in error.value.message
+
+    def fail(**_):
+        raise PdfError(f"Vector analysis failed: cannot read {service.store.root.resolve()}/x.pdf, "
+                       "/opt/private/worker.py, /private/var/folders/x/a.pdf or /Volumes/share/b.pdf")
+
+    monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", fail)
+    with pytest.raises(DomainError) as error:
+        service.call(CTX, "drawing_extract", {"source_id": source["source_id"]})
+    assert error.value.message.startswith("Vector analysis failed")
+    assert str(service.store.root) not in error.value.message
+    for private in (str(service.store.root.resolve()), "/opt/private", "/private/var", "/Volumes/share"):
+        assert private not in error.value.message
+
+
 def test_export_trace_hashes_match_public_payloads(domain):
     service, *_ = domain
     exported = call(service, "part_export_review")

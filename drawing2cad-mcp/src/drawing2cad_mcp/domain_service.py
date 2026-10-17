@@ -38,7 +38,7 @@ from .step import StepError, StepService
 LOG = logging.getLogger(__name__)
 # Host paths in worker messages: Windows drive paths and common POSIX roots.
 # JSON Pointers such as /features/0/diameter do not match.
-_HOST_PATH = re.compile(r"(?:\b[A-Za-z]:[\\/]|(?<![\w.])/(?:tmp|opt|usr|home|data|var|root|srv|mnt|etc|proc|inputs|app|Users)/)[^\s'\"<>|,;)]*")
+_HOST_PATH = re.compile(r"(?:\b[A-Za-z]:[\\/]|(?<![\w.])/(?:tmp|opt|usr|home|data|var|root|srv|mnt|etc|proc|inputs|app|Users|private|Volumes|Library|System|workspace)/)[^\s'\"<>|,;)]*")
 # Read-only run operations. During an active operation they return a consistent snapshot without the run lock.
 SNAPSHOT_READS = frozenset({"part_read", "drawing_read", "drawing_validate", "notes_read"})
 MAX_PUBLIC_MESSAGE = 4000
@@ -133,7 +133,9 @@ class DomainService:
 
     def _redact(self, text):
         """Return a bounded message without storage roots or other host paths."""
-        for root in (self.store.root, self.settings.pdf.output_root):
+        # Resolved roots can differ from configured ones, e.g. /private/var and /var on macOS. Longest first.
+        roots = {path for root in (self.store.root, self.settings.pdf.output_root) for path in (root, root.resolve())}
+        for root in sorted(roots, key=lambda path: len(str(path)), reverse=True):
             text = text.replace(str(root), "[private storage]").replace(root.as_posix(), "[private storage]")
         return _HOST_PATH.sub("[path]", text)[:MAX_PUBLIC_MESSAGE]
 
@@ -195,8 +197,9 @@ class DomainService:
             raise DomainError(error.code, self._redact(message)) from None
         except StepError as error:
             raise DomainError(error.code, "The STEP inspection failed. Check the artifact and expected hash.") from None
-        except PdfError:
-            raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.") from None
+        except PdfError as error:
+            # The redacted reason tells the agent and the user what to change in the request or the PDF.
+            raise DomainError("PDF_PREPARATION_FAILED", self._redact(str(error))) from None
         except Exception:
             LOG.exception("Domain operation %s failed", name)
             raise DomainError("DOMAIN_OPERATION_FAILED", "The domain operation failed. No private process details are returned.") from None

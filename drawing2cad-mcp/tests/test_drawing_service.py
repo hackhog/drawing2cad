@@ -120,12 +120,14 @@ def test_analysis_worker_timeout_cleans_snapshot(service, tmp_path, monkeypatch)
     assert not list(service.output_root.iterdir())
 
 
-def test_worker_failure_is_a_pdf_error_and_cleans_snapshot(service, tmp_path, monkeypatch):
+def test_worker_failure_is_a_pdf_error_and_cleans_snapshot(service, tmp_path, monkeypatch, caplog):
     source = make_vector_pdf(tmp_path / "failure.pdf")
     monkeypatch.setattr("drawing2cad_mcp.pdf.subprocess.run", lambda command, **kwargs:
-                        subprocess.CompletedProcess(command, 1, stderr=b"invalid glyph"))
-    with pytest.raises(PdfError, match="invalid glyph"):
+                        subprocess.CompletedProcess(command, 1, stderr=b"ValueError: Cannot read /private/var/x/customer.pdf"))
+    with pytest.raises(PdfError) as error:
         service.extract_drawing(source)
+    assert str(error.value) == "Vector analysis failed: ValueError."  # stderr can name host paths
+    assert "customer.pdf" in caplog.text
     assert not list(service.output_root.iterdir())
 
 
