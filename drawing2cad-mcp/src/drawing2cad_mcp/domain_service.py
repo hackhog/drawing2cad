@@ -194,12 +194,15 @@ class DomainService:
         if name.startswith("pdf_") or name == "drawing_extract":
             with self._pdf_slots:
                 return self._pdf_call(ctx, name, args)
+        if name == "step_reconstruct":
+            with self._cad_slots:
+                return self._reconstruct_step(ctx, args)
         if name.startswith("step_"):
             return self._step_call(ctx, name, args)
         if name == "drawing_schema":
             return drawing_schema()
         cad = self._backend(ctx)[0]
-        if name in {"part_schema", "part_validate", "cad_worker_probe"}:
+        if name in {"part_schema", "pmi_schema", "part_validate", "cad_worker_probe"}:
             if name == "cad_worker_probe":
                 with self._cad_slots:
                     return cad.call(name, args)
@@ -310,6 +313,66 @@ class DomainService:
             result = self._backend(ctx)[2].call(name, {"path": str(snapshot), **args})
         result["artifact_id"] = artifact_id
         return result
+
+    def _reconstruct_step(self, ctx, args):
+        """Keep STEP-only replay separate from an approved drawing/model release."""
+        cad = self._backend(ctx)[0]
+        if not self.settings.cad.enabled:
+            raise DomainError("CAD_DISABLED", "Enable the CAD worker before reconstruction.")
+        metadata = self.store.artifact_get(ctx, args["artifact_id"])
+        if metadata["sha256"] != args["expected_sha256"]:
+            raise DomainError("ARTIFACT_HASH_MISMATCH", "The artifact differs from the expected hash.")
+        if metadata["media_type"] != "model/step":
+            raise DomainError("INVALID_ARTIFACT_TYPE", "Use a STEP artifact for reconstruction.")
+        if metadata["size_bytes"] > min(self.settings.server.max_step_bytes, 32 * 1024 * 1024):
+            raise DomainError("LIMIT_EXCEEDED", "The STEP artifact exceeds the reconstruction limit.")
+        source = self.store._path(ctx, "artifacts", args["artifact_id"])
+        self.store._verify(source, metadata["size_bytes"], metadata["sha256"])
+        result = cad.runner.run("reconstruct_step", input_step=source,
+                                parameter_changes=args.get("parameter_changes"))
+        self.store._verify(source, metadata["size_bytes"], metadata["sha256"])
+        report = {"status": "fail", "source_artifact_id": args["artifact_id"],
+                  "input_sha256": metadata["sha256"], "released": False,
+                  "scope": "Application-specific STEP-only adapter replay. No drawing release, native target-CAD feature tree, or full EXPRESS conformance claim.",
+                  "reconstruction": result, "validation": {"status": "not_tested"}}
+        if result.get("status") != "pass":
+            return report
+        if result.get("input_sha256") != metadata["sha256"]:
+            raise DomainError("RECONSTRUCTION_HASH_MISMATCH", "Reconstruction used different STEP bytes.")
+        if result.get("construction", {}).get("original_agreement") != "pass":
+            raise DomainError("CONSTRUCTION_AGREEMENT_REQUIRED", "The embedded construction must match the input BREP before edits.")
+        candidate = cad._candidate(result)
+        candidate_hash = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        validation = cad.runner.run("validate", input_step=candidate, description=result["description"])
+        report["validation"] = validation
+        if hashlib.sha256(candidate.read_bytes()).hexdigest() != candidate_hash:
+            raise DomainError("CANDIDATE_CHANGED", "The reconstructed candidate changed during validation.")
+        if validation.get("status") != "pass":
+            return report
+        if validation.get("step", {}).get("sha256") != candidate_hash:
+            raise DomainError("VALIDATION_HASH_MISMATCH", "Validation used different candidate bytes.")
+        workers = [item.get("worker", {}).get("worker_id") for item in (result, validation)]
+        if not all(workers) or workers[0] == workers[1]:
+            raise DomainError("FRESH_WORKER_REQUIRED", "Reconstruction and validation require different workers.")
+        agreement = cad._compare(result.get("measured", {}), validation.get("measured", {}))
+        report["agreement"] = agreement
+        if agreement["status"] != "pass":
+            return report
+        # A replay has its own identity. It must not impersonate the source run revision.
+        replay_id = "replay_" + uuid4().hex
+        parent = self.store.namespace_root(ctx) / "inspection"
+        self.store._check_path(parent)
+        parent.mkdir(exist_ok=True)
+        report.update(status="pass", replay_id=replay_id, candidate_sha256=candidate_hash)
+        report["artifacts"] = [
+            self.store.artifact_register(ctx, candidate, "reconstruction_candidate", replay_id, 0,
+                                         "model/step", "reconstructed.step"),
+            self._register_json(ctx, parent, result["description"], "reconstructed-part.json",
+                                "reconstruction_description", replay_id, 0),
+        ]
+        report["artifacts"].append(self._register_json(ctx, parent, report, "reconstruction-report.json",
+                                                       "reconstruction_report", replay_id, 0))
+        return report
 
     @staticmethod
     def _drawing_path(directory):

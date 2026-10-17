@@ -37,7 +37,9 @@ class WorkerRunner:
 
     def run(self, operation: str, *, description: dict | None = None, input_step: Path | None = None,
             code: str | None = None, drawing_spec: dict | None = None, revision: int | None = None,
-            timeout: float | None = None, memory_mb: int | None = None) -> dict:
+            timeout: float | None = None, memory_mb: int | None = None,
+            export_profile: str = "ap214", pmi: dict | None = None,
+            parameter_changes: dict | None = None) -> dict:
         capability = available()
         if not capability["available"]:
             return {"status": "fail", "error": {"code": "SANDBOX_UNAVAILABLE", "message": capability["reason"]}}
@@ -55,7 +57,9 @@ class WorkerRunner:
         request = {"operation": operation, "work_dir": str(directory), "description": description,
                    "memory_mb": memory_mb if memory_mb is not None else self.limits.memory_mb,
                    "cpu_seconds": max(1, math.ceil(deadline_seconds + 1)), "code": code,
-                   "drawing_spec": drawing_spec, "revision": revision}
+                   "drawing_spec": drawing_spec, "revision": revision,
+                   "export_profile": export_profile, "pmi": pmi,
+                   "parameter_changes": parameter_changes}
         if operation == "probe":
             forbidden = self.storage / (directory.name + "-outside.txt")
             forbidden.write_text("unchanged", encoding="utf-8")

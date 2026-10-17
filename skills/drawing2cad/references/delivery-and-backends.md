@@ -15,6 +15,8 @@ The server owns backend selection, schemas, workers, artifacts, and capability r
 AP242 and semantic PMI remain binding final requirements.
 They do not block delivery of an explicitly limited M1 prototype.
 A passed prototype must not be described as the final AP242 master.
+The initial M3 adapter is documented in [ap242-adapter.md](ap242-adapter.md).
+Its application-specific construction replay does not prove native target-CAD features.
 
 The M2 domain profile accepts PDF uploads and keeps storage paths internal.
 Clients use source, run, job, and artifact IDs.

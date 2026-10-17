@@ -39,7 +39,10 @@ CAD_SCHEMAS = {
     "part_create": _object({**_RUN, "description": _PART, "sources": {"type": "array", "items": _SOURCE, "minItems": 1, "maxItems": 100}, "step_budget": {"type": "integer", "minimum": 5, "maximum": 100}}, ["run_id", "description", "sources"]),
     "part_read": _object(_RUN),
     "part_update": _object({**_REVISION, "description": _PART}),
-    "build_from_description": _object(_REVISION),
+    "build_from_description": _object({**_REVISION,
+        "export_profile": {"enum": ["ap214", "ap242"], "default": "ap214"},
+        "pmi": {"type": "object", "description": "An AP242 PMI specification from pmi_schema. Unsupported or ambiguous associations fail."}}, list(_REVISION)),
+    "pmi_schema": _object({}),
     "build_code": _object({**_REVISION, "code": {"type": "string", "minLength": 1, "maxLength": 65536}}),
     "export_step": _object({**_REVISION, "coverage": _COVERAGE}),
     "part_export_review": _object(_REVISION),
@@ -49,6 +52,7 @@ for _name in ("create_base_body", "add_hole", "add_pocket", "add_cut", "add_cham
     CAD_SCHEMAS[_name] = _object({**_REVISION, "feature": _FEATURE})
 
 CAD_DESCRIPTIONS = {
+    "pmi_schema": "Read the supported semantic PMI dimensions and geometric association contract. Target-CAD display and full EXPRESS conformance require separate tests.",
     "part_schema": "Read the closed, versioned JSON part contract and feature scope. This does not execute CAD.",
     "part_validate": "Validate part structure, named values, evidence references, and unresolved inputs. No CAD geometry is created.",
     "part_create": "Create an M1 server-side part run from authorized PDF paths and exact hashes. Read part_schema for the complete description contract. source_id defaults to sha256. Verification sources cannot supply construction values.",
@@ -60,9 +64,9 @@ CAD_DESCRIPTIONS = {
     "add_cut": "Append a bounded box, cylinder, or polygon material cut with evidence.",
     "add_chamfer": "Append a chamfer using a geometric edge-center region and an exact expected edge count.",
     "add_fillet": "Append a fillet using a geometric edge-center region and an exact expected edge count.",
-    "build_from_description": "Build the ordered part graph in a restricted worker and re-import its STEP candidate in a separate worker. Does not release the candidate.",
+    "build_from_description": "Build the ordered part graph in a restricted worker and re-import its STEP candidate in a separate worker. Default is AP214. AP242 embeds application-specific construction for the maintained adapter; it does not prove native target-CAD history. Does not release the candidate.",
     "build_code": "Use an explicitly enabled, tested sandbox fallback. The namespace supplies build123d and a copy of the current description. Code must assign a build123d Shape to result. A separate trusted worker validates the candidate. Feature replay remains unverified.",
-    "export_step": "Release the prototype STEP only after trusted re-import, source dimension checks, and a complete source-review attestation. AP242 construction, PMI, independent conformance, and NX tests remain separate acceptance evidence.",
+    "export_step": "Release the selected STEP profile only after trusted re-import, source dimension checks, and a complete source-review attestation. AP242 adapter and PMI reports have separate scope; native target-CAD and independent conformance require additional tests.",
     "part_export_review": "Export the current JSON description, review list in Markdown and CSV, coverage, manifest, and complete recorded run trace.",
     "cad_worker_probe": "Test the worker restrictions, limits, crash handling, and recovery. A passing probe is required before build_code.",
 }

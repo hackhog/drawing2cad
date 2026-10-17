@@ -55,7 +55,12 @@ def execute(request: dict) -> dict:
         return {"status": "pass"}
     if operation == "build":
         from .cad_kernel import build
-        result = build(request["description"], directory)
+        result = build(request["description"], directory,
+                       export_profile=request.get("export_profile", "ap214"), pmi=request.get("pmi"))
+    elif operation == "reconstruct_step":
+        from .adapters.ap242 import reconstruct_step
+        result = reconstruct_step(directory / "input.step", directory,
+                                  parameter_changes=request.get("parameter_changes"))
     elif operation == "drawing":
         from .drafting import render_drawing
         result = render_drawing(request["drawing_spec"], request["description"], request["revision"], directory)

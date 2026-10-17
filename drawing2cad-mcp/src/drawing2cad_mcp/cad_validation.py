@@ -51,8 +51,8 @@ def step_metadata(path: Path, name: str) -> dict[str, Any]:
         check("step_schema_present", bool(schemas), actual=schemas),
         {"check": "independent_step_conformance", "status": "not_tested", "reason": "No independent EXPRESS or NIST analysis was run."},
         {"check": "nx_open", "status": "not_tested", "reason": "No target CAD opening test was run."},
-        {"check": "semantic_pmi", "status": "not_tested", "reason": "The prototype exports geometry only."},
-        {"check": "step_editable_construction", "status": "not_tested", "reason": "The JSON description is editable; STEP reconstruction is not implemented."},
+        {"check": "semantic_pmi", "status": "not_tested", "reason": "Geometry import does not test PMI semantics or associations. Read the separate PMI report."},
+        {"check": "step_editable_construction", "status": "not_tested", "reason": "Geometry import does not reconstruct features. Read the separate construction adapter report."},
     ]
     return {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw), "schemas": schemas, "products": products, "length_units": length_units, "checks": checks}
 

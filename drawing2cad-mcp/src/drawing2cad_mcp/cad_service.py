@@ -70,7 +70,11 @@ class CadService:
         runtime = self.runner.capabilities()
         return {"enabled": self.settings.enabled, "runtime": runtime, "sandbox_probe": deepcopy(self._probe),
                 "build_code_enabled": bool(self.settings.enabled and self.settings.allow_build_code and self._probe and self._probe.get("status") == "pass"),
-                "part_schema_version": "1.0", "export_profile": "prototype_geometry_step", "ap242_construction": "not_tested", "semantic_pmi": "not_tested"}
+                "part_schema_version": "1.0", "export_profile": "prototype_geometry_step",
+                "export_profiles": ["ap214", "ap242"],
+                "ap242_construction": "application_specific_adapter",
+                "semantic_pmi": "nominal_diameter_and_linear",
+                "native_target_cad_features": "not_tested", "full_express_conformance": "not_tested"}
 
     def call(self, name, arguments):
         if name not in CAD_SCHEMAS:
@@ -273,6 +277,10 @@ class CadService:
     def part_schema(self):
         return {"status": "pass", "schema": description_schema()}
 
+    def pmi_schema(self):
+        from .adapters.semantic_pmi import pmi_schema
+        return {"status": "pass", "schema": pmi_schema()}
+
     def part_validate(self, description):
         return validate_description(description)
 
@@ -363,7 +371,11 @@ class CadService:
             state["build"], state["release"], state["source_review"] = None, None, None
             if name == "build_code" and not (self.settings.allow_build_code and self._probe and self._probe.get("status") == "pass"):
                 raise CadError("BUILD_CODE_DISABLED", "Enable build_code and pass the sandbox probe in this server process first.")
-            result = self.runner.run("build_code" if name == "build_code" else "build", description=state["description"], **({"code": arguments["code"]} if name == "build_code" else {}))
+            options = {"code": arguments["code"]} if name == "build_code" else {
+                "export_profile": arguments.get("export_profile", "ap214"), "pmi": arguments.get("pmi")}
+            if options.get("pmi") is not None and options.get("export_profile") != "ap242":
+                raise CadError("PMI_PROFILE_REQUIRED", "PMI requires the AP242 export profile.")
+            result = self.runner.run("build_code" if name == "build_code" else "build", description=state["description"], **options)
             if result.get("status") != "pass":
                 return {"status": "fail", "build": result, "validation": {"status": "not_tested"}}
             candidate = self._candidate(result)
@@ -387,6 +399,22 @@ class CadService:
                 agreement = {"check": "build_import_agreement", "status": "not_tested", "reason": "The code-worker report is not independent evidence."}
             status = "pass" if imported.get("status") == "pass" and agreement["status"] != "fail" else "fail"
             record = {"status": status, "description_revision": state["revision"], "description_sha256": state["description_sha256"], "candidate_path": str(candidate), "candidate_sha256": candidate_hash, "build": result, "validation": imported, "agreement": agreement, "feature_replay": "pass" if name == "build_from_description" else "not_tested"}
+            record["export_profile"] = options.get("export_profile", "ap214")
+            if record["export_profile"] == "ap242":
+                schemas = imported.get("step", {}).get("schemas", [])
+                if not any(schema.startswith("AP242_MANAGED_MODEL_BASED_3D_ENGINEERING") for schema in schemas):
+                    raise CadError("AP242_SCHEMA_REQUIRED", "The selected AP242 export must have an AP242 schema header.")
+                replay = self.runner.run("reconstruct_step", input_step=candidate)
+                record["step_only_reconstruction"] = replay
+                if _sha(candidate.read_bytes()) != candidate_hash:
+                    raise CadError("CANDIDATE_CHANGED", "The candidate changed during STEP-only reconstruction.")
+                replay_worker = replay.get("worker", {}).get("worker_id")
+                replay_ok = (replay.get("status") == "pass"
+                             and replay.get("input_sha256") == candidate_hash
+                             and replay.get("construction", {}).get("original_agreement") == "pass"
+                             and replay_worker and replay_worker not in {build_worker, import_worker})
+                if not replay_ok:
+                    record["status"] = status = "fail"
             state["build"] = record
             return {"status": status, "build": deepcopy(record), "released": False}
         return self._perform(name, arguments, action)
@@ -444,6 +472,10 @@ class CadService:
             self._atomic(release_path, data)
             state["source_review"] = coverage
             state["release"] = {"path": str(release_path), "sha256": built["candidate_sha256"], "bytes": len(data), "description_revision": state["revision"], "profile": "validated_prototype_step", "metric_acceptance": "not_tested", "scope": "Kernel checks and identified source review passed. Independent conformance, target CAD, construction reconstruction, and PMI are separate checks."}
+            state["release"]["export_profile"] = built.get("export_profile", "ap214")
+            if built.get("export_profile") == "ap242":
+                state["release"].update(profile="validated_ap242_application_construction",
+                    scope="Geometry and the application-specific STEP-only adapter passed. Read the separate PMI report. Native target-CAD features, graphical display, and full EXPRESS conformance are not proven.")
             return {"status": "pass", "release": deepcopy(state["release"]), "checks": deepcopy(checks), "source_review": coverage}
         return self._perform("export_step", arguments, action)
 
