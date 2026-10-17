@@ -13,7 +13,8 @@ export interface Delivery {
 
 export function delivery(run: Run): Delivery {
   const revision = run.part?.revision ?? null;
-  const outputs = run.artifacts.filter((a) => DELIVERABLE_ROLES.has(a.role));
+  // When the service names the release files, only those files must agree with the current revision.
+  const outputs = run.artifacts.filter((a) => DELIVERABLE_ROLES.has(a.role) && (a.released ?? true));
   const revisionsAgree = revision !== null && outputs.length > 0 && outputs.every((a) => a.model_revision === revision);
   const reasons: string[] = [];
   const state = run.review?.release_state ?? "draft";
@@ -21,7 +22,7 @@ export function delivery(run: Run): Delivery {
   // "blocked" also covers a valid build without release; name a failed check only when one failed.
   const failed = run.review?.validation.some((v) => v.status === "fail") ?? false;
   if (state === "blocked") reasons.push(failed ? "Eine Prüfung ist fehlgeschlagen. Die Ergebnisse sind gesperrt."
-    : "Modell gebaut, aber nicht freigegeben: Geprüfte Zeichnung und STEP-Freigabe fehlen.");
+    : "Modell gebaut, aber nicht freigegeben: Die STEP-Freigabe fehlt.");
   if (state === "draft") reasons.push("Noch keine geprüften Ergebnisse.");
   // These checks guard against an inconsistent service state; the reported state already explains the other cases.
   if (state === "released" && outputs.length && !revisionsAgree) reasons.push("Zeichnung und Modell gehören nicht zur aktuellen Revision.");
@@ -29,9 +30,9 @@ export function delivery(run: Run): Delivery {
   return { released: state === "released" && revisionsAgree && reasons.length === 0, revisionsAgree, reasons };
 }
 
-/** An artifact is released only if the run is released and the artifact has the current revision. */
+/** An artifact is released only if the run is released, the artifact has the current revision, and the release names it. */
 export const isReleased = (state: Delivery, run: Run, artifact: Artifact): boolean =>
-  state.released && artifact.model_revision === run.part?.revision;
+  state.released && artifact.model_revision === run.part?.revision && (artifact.released ?? true);
 
 export const isActive = (run: Run) => run.job.status === "queued" || run.job.status === "running";
 

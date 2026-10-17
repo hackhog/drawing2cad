@@ -90,7 +90,7 @@ Automatic layout checks do not prove those properties.
 Bind each drawing to the part revision and canonical description hash.
 Use `drawing_validate`, `drawing_render`, and `artifact_preview` before `drawing_review`.
 The final review also binds the validated model candidate.
-An accepted drawing review is necessary for `export_step`.
+`export_step` does not require a drawing review. Its release records the drawing status (`accepted`, `unreviewed`, `rejected`, `failed`, or `missing`) with the drawing files or the reason.
 Parameter changes and rebuilds invalidate the applicable release evidence.
 Historical artifacts remain readable, but cannot authorize release of a later revision.
 

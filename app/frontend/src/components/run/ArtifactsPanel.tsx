@@ -10,16 +10,25 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/apiContext";
 import { useArtifactUrl } from "@/lib/artifacts";
-import type { Artifact, ArtifactRole, Run } from "@/lib/contract";
+import type { Artifact, ArtifactRole, ReleaseDrawing, Run } from "@/lib/contract";
 import { recoveryFor } from "@/lib/errors";
 import { bytes, shortHash } from "@/lib/format";
 import { capabilitiesQuery } from "@/lib/queries";
 import { delivery, isDraft, isReleased, latestShown } from "@/lib/release";
 
 const ROLE: Record<ArtifactRole, string> = {
-  drawing_pdf: "Technische Zeichnung (PDF)", drawing_dxf: "Technische Zeichnung (DXF)", step: "3D-Modell (STEP)",
+  drawing_pdf: "Technische Zeichnung (PDF)", drawing_diagnostic: "Zeichnungsdiagnose (PDF)", drawing_dxf: "Technische Zeichnung (DXF)", step: "3D-Modell (STEP)",
   part_description: "Bauteilbeschreibung (JSON)", manifest: "Lauf-Manifest", trace: "MCP-Protokoll",
   events: "Domain-Ereignisse", report: "Prüfbericht (JSON)",
+};
+
+// The STEP release records the drawing status. The drawing does not gate the release.
+const DRAWING_STATUS: Record<ReleaseDrawing["status"], string> = {
+  accepted: "Zeichnung geprüft und freigegeben.",
+  unreviewed: "Zeichnung erstellt, aber nicht geprüft.",
+  rejected: "Zeichnung bei der Prüfung abgelehnt.",
+  failed: "Zeichnung fehlerhaft. Die Diagnose-Dateien gehören zur Freigabe.",
+  missing: "Keine Zeichnung erstellt.",
 };
 
 function save(blob: Blob, filename: string) {
@@ -48,7 +57,13 @@ export function ArtifactsPanel({ run }: { run: Run }) {
     <div className="flex flex-col gap-4">
       {state.released ? (
         <Alert className="border-good/30 bg-good-bg text-good">
-          <AlertTitle>Freigegeben: Zeichnung und Modell gehören zu Revision {revision}</AlertTitle>
+          <AlertTitle>Freigegeben: Modell der Revision {revision}</AlertTitle>
+          {run.review?.drawing && (
+            <AlertDescription>
+              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " Dieser Stand ist veraltet: Die Zeichnung wurde nach der Freigabe geändert."}</p>
+              {run.review.drawing.reason && <p>{run.review.drawing.reason}</p>}
+            </AlertDescription>
+          )}
         </Alert>
       ) : (
         <Alert className="border-warn-line bg-warn-bg">

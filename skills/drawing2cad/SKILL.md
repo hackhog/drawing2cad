@@ -2,12 +2,12 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.15.1"
+  version: "0.16.0"
 ---
 
 # drawing2cad
 
-**Domain profile:** Use supplied uploaded `source_id` values and hashes; drawing review is required before STEP release.
+**Domain profile:** Use supplied uploaded `source_id` values and hashes. The drawing does not gate the STEP release; the release records its status.
 **Local-path profile:** Use authorized server PDF paths and hashes; this profile supports the metric but does not supply technical drawings.
 
 ## Minimum path for the hackathon metric
@@ -23,8 +23,8 @@ metadata:
 9. Inspect every measurement, solid check, fresh-worker import, and agreement result. Compare the features with the source inventory.
 10. If correction is necessary, call `part_read` → `part_validate` → `part_update` → `build_from_description`. Use the new revision and repeat step 9.
 11. Domain only: call `drawing_schema` → `drawing_validate` → `drawing_render` → `artifact_preview` for a revision-bound DXF/PDF drawing.
-12. Domain only: correct failures and repeat step 11. Compare source, model, and drawing, then record an accepted `drawing_review`.
-13. Call `export_step` with the current revision and complete, truthful source-review `coverage`; require a successful release.
+12. Domain only: correct failures and repeat step 11. Compare source, model, and drawing, then record an accepted `drawing_review`. If the drawing still fails, continue; do not spend the remaining budget on it.
+13. Call `export_step` with the current revision and complete, truthful source-review `coverage`; require a successful release. Read `release.drawing.status` (`accepted`, `unreviewed`, `rejected`, `failed`, or `missing`) and report it with its reason.
 14. Call `part_export_review` with the current revision. Retain STEP, description, review list, hashes, manifest, and actual results.
 15. Repeat for three parts. Require all MCP validations to pass for each final STEP hash.
 
@@ -66,7 +66,8 @@ Block only when no reasonable assumption supports construction. Never report an 
 The JSON description is the editable construction source. Its presence does not prove native feature history inside STEP.
 The domain service supplies a dimensioned DXF and a PDF inspection copy from supplied 2D geometry.
 It does not automatically project arbitrary solids or extract sections. Drawing and model creation can occur in either order.
-Compare their final revisions before domain delivery. A rebuild invalidates an earlier drawing review.
+Compare their final revisions before domain delivery. A rebuild invalidates an earlier drawing review and the STEP release.
+A drawing render or review does not invalidate a STEP release. Call `export_step` again to record the new drawing status.
 The local-path metric result does not satisfy the complete-service drawing requirement.
 
 ## References

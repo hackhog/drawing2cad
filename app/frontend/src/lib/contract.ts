@@ -46,7 +46,15 @@ export interface Part {
   capabilities: { parameter_edit: boolean };
 }
 
-export type ArtifactRole = "drawing_pdf" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report";
+export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report";
+
+/** Drawing status that a STEP release records. The drawing does not gate the release. */
+export interface ReleaseDrawing {
+  status: "accepted" | "unreviewed" | "rejected" | "failed" | "missing";
+  reason: string | null;
+  /** False when the drawing changed after the release. Call export_step again to record the new status. */
+  current: boolean;
+}
 
 /** An output file. Content is read by `artifact_id` only. */
 export interface Artifact {
@@ -58,6 +66,8 @@ export interface Artifact {
   byte_count: number;
   source_sha256: string;
   model_revision: number;
+  /** The current release names this file. Absent in the fixture service. */
+  released?: boolean;
 }
 
 /** A diagnostic file of a run: trace, run record, or MCP part state. The service supplies root-relative URLs. */
@@ -100,6 +110,8 @@ export interface Review {
   assumptions: Assumption[];
   uncertainties: Uncertainty[];
   validation: ValidationResult[];
+  /** Drawing status of the current release, or null without a release. */
+  drawing?: ReleaseDrawing | null;
 }
 
 export interface RunNote {

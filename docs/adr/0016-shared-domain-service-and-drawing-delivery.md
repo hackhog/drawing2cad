@@ -8,6 +8,7 @@ Implementation decision for the M2 MCP and shared services.
 This extends [ADR 0014](0014-headless-build123d-metric-prototype.md).
 It does not report a completed resource acceptance trial.
 Resource acceptance tests follow after the delivery milestones.
+Amended on 2026-10-17: the drawing review no longer gates the STEP release. See "Drawing and model release".
 
 ## Context
 
@@ -107,7 +108,7 @@ The restricted worker can produce a marked diagnostic PDF when a valid declarati
 The domain service verifies fixed artifact paths, sizes, hashes, and revision bindings before it registers these artifacts.
 The existing authenticated artifact interface supplies the PDF and JSON report.
 Diagnostic artifact roles remain separate from accepted technical drawing roles.
-They cannot satisfy drawing review or STEP release.
+They cannot satisfy a drawing review. A STEP release links them as the files of a failed drawing.
 
 Agents use these diagnostics in a correction loop: validate the declaration, render, inspect reported defects, correct them, and render again.
 Independent source and visual reviews follow the passing render.
@@ -121,7 +122,10 @@ The final accepted drawing review identifies the exact drawing hash, part revisi
 A model rebuild invalidates the earlier drawing review, including a rebuild of the same revision.
 Drawing review is an identified attestation. Automatic CAD equivalence remains `not_tested`.
 
-STEP release requires current drawing artifacts, passing layout checks, and an accepted current review.
+The validated model gates the STEP release. The drawing does not.
+The release records the drawing status: `accepted`, `unreviewed`, `rejected`, `failed` (with the defects and the latest verified diagnostic files), or `missing` (with the reason).
+A drawing render or review does not invalidate the release. `drawing_current` in `part_read` shows whether the recorded status still matches the current drawing; call `export_step` again to record the new status.
+A weaker agent then delivers the validated STEP even when it cannot complete the drawing. The release states the drawing result honestly.
 It also retains the existing fresh-worker STEP import, geometry measurements, and source-coverage gates.
 Reports expose artifact IDs and public evidence without server storage paths.
 
@@ -146,7 +150,7 @@ Keep their actual results and untested limits in run evidence and the pull reque
 - Verify upload retries, interrupted writes, hash failures, ownership, and immutable artifact downloads.
 - Verify note revision conflicts, queue capacity, idempotency, process locking, restart behavior, and cancellation effects.
 - Verify DXF dimension entities, PDF rendering, stale drawing bindings, layout failures, and uncertainty markers.
-- Verify that an old drawing review cannot release a changed or rebuilt model.
+- Verify that an old drawing review cannot appear as `accepted` for a changed or rebuilt model, and that the release records each drawing status.
 - Verify the complete synthetic upload-to-drawing-and-STEP flow in the restricted Docker runtime.
 - Verify contract compatibility between MCP and the future web adapter separately.
 

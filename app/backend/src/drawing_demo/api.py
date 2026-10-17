@@ -152,7 +152,10 @@ def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     review_items = part_validate(state["description"]).get("review_items", [])
     # The domain lists artifacts by ID. Creation order lets the UI select the latest drawing of a revision.
     listed = sorted(_all(backend, "artifact_list", run_id=part_run), key=lambda artifact: artifact["created"])
-    artifacts = (artifact_view(a, source["sha256"]) for a in listed)
+    release = state.get("release") or {}
+    released_ids = frozenset([(release.get("artifact") or {}).get("artifact_id")]
+                             + [a["artifact_id"] for a in (release.get("drawing") or {}).get("artifacts", [])]) - {None}
+    artifacts = (artifact_view(a, source["sha256"], released_ids) for a in listed)
     return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release"))),
             "artifacts": [a for a in artifacts if a is not None],
             "agent_report": backend.call("notes_read", run_id=part_run)["text"] or None}

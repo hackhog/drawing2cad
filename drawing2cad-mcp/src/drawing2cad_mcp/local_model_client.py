@@ -33,9 +33,9 @@ ALLOWED_TOOLS = frozenset({
     "drawing_schema", "drawing_validate", "drawing_render", "drawing_read", "drawing_review", "artifact_preview",
     "notes_read", "notes_update",
 })
+# Model changes invalidate a STEP release. Drawing renders and reviews do not; the release records the drawing status.
 MUTATION_TOOLS = frozenset({"part_create", "part_update", "create_base_body", "add_hole", "add_pocket",
-                            "add_cut", "add_chamfer", "add_fillet", "build_from_description",
-                            "drawing_render", "drawing_review"})
+                            "add_cut", "add_chamfer", "add_fillet", "build_from_description"})
 QUESTION_TOOL = {"type": "function", "function": {
     "name": "request_user_input", "description": "Record a required user question and stop the trial. Use a documented reasonable assumption when the source permits it.",
     "parameters": {"type": "object", "additionalProperties": False, "required": ["question", "reason"],
@@ -234,8 +234,9 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
               "AP242, drawings, semantic PMI, independent conformance and target-CAD opening remain untested unless a tool proves them. "
               "Record reasonable assumptions and continue. Use request_user_input only for a required question with no reasonable assumption. "
               f"Use only the authorized PDF {source}. Use run IDs that start with {plan['run_prefix']}-. "
-              + ("Release needs a reviewed, dimensioned drawing of the current part revision: use drawing_schema, drawing_validate, "
-                 "drawing_render, artifact_preview, and drawing_review before export_step. " if domain else "")
+              + ("Make a dimensioned drawing of the current part revision with drawing_schema, drawing_validate, drawing_render, "
+                 "artifact_preview, and drawing_review. The validated model gates export_step, not the drawing: "
+                 "if the drawing still fails, release the STEP and report release.drawing.status with its reason. " if domain else "")
               + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content":
         "Reconstruct the authorized PDF as a parameterized part description. Validate the model, release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits."}]

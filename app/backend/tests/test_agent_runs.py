@@ -67,6 +67,25 @@ def test_part_view_lists_parameters_with_origin_and_operations():
     assert part["operations"] == [{"index": 1, "kind": "box", "label": "base", "parameters": ["length", "thickness"]}]
 
 
+def test_release_reports_its_drawing_status_and_released_files():
+    """The STEP release records the drawing status; only files that the release names are released."""
+    from drawing2cad_mcp.part_schema import part_validate
+    state = {"description": description(), "build": {"status": "pass", "validation": {"checks": []}},
+             "release": {"drawing": {"status": "failed", "reason": "The latest drawing render did not pass its checks."}}}
+    review = review_view(state, part_validate(state["description"])["review_items"], (200, 100), released=True)
+    assert review["release_state"] == "released"
+    assert review["drawing"] == {"status": "failed", "reason": "The latest drawing render did not pass its checks.", "current": True}
+    state["release"]["drawing_current"] = False
+    assert review_view(state, [], (200, 100), released=True)["drawing"]["current"] is False
+    assert review_view(state, [], (200, 100), released=False)["drawing"] is None
+    artifact = {"artifact_id": "art_" + "2" * 32, "role": "drawing_diagnostic_preview", "media_type": "application/pdf",
+                "filename": "d.pdf", "sha256": SHA, "size_bytes": 3, "revision": 1}
+    assert artifact_view(artifact, "b" * 64, frozenset({artifact["artifact_id"]}))["released"] is True
+    old = {**artifact, "artifact_id": "art_" + "3" * 32, "role": "technical_drawing"}
+    view = artifact_view(old, "b" * 64, frozenset({artifact["artifact_id"]}))
+    assert view["role"] == "drawing_pdf" and view["released"] is False
+
+
 def test_review_keeps_assumptions_flags_and_untested_checks_apart():
     from drawing2cad_mcp.part_schema import part_validate
     state = {"description": description(), "build": {"status": "pass", "validation": {"checks": [

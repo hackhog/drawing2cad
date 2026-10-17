@@ -46,7 +46,7 @@ The client denies other PDF paths, other run prefixes, and tools outside its all
 The web backend calls `drive()` directly against the domain profile ([ADR 0018](adr/0018-agent-runner-in-the-web-backend.md)).
 Its plan contains `source_id` and `source_sha256` instead of `source_path`.
 In this mode, PDF tools and `part_create` sources must use that source ID and hash.
-The allowlist also contains the drawing tools, `artifact_preview`, and run notes, because release needs a reviewed drawing.
+The allowlist also contains the drawing tools, `artifact_preview`, and run notes. The release records the drawing status; the drawing does not gate the release.
 The command-line client supports only `source_path`.
 
 If Ollama has no published host port, replace `ollama_url` with:
@@ -73,7 +73,7 @@ Failed and denied tool requests count against the budget.
 A required user question stops the trial and remains in the summary.
 A transport failure stops the trial because mutation completion can be unknown.
 The client does not infer successful release from the model's final text.
-Any later mutation or build request clears its release claim until another successful export.
+Any later model mutation or build request clears its release claim until another successful export. A drawing render or review does not clear it.
 
 One completed run cannot rank models.
 Record equivalent inputs, runtime limits, reasoning settings, assistance, and actual acceptance checks before comparison.

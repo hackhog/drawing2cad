@@ -170,26 +170,29 @@ def test_drawing_model_release_and_downloaded_reports_are_path_free(domain):
         service.call(OTHER, "artifact_read", {"artifact_id": artifact["artifact_id"]})
 
 
-def test_release_requires_drawing_and_review_and_current_model(domain):
+def test_release_records_the_drawing_status_and_requires_the_current_model(domain):
+    """The model validation gates the STEP release. The release records the drawing status."""
     service, source, _, spec, _ = domain
-    call(service, "build_from_description")
     with pytest.raises(DomainError) as error:
         call(service, "export_step", coverage=coverage(source))
-    assert error.value.code == "CURRENT_DRAWING_REQUIRED"
+    assert error.value.code == "VALIDATED_BUILD_REQUIRED"
+    call(service, "build_from_description")
+    missing = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
+    assert missing["status"] == "missing" and missing["reason"] and missing["artifacts"] == []
     rendered = call(service, "drawing_render", drawing_spec=spec)
-    with pytest.raises(DomainError) as error:
-        call(service, "export_step", coverage=coverage(source))
-    assert error.value.code == "DRAWING_REVIEW_REQUIRED"
     digest = rendered["drawing"]["drawing_sha256"]
+    unreviewed = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
+    assert unreviewed["status"] == "unreviewed" and unreviewed["drawing_sha256"] == digest
+    assert {item["role"] for item in unreviewed["artifacts"]} >= {"technical_drawing"}
     review(service, source, digest, "rejected")
-    with pytest.raises(DomainError):
-        call(service, "export_step", coverage=coverage(source))
+    assert call(service, "export_step", coverage=coverage(source))["release"]["drawing"]["status"] == "rejected"
     review(service, source, digest)
-    assert call(service, "export_step", coverage=coverage(source))["status"] == "pass"
+    accepted = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
+    assert accepted["status"] == "accepted" and accepted["review"]["decision"] == "accepted"
+    # A rebuild invalidates the release and the drawing review.
     call(service, "build_from_description")
-    with pytest.raises(DomainError) as error:
-        call(service, "export_step", coverage=coverage(source))
-    assert error.value.code == "DRAWING_REVIEW_REQUIRED"
+    assert service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"] is None
+    assert call(service, "export_step", coverage=coverage(source))["release"]["drawing"]["status"] == "unreviewed"
 
 
 def test_part_change_invalidates_drawing_and_requires_rebinding(domain):
@@ -211,14 +214,15 @@ def test_part_change_invalidates_drawing_and_requires_rebinding(domain):
     assert report["drawing"]["review"] is None
 
 
-def test_failed_render_cannot_reuse_previous_review(domain):
+def test_failed_render_is_released_with_a_failed_drawing_status(domain):
+    """A failed render cannot reuse the previous review. The release states the failure."""
     service, source, _, spec, runner = domain
     render_and_build(domain)
     runner.fail_operation = "drawing"
     assert call(service, "drawing_render", drawing_spec=spec)["status"] == "fail"
-    with pytest.raises(DomainError) as error:
-        call(service, "export_step", coverage=coverage(source))
-    assert error.value.code == "CURRENT_DRAWING_REQUIRED"
+    drawing = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
+    assert drawing["status"] == "failed" and drawing["reason"]
+    assert "review" not in drawing
 
 
 def test_note_revision_is_separate_and_requires_run_ownership(domain):
@@ -305,7 +309,7 @@ def test_shared_execution_limit_covers_direct_and_job_dispatch(domain):
     assert len(active) == 2
 
 
-def test_release_artifact_survives_service_restart_and_rereview_invalidates_it(domain):
+def test_release_survives_service_restart_and_a_new_review_marks_its_drawing_status_stale(domain):
     service, source, *_ = domain
     drawing = render_and_build(domain)
     released = call(service, "export_step", coverage=coverage(source))
@@ -313,10 +317,14 @@ def test_release_artifact_survives_service_restart_and_rereview_invalidates_it(d
     try:
         state = other.call(CTX, "part_read", {"run_id": "plate"})
         assert state["part"]["release"]["artifact"] == released["release"]["artifact"]
-        assert state["part"]["release"]["drawing_sha256"] == drawing["drawing"]["drawing_sha256"]
+        assert state["part"]["release"]["drawing"]["drawing_sha256"] == drawing["drawing"]["drawing_sha256"]
+        assert state["part"]["release"]["drawing_current"] is True
         review(other, source, drawing["drawing"]["drawing_sha256"], "rejected")
-        assert other.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"] is None
+        release = other.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]
+        assert release["drawing"]["status"] == "accepted" and release["drawing_current"] is False
         assert artifact_bytes(other, released["release"]["artifact"])
+        refreshed = other.call(CTX, "export_step", {"run_id": "plate", "expected_revision": 1, "coverage": coverage(source)})
+        assert refreshed["release"]["drawing"]["status"] == "rejected"
     finally:
         other.close()
 

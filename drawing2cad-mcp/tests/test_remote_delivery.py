@@ -237,7 +237,7 @@ async def test_remote_drawing_step_delivery_and_parameter_revision(delivery_app)
             assert state["part"]["release"] is None
             assert state["drawing"] is None
             await expect_error(session, "drawing_review", "DRAWING_REVIEW_CONFLICT", **{**review, "expected_revision": 2})
-            await expect_error(session, "export_step", "CURRENT_DRAWING_REQUIRED", run_id="remote_delivery",
+            await expect_error(session, "export_step", "VALIDATED_BUILD_REQUIRED", run_id="remote_delivery",
                                expected_revision=2, coverage=coverage(source))
             stale_response = await session.call_tool("drawing_validate", {
                 "run_id": "remote_delivery", "expected_revision": 2, "drawing_spec": spec})

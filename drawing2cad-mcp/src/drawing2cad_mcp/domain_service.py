@@ -528,13 +528,47 @@ class DomainService:
             cad._save(directory, state)
 
     @staticmethod
-    def _release_is_current(state, drawing):
+    def _release_is_current(state):
+        """A release is current when it belongs to the current validated model build.
+        The drawing does not gate the STEP release; the release records the drawing status separately."""
         release = state.get("release") or {}
-        review = (drawing or {}).get("review") or {}
-        return bool(release.get("artifact") and drawing and drawing.get("status") == "pass"
-                    and release.get("drawing_sha256") == drawing["drawing_sha256"]
-                    and review.get("decision") == "accepted"
-                    and review.get("candidate_sha256") == release.get("sha256"))
+        build = state.get("build") or {}
+        return bool(release.get("artifact") and release.get("sha256") == build.get("candidate_sha256")
+                    and release.get("description_revision") == state.get("revision"))
+
+    @staticmethod
+    def _drawing_status(drawing, state):
+        """Summarize the technical drawing for a release record.
+        States: accepted, unreviewed, rejected, failed, or missing (with a reason)."""
+        if not drawing:
+            return {"status": "missing", "drawing_sha256": None, "artifacts": [],
+                    "reason": "No technical drawing was rendered for the current part revision."}
+        summary = {"drawing_sha256": drawing["drawing_sha256"], "artifacts": deepcopy(drawing.get("artifacts", []))}
+        if drawing.get("status") != "pass":
+            report = drawing.get("report") or {}
+            return {**summary, "status": "failed", "defects": deepcopy(report.get("defects", [])),
+                    "reason": "The latest drawing render did not pass its checks. The artifacts are diagnostic files, not an accepted drawing."}
+        review = drawing.get("review") or {}
+        candidate = (state.get("build") or {}).get("candidate_sha256")
+        if review.get("decision") == "accepted" and review.get("candidate_sha256") == candidate:
+            return {**summary, "status": "accepted", "review": deepcopy(review)}
+        if review.get("decision") == "rejected" and review.get("candidate_sha256") == candidate:
+            return {**summary, "status": "rejected", "review": deepcopy(review),
+                    "reason": "The drawing review rejected the drawing for the current model."}
+        return {**summary, "status": "unreviewed",
+                "reason": "The drawing rendered and passed its checks, but it has no review for the current model."}
+
+    def _release_view(self, state, drawing):
+        """Return the release with the current drawing status. Hide a release that is not current."""
+        release = state.get("release")
+        if not release or not self._release_is_current(state):
+            return None
+        release = deepcopy(release)
+        recorded = release.get("drawing") or {}
+        current = self._drawing_status(drawing, state)
+        release["drawing_current"] = (recorded.get("status") == current["status"]
+                                      and recorded.get("drawing_sha256") == current["drawing_sha256"])
+        return release
 
     def _snapshot_read(self, ctx, name, args):
         """Read a run without its lock while another operation, for example a job, holds it.
@@ -555,8 +589,7 @@ class DomainService:
             result = {"status": "pass", "part": deepcopy(state), "run_id": args["run_id"], "revision": state["revision"],
                       "call_count": state["call_count"], "step_budget": state["step_budget"]}
             result["drawing"] = self._drawing(directory, state)
-            if not self._release_is_current(result["part"], result["drawing"]):
-                result["part"]["release"] = None
+            result["part"]["release"] = self._release_view(result["part"], result["drawing"])
         result["read_mode"] = "snapshot_during_active_operation"
         return result
 
@@ -630,18 +663,22 @@ class DomainService:
         if name == "part_export_review":
             return self._export_review(ctx, cad, directory, state)
         if name == "export_step":
-            drawing = self._require_review(ctx, directory, state)
+            # The model validation gates the release. The drawing status is recorded, not required.
+            drawing = self._drawing(directory, state)
+            drawing_status = self._drawing_status(drawing, state)
+            for artifact in drawing_status["artifacts"]:
+                self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
             result = cad.call(name, args)
             if result.get("status") == "pass":
                 release = result["release"]
                 artifact = self.store.artifact_register(ctx, release["path"], "released_step", args["run_id"],
                                                         state["revision"], "model/step", Path(release["path"]).name)
                 result["release"]["artifact"] = artifact
+                result["release"]["drawing"] = drawing_status
                 with cad._lock(args["run_id"]) as saved_directory:
                     saved = cad._load(saved_directory)
                     saved["release"]["artifact"] = artifact
-                    saved["release"]["drawing_sha256"] = drawing["drawing_sha256"]
-                    saved["release"]["drawing_artifacts"] = drawing["artifacts"]
+                    saved["release"]["drawing"] = drawing_status
                     cad._save(saved_directory, saved)
                 result["drawing"] = drawing
             return result
@@ -658,8 +695,7 @@ class DomainService:
         result = cad.call(name, args)
         if name == "part_read":
             result["drawing"] = self._drawing(directory, state)
-            if not self._release_is_current(result["part"], result["drawing"]):
-                result["part"]["release"] = None
+            result["part"]["release"] = self._release_view(result["part"], result["drawing"])
         return result
 
     def _render(self, ctx, cad, directory, state, spec):
@@ -669,10 +705,10 @@ class DomainService:
         if report["status"] != "pass" and not report.get("diagnostic_eligible"):
             report.pop("resolved", None)
             return report
-        # Invalidate first, including when the worker fails or the process exits.
+        # Replace the drawing state first, including when the worker fails or the process exits.
+        # A new drawing does not invalidate a STEP release; the release keeps its recorded drawing status.
         drawing = {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
                    "drawing_sha256": _digest(spec), "status": "not_tested", "review": None, "artifacts": [], "spec": spec}
-        self._invalidate_release(cad, state["run_id"])
         self._save_drawing(directory, drawing)
         for source in state["sources"]:
             self.store.source_path(ctx, source["source_id"])
@@ -758,20 +794,9 @@ class DomainService:
         drawing["review"] = {**args, "scope": "identified_drawing_and_model_review_attestation",
                              "automatic_cad_equivalence": "not_tested",
                              "candidate_sha256": (state.get("build") or {}).get("candidate_sha256")}
-        self._invalidate_release(cad, state["run_id"])
+        # A review does not invalidate a STEP release. Call export_step again to record the new drawing status.
         self._save_drawing(directory, drawing)
         return {"status": "pass", "drawing": drawing}
-
-    def _require_review(self, ctx, directory, state):
-        drawing = self._drawing(directory, state)
-        if not drawing or drawing["status"] != "pass":
-            raise DomainError("CURRENT_DRAWING_REQUIRED", "Render a checked technical drawing for the current part revision.")
-        review = drawing.get("review") or {}
-        if review.get("decision") != "accepted" or review.get("candidate_sha256") != (state.get("build") or {}).get("candidate_sha256"):
-            raise DomainError("DRAWING_REVIEW_REQUIRED", "Review the current drawing and validated model before release.")
-        for artifact in drawing["artifacts"]:
-            self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
-        return drawing
 
     def _export_review(self, ctx, cad, directory, state):
         remaining = 32 * 1024 * 1024
@@ -814,8 +839,7 @@ class DomainService:
             domain_events.append(json.loads(read_record(path)))
         drawing = self._drawing(directory, state)
         public_state = deepcopy(state)
-        if not self._release_is_current(public_state, drawing):
-            public_state["release"] = None
+        public_state["release"] = self._release_view(public_state, drawing)
         manifest = {"schema_version": "1.0", "package_version": __version__, "run": public_state,
                     "drawing": drawing, "notes": self._notes(ctx, state["run_id"]),
                     "scope": "Path-free application evidence. Target CAD and AP242 acceptance require separate tests.",

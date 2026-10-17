@@ -21,6 +21,7 @@ PHASE_BY_TOOL = {
 }
 # Domain artifact roles that the web UI delivers. Previews of sources and artifacts are inspection aids only.
 ROLE_BY_MEDIA_TYPE = {("released_step", "model/step"): "step", ("technical_drawing", "application/pdf"): "drawing_pdf",
+                      ("drawing_diagnostic_preview", "application/pdf"): "drawing_diagnostic",
                       ("technical_drawing", "image/vnd.dxf"): "drawing_dxf",
                       ("part_description", "application/json"): "part_description",
                       ("run_manifest", "application/json"): "manifest", ("run_trace", "application/json"): "trace",
@@ -113,15 +114,21 @@ def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet
         release_state = "blocked"
     else:
         release_state = "draft"
-    return {"release_state": release_state, "assumptions": assumptions, "uncertainties": uncertainties, "validation": validation}
+    # The STEP release records the drawing status. The drawing does not gate the release.
+    recorded = (state.get("release") or {}).get("drawing") if released else None
+    drawing = ({"status": recorded["status"], "reason": recorded.get("reason"),
+                "current": bool((state.get("release") or {}).get("drawing_current", True))} if recorded else None)
+    return {"release_state": release_state, "assumptions": assumptions, "uncertainties": uncertainties, "validation": validation,
+            "drawing": drawing}
 
 
-def artifact_view(artifact: dict[str, Any], source_sha256: str) -> dict[str, Any] | None:
-    """A domain artifact as a delivered web artifact, or None for an artifact that the UI does not deliver."""
+def artifact_view(artifact: dict[str, Any], source_sha256: str, released_ids: frozenset[str] = frozenset()) -> dict[str, Any] | None:
+    """A domain artifact as a delivered web artifact, or None for an artifact that the UI does not deliver.
+    released_ids are the STEP and drawing artifacts that the current release names."""
     media_type = artifact["media_type"]
     role = ROLE_BY_MEDIA_TYPE.get((artifact["role"], media_type)) or ("report" if media_type == "application/json" else None)
     if role is None:
         return None
     return {"artifact_id": artifact["artifact_id"], "role": role, "media_type": media_type, "filename": artifact["filename"],
             "sha256": artifact["sha256"], "byte_count": artifact["size_bytes"], "source_sha256": source_sha256,
-            "model_revision": artifact["revision"]}
+            "model_revision": artifact["revision"], "released": artifact["artifact_id"] in released_ids}

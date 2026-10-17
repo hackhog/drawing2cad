@@ -66,11 +66,11 @@ A model error requires a model correction and new binding; moving drawing text c
 Diagnostic previews apply to supported rendered layout failures only.
 Schema, evidence, geometry, or binding failures can stop before a preview exists.
 Correct the reported contract defect first. Do not bypass it with a separate renderer.
-Keep failed artifacts as evidence. A failed drawing cannot receive an accepted review or authorize STEP release.
+Keep failed artifacts as evidence. A failed drawing cannot receive an accepted review. The STEP release states the failed drawing and links its diagnostic files.
 
 ## Review and release
 
-For domain drawing delivery, complete the drawing review below before release. The local-path metric skips this drawing review.
+For domain drawing delivery, do the drawing review below. The STEP release does not wait for it; the release records the drawing status. The local-path metric skips this drawing review.
 After a render pass, independently compare the final source, drawing, and measured model.
 Inspect the complete sheet and necessary detail views for legibility, missing features, and unclear assumptions.
 Compare inner and outer boundaries in each view. Duplicate lines do not prove that both boundaries are present.
