@@ -36,7 +36,8 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
 - **Web routes:** routes call `application.domain.call(context, operation, arguments)`. Uploads use `upload_begin`,
   `upload_chunk`, and `upload_complete`. Downloads use `artifact_get` and `artifact_read` and verify the SHA-256.
   The analysis uses `drawing_extract` and `pdf_render_page`. A domain error becomes an HTTP status with its code.
-  The domain service has no source deletion, so the web API has none.
+  The web API deletes a source with its web run records through the trusted `source_delete` method; an active run blocks it.
+  Agents have no delete tool.
 - **Agent loop:** a background worker runs `drive()` with a model call for OpenAI-compatible Chat Completions or
   Responses API endpoints (Azure AI Foundry, OpenRouter, OpenAI, Ollama). It connects to the mounted `/mcp` endpoint over loopback with the
   Streamable HTTP client. There is no subprocess and no second dispatcher. The MCP endpoint accepts loopback hosts only;
@@ -45,8 +46,10 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
   restricts PDF tools and `part_create` sources to this source, and part run IDs to the run prefix. In this mode, the agent
   can also use the drawing tools, `artifact_preview`, and run notes, because `export_step` needs a reviewed drawing.
   The local-path mode does not change.
-- **Results:** the final agent report is the note of the part run (`notes_update`). Part state, review items, and artifacts
-  come from `part_read`, `artifact_list`, and `notes_read` for each request. Only a released STEP is a domain artifact,
+- **Results:** the final agent report is the first text of the note of the part run (`notes_update`). The report also stays
+  in the agent trace (`summary.json`), and the UI shows it from there. Users can then change the note with its revision
+  (`notes_read`, `notes_update`) to add review information. Part state, review items, and artifacts come from `part_read`
+  and `artifact_list` for each request. Only a released STEP is a domain artifact,
   so the web UI shows no unreleased model. The 3D preview converts the released STEP to GLB for display only.
 - **Web run record:** a small record holds the job state, the agent trace, and the domain part run ID. It copies no domain data.
   One run executes at a time. A restart marks unfinished runs as failed (`RUN_INTERRUPTED`).

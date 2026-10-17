@@ -2,7 +2,8 @@
 
 This demo uses the PDF service from `drawing2cad-mcp`.
 Upload a drawing PDF to examine its vector analysis and review flags.
-The API imports `PdfService` in the same process. It does not duplicate PDF analysis or expose an MCP protocol endpoint.
+The API uses one shared domain service of `drawing2cad-mcp` in the same process ([ADR 0018](../docs/adr/0018-agent-runner-in-the-web-backend.md)).
+It does not duplicate PDF analysis. It mounts the MCP endpoint of the same service at `/mcp` for its agent runs.
 
 The app has two parts, each with its own container ([ADR 0012](../docs/adr/0012-demo-app-as-frontend-and-backend-container.md)):
 
@@ -65,8 +66,8 @@ UI text remains in German. See [frontend/README.md](frontend/README.md) for rout
 - The drawing page has the four steps **Drawing, Recognized, Review, and 3D model** ([ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md)).
 - The review step marks unclear strokes, unrecognized text characters, and missing views.
 - The model step converts an uploaded STEP file to GLB for display.
-- The run page shows job state, parameters, review data, results, and notes.
-  With the current backend, these functions show as unavailable. `npm run dev:fixture` shows them with simulated data.
+- The run page shows job state, parameters and operations, review data, the agent report, results, and the run note.
+  Users can change the run note. Parameter edits show as unavailable; `npm run dev:fixture` shows them with simulated data.
 - Batch upload sends a maximum of two PDFs at the same time.
 
 Use the mouse wheel to zoom. Drag to move the sheet. Double-click to show the full sheet.
@@ -75,10 +76,9 @@ The UI includes its font and libraries. It does not use a CDN.
 
 ## PDF processing
 
-The API supplies each upload to `PdfService.extract_drawing` and `PdfService.render_page`.
-Both operations use one temporary source file.
-The API compares their source hashes before it stores the source and its analysis.
-It removes the temporary file and render artifacts when the request ends.
+The API transfers each upload to the domain service in chunks. The domain service stores the source with its SHA-256.
+The analysis uses the domain operations `drawing_extract` and `pdf_render_page` on the stored source.
+The API compares their source hashes and rejects a result if they differ.
 The stored source stays in the data directory until a user deletes it; agent runs read it there.
 Responses include source and render hashes and opaque IDs, without server paths.
 

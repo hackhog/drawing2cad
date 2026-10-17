@@ -20,8 +20,9 @@ export interface WebApi {
   getRun(runId: string): Promise<Run>;
   /** Change parameters through the shared revision API. A wrong expected revision fails with REVISION_CONFLICT. */
   changeParameters(runId: string, expectedRevision: number, changes: ParameterChange[]): Promise<Run>;
-  listNotes(runId: string): Promise<RunNote[]>;
-  addNote(runId: string, expectedRevision: number, text: string): Promise<RunNote>;
+  getNote(runId: string): Promise<RunNote>;
+  /** Replace the run note. A wrong expected revision fails with REVISION_CONFLICT. */
+  saveNote(runId: string, expectedRevision: number, text: string): Promise<RunNote>;
   /** Diagnostic files of a run, for inspection in a browser tab. */
   listRunFiles(runId: string): Promise<RunFiles>;
   /** Bounded artifact content by opaque ID. */

@@ -10,7 +10,7 @@ export const keys = {
   analysis: (id: string) => ["analysis", id] as const,
   runs: (sourceId: string) => ["runs", { sourceId }] as const,
   run: (id: string) => ["run", id] as const,
-  notes: (runId: string) => ["notes", runId] as const,
+  note: (runId: string) => ["note", runId] as const,
   runFiles: (runId: string) => ["runFiles", runId] as const,
 };
 
@@ -42,8 +42,8 @@ export const runQuery = (api: WebApi, id: string) =>
     refetchInterval: (q) => (q.state.data && isActive(q.state.data) ? POLL_MS : false),
   });
 
-export const notesQuery = (api: WebApi, runId: string) =>
-  queryOptions({ queryKey: keys.notes(runId), queryFn: () => api.listNotes(runId) });
+export const noteQuery = (api: WebApi, runId: string) =>
+  queryOptions({ queryKey: keys.note(runId), queryFn: () => api.getNote(runId) });
 
 // Loaded on request; the trace grows while the run is active, so each opening reads the current list.
 export const runFilesQuery = (api: WebApi, runId: string) =>

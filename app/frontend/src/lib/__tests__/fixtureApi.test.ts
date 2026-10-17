@@ -162,12 +162,13 @@ describe("concurrent reads", () => {
 });
 
 describe("notes", () => {
-  it("stores revisioned notes and rejects a stale revision", async () => {
+  it("stores a revisioned note and rejects a stale revision", async () => {
     const { api, run } = await finishedRun();
-    const first = await api.addNote(run.run_id, 0, "Radius mit Konstruktion klären");
+    expect(await api.getNote(run.run_id)).toEqual({ revision: 0, text: "" });
+    const first = await api.saveNote(run.run_id, 0, "Radius mit Konstruktion klären");
     expect(first.revision).toBe(1);
-    expect((await failureOf(api.addNote(run.run_id, 0, "zweite")))?.code).toBe("REVISION_CONFLICT");
-    expect(await api.listNotes(run.run_id)).toHaveLength(1);
+    expect((await failureOf(api.saveNote(run.run_id, 0, "zweite")))?.code).toBe("REVISION_CONFLICT");
+    expect(await api.getNote(run.run_id)).toEqual(first);
   });
 });
 
