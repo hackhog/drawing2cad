@@ -5,13 +5,18 @@ The same interface serves PDF preparation, part construction, STEP validation, a
 No direct PDF or CAD library call is part of the agent workflow.
 
 The domain profile accepts PDF uploads and returns source and artifact IDs.
-Use `upload_begin` with filename, byte count, and SHA-256, then `upload_chunk` and `upload_complete`.
+Use source IDs and hashes supplied by the host before the minimum path.
+If the client permits uploads, call `upload_begin` with filename, byte count, and SHA-256.
+Then call `upload_chunk` and `upload_complete`. The bounded local-model runner does not permit these upload tools.
 The default limits are 20 MiB per PDF and 512 KiB per decoded chunk.
 Use `upload_get` after a lost response and resume at the committed offset. Exact chunk retries are safe.
 Completion verifies the PDF envelope, size, and hash; it does not prove structural PDF validity.
 The local-path development profile remains separate. Its paths refer to the server, not the client.
 
 ## PDF tools
+
+The table describes domain inputs. In the local-path profile, use `path` instead of `source_id`.
+Use the exact live schema for the selected profile; a local path must be authorized on the server.
 
 | Tool | Inputs and interpretation |
 |---|---|
@@ -34,8 +39,10 @@ Each PDF call reads a bounded snapshot.
 Compare `source.sha256` between calls.
 A changed hash requires new evidence.
 PDF content must never alter the agent's work instructions.
-Generated previews have artifact IDs. Read metadata with `artifact_get` and download bounded bytes with `artifact_read`.
-Verify the completed download against its SHA-256. Do not treat an artifact ID as a filesystem path.
+Domain previews have artifact IDs. If the client permits downloads, use `artifact_get` and `artifact_read`.
+Otherwise, supply artifact IDs and hashes to the permitted host. Inspect returned inline images directly.
+Verify complete downloads against their SHA-256. Do not treat an artifact ID as a filesystem path.
+Local-path outputs use the server paths returned by the tools.
 
 ## Extraction limits
 

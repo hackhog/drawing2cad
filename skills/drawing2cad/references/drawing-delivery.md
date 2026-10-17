@@ -1,6 +1,5 @@
 # Technical drawing delivery
 
-The filename is retained for existing links. A drawing-first order is no longer required.
 Create both the technical drawing and the 3D model for the complete service.
 Either artifact can be created first. Compare their final revisions before delivery.
 
@@ -60,7 +59,8 @@ Passing layout checks cannot prove that the source was interpreted correctly or 
 Record `drawing_review` with the current drawing hash, part revision, construction-source hashes, reviewer, decision, and reason.
 The final accepted review must follow the current model build. Rebuilding the model invalidates an earlier review.
 This is an identified review attestation. Automatic drawing-to-solid equivalence remains `not_tested`.
-STEP release requires the current drawing and its accepted review, in addition to the model validation gates.
+Domain STEP release requires the current drawing and its accepted review, in addition to the model validation gates.
+The local-path metric does not require drawing tools. Its result does not establish complete-service drawing delivery.
 
 A drawing can reveal a model error. Do not change the source requirement to conceal that error.
 A changed design requires a new revision and a recorded reason.

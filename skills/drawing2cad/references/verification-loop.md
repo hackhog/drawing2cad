@@ -2,11 +2,14 @@
 
 Use this loop for reconstruction and model changes through `drawing2cad-mcp`.
 Read the live schemas before the first request and after a server version change.
-Keep model changes in sequence. Assign source and visual review to a separate reviewer.
+Keep model changes in sequence. Use a separate reviewer when available; this is optional for the hackathon metric.
+Otherwise, the acting agent records its identified review attestation.
 
 ## Prepare and validate JSON
 
-Read `part_schema`, `drawing_schema`, and the applicable tool input schemas.
+Read `part_schema` and the applicable tool input schemas.
+For domain drawing delivery, also read `drawing_schema`. The local-path metric skips drawing operations.
+Use only tools that both the server and the client permit.
 Read `pmi_schema` only when the requested profile uses supported PMI.
 Prepare ordinary JSON data with stable identifiers, explicit units, parameter references, and source evidence.
 Use a JSON parser and serializer. Do not use `eval` to decode data.
@@ -14,7 +17,8 @@ Keep executable expressions out of declarative fields. Do not create ad hoc mode
 Keep numeric values finite. Use the closed fields, types, limits, and coordinate rules from the live schema.
 Use the live server contract as the authority, including when a client caches its JSON Schema.
 
-Call `part_validate` for the description and `drawing_validate` for the revision-bound drawing specification.
+Call `part_validate` for the description.
+For domain drawing delivery, call `drawing_validate` for the revision-bound drawing specification.
 These MCP tools apply maintained Pydantic models and additional contract checks.
 Correct the returned defect code and its JSON pointer or identifier, where supplied.
 Retain structured errors and the exact failed request. Do not interpret a union-branch name as an input field.
@@ -34,6 +38,8 @@ Read the resulting revision and description hash before updating the drawing bin
 
 ## Inspect drawing diagnostics
 
+This section applies to domain drawing delivery. It does not add drawing requirements to the local-path metric.
+
 Run `drawing_validate`, then `drawing_render` for the current part revision.
 If drawing validation returns `diagnostic_eligible: true`, rendering can supply a preview of the failed layout.
 Other validation failures require correction before rendering.
@@ -42,7 +48,8 @@ For a rendered layout failure, inspect the layout report and any diagnostic arti
 Read labels and collision pairs from `drawing.report.diagnostics`.
 Select the PDF with role `drawing_diagnostic_preview` and the JSON report with role `drawing_diagnostic_report`.
 The diagnostic PDF is an inspection aid marked **NOT FOR RELEASE**. It is not the accepted technical drawing.
-Use `artifact_read` for diagnostic files and `artifact_preview` for the diagnostic PDF, when available.
+Use `artifact_preview` for the diagnostic PDF, when available.
+If the client permits downloads, use `artifact_read` for diagnostic files. Otherwise, supply their IDs to the permitted host.
 Inspect the actual image as well as the collision records.
 
 Diagnostic label bounds use sheet millimeters from the bottom-left origin, with positive Y upward.
@@ -63,6 +70,7 @@ Keep failed artifacts as evidence. A failed drawing cannot receive an accepted r
 
 ## Review and release
 
+For domain drawing delivery, complete the drawing review below before release. The local-path metric skips this drawing review.
 After a render pass, independently compare the final source, drawing, and measured model.
 Inspect the complete sheet and necessary detail views for legibility, missing features, and unclear assumptions.
 Compare inner and outer boundaries in each view. Duplicate lines do not prove that both boundaries are present.
@@ -71,11 +79,12 @@ Explain uncertainty abbreviations in a visible legend. Keep each marker connecte
 Record `drawing_review` for the exact drawing hash and current model build.
 Repeat affected checks and obtain a new review after a change that invalidates the previous result.
 
-Inspect the candidate STEP and its fresh-worker import results before `export_step`.
+In both profiles, inspect the candidate STEP and its fresh-worker import results before `export_step`.
+AP242 and semantic PMI are optional M3 capabilities for the hackathon metric.
 For AP242, also apply [ap242-adapter.md](ap242-adapter.md) within the verified capability scope.
 Keep external analysis, target-CAD opening, editability, and PMI acceptance as separate results.
-Download the released artifacts and verify their complete hashes.
-Deliver the technical drawing and STEP only with their actual validation and review statuses.
+Use the permitted host for domain downloads; verify complete file hashes. Local-path outputs use returned server paths.
+Deliver only artifacts supported by the selected profile, with their actual validation and review statuses.
 
 ## Preserve evidence and control retries
 

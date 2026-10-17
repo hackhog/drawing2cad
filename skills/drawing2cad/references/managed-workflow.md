@@ -2,6 +2,7 @@
 
 This reference describes the shared domain service and its maintained part tools.
 Use the live schemas for exact argument types, limits, and required fields.
+Select the profile in [SKILL.md](../SKILL.md) first. Use only tools permitted by both the server and the client.
 The installed server can differ from the skill version.
 Use [verification-loop.md](verification-loop.md) for structured validation errors, rendered layout diagnostics, and correction retries.
 
@@ -29,7 +30,7 @@ An unresolved value that prevents a reasonable build remains a blocker.
 
 | Tool | Use |
 |---|---|
-| `part_create` | Supply `run_id`, `description`, and `sources`. Each source has uploaded `source_id`, `sha256`, and `role` (`construction` or `verification`). |
+| `part_create` | Supply `run_id`, `description`, and `sources`. Domain sources use uploaded `source_id`, `sha256`, and `role`. Local sources use authorized `path`, `sha256`, and `role` (`construction` or `verification`). |
 | `part_read` | Supply `run_id`; read the description, revision, results, and budget. This call is recorded. Audit access remains available after the execution budget is reached. |
 | `part_update` | Supply `run_id`, `expected_revision`, and the changed `description`. Prior builds and releases become stale. |
 | `create_base_body` | Add a supported box, cylinder, polygon extrusion, or closed line-and-arc profile extrusion. |
@@ -43,6 +44,7 @@ Read the current revision before a mutation.
 Model edits increment the revision and invalidate prior builds and releases.
 Supply `run_id` and `expected_revision` for each mutation.
 Granular calls also take a typed `feature`.
+The minimum path does not use `build_code`. Use it only when explicitly requested, listed, and permitted by the client.
 `build_code` takes an in-memory `code` string and must assign the resulting build123d shape to `result`.
 The namespace supplies `build123d` and a separate copy of the current `description`.
 Read named parameters from that description. Do not keep a second set of unlinked model values in code.
@@ -61,13 +63,16 @@ These calls cannot enable more construction or release operations.
 Reserve calls for candidate release and report export.
 The agent separately tracks the overall budget, including PDF preparation, discovery, and retries.
 
-Use `job_submit` for long builds, drawing renders, or STEP release. The operation arguments keep their normal revision requirements.
+Jobs are optional for domain clients that permit `job_submit` and `job_get`. Other clients use synchronous calls.
+The bounded local-model runner does not permit job tools.
+The operation arguments keep their normal revision requirements.
 Supply a unique idempotency key for a new request. An exact retry uses the same key; changed arguments require a new key.
 Inspect `job_get` for the terminal state and actual result. A submitted or running job is not a successful operation.
 Queued cancellation prevents execution. A running operation can finish with effects after cancellation is requested.
 After a service restart, queued jobs resume and unfinished active jobs become `interrupted`. Inspect the run before a replacement request.
 The queue has a finite pending-job limit. Do not repeatedly submit when it reports `JOB_QUEUE_FULL`.
-Use `notes_read` and `notes_update` for run notes. Their revision is separate from the part revision.
+If the profile supplies notes tools, use `notes_read` and `notes_update` for run notes.
+Their revision is separate from the part revision.
 
 The description is the editable source for the declarative M1 path.
 Changing a stored number alone does not prove editability.
@@ -106,6 +111,8 @@ They do not prove modeled helical flanks or semantic thread PMI in STEP.
 
 ## Drawing and review
 
+This section applies to the domain profile. The local-path metric skips drawing tools.
+
 Read `drawing_schema` and prepare DrawingSpec 1.0 with the current `part_revision` and `description_sha256` from `part_read`.
 Supply 2D views, line/circle/arc geometry, feature and evidence references, dimensions, notes, and uncertainty markers.
 Drawing scalar references can use a parameter, factor, and offset. Rebind and regenerate after model changes.
@@ -118,7 +125,7 @@ Either drawing or model may be created first. The final accepted review must fol
 Use `drawing_review` with the current drawing hash, part revision, construction-source hashes, reviewer, decision, and reason.
 A model rebuild invalidates a previous drawing review even if the part revision did not change.
 The review is an identified attestation. It does not convert untested automatic drawing-to-solid equivalence into a pass.
-Use [drawing-first.md](drawing-first.md) for the visual review and delivery requirements.
+Use [drawing-delivery.md](drawing-delivery.md) for the visual review and delivery requirements.
 
 ## Validation, export, and reports
 
@@ -136,17 +143,23 @@ Keep a separate inventory that links each printed callout to its geometry check.
 The reviewer must also check features that do not have dimensions, such as a visible web or a drill tip.
 Do not replace a failed local check with a bounding-box check that does not measure the same feature.
 
-Release requires trusted re-import, passing source-dimension checks, complete source-review coverage, and the current accepted drawing review.
+Release requires trusted re-import, passing source-dimension checks, and complete source-review coverage.
+Domain release also requires the current accepted drawing review.
+An identified acting-agent attestation is sufficient for the metric; a separate reviewer is optional when available.
 Record the actual AP214 schema, units, product identity, and geometry.
 A passed re-import does not prove STEP-only feature reconstruction.
 
-Call `part_export_review` for review records, coverage, manifest, and event evidence.
-Use `artifact_get` and `artifact_read` to download the description, drawing, STEP, and reports. Verify each complete file hash.
+Call `part_export_review` with `run_id` and `expected_revision` for review records, coverage, manifest, and event evidence.
+A permitted domain host uses `artifact_get` and `artifact_read` to download outputs and verify each complete file hash.
+The bounded local-model runner returns artifact IDs and hashes to that host; it cannot call these download tools.
+Local-path tools return server output paths.
 Artifacts are immutable snapshots. A later run revision does not replace an earlier artifact ID.
 Keep unexecuted NX, independent conformance, model comparison, and PMI tests as `not_tested`.
 A successful server operation is not a complete metric pass when required external checks are missing.
 
 ## Legacy evidence and STEP tools
+
+This section is optional and outside the minimum path. Use these tools only when the server and client permit them.
 
 The `workflow_*` tools retain a separate legacy evidence profile.
 They are hidden by default; `server.expose_legacy_workflow=true` explicitly enables that development profile.

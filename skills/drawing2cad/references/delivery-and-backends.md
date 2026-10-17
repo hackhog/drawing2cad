@@ -12,7 +12,7 @@ The server owns backend selection, schemas, workers, artifacts, and capability r
 | M2 complete service | Uploads, source and artifact IDs, one application for MCP/API/browser clients, and a dimensioned technical drawing. | The drawing and model can be created in either order. Their final revisions must agree. |
 | M3 AP242 | AP242 construction, supported import adapters, driving parameter changes, and semantic and graphical PMI. | Each claim needs its own test from STEP alone where required. |
 
-AP242 and semantic PMI remain binding final requirements.
+AP242 and semantic PMI are M3 capabilities and are optional for the hackathon metric.
 They do not block delivery of an explicitly limited M1 prototype.
 A passed prototype must not be described as the final AP242 master.
 The initial M3 adapter is documented in [ap242-adapter.md](ap242-adapter.md).
@@ -21,7 +21,8 @@ Its application-specific construction replay does not prove native target-CAD fe
 The M2 domain profile accepts PDF uploads and keeps storage paths internal.
 Clients use source, run, job, and artifact IDs.
 A remote client must not need access to the server filesystem.
-The local-path profile remains for development only.
+The local-path profile supports development and the metric. It does not deliver technical drawings.
+Use uploads, jobs, and downloads only when the client permits those tools.
 Shared services, storage, jobs, notes, and drawing delivery belong to the MCP milestone.
 The web API and React interface are a separate implementation milestone using the same service instance and contracts.
 MCP currently uses one configured principal. Its bearer token does not create separate client identities.
@@ -33,8 +34,7 @@ The adapter validates supplied view geometry, dimensions, evidence, and layout.
 It does not automatically project solids or extract sections. Source accuracy and drawing/model agreement require independent review.
 Raw projections or hand-written SVG do not establish a complete technical drawing.
 
-Use [drawing-first.md](drawing-first.md) for sheet requirements.
-The retained filename is for link compatibility. It does not require drawing-first execution.
+Use [drawing-delivery.md](drawing-delivery.md) for sheet requirements.
 
 ## STEP and target formats
 
@@ -55,7 +55,7 @@ Granular calls and full-description builds must use the same feature representat
 
 The current MCP executes CAD only through its headless build123d worker.
 The FreeCAD proxy has been removed. Historical inline adapter calls are unavailable.
-Retained adapter references document provenance and the origins of maintained readers.
+Historical adapter references are outside the skill package. They document provenance and the origins of maintained readers.
 Their recorded code and hashes must not be rewritten or presented as new test results.
 Do not load or execute them for the current workflow.
 

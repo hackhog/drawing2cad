@@ -12,7 +12,7 @@ Their original observations remain historical evidence. They are not new test re
 
 The later [ADR 0014](0014-headless-build123d-metric-prototype.md) replaces the drawing-first order and selects the M1 CAD backend.
 The extraction observations below remain historical evidence.
-ADR 0014 also removes the FreeCAD proxy. Its tools and configuration described below are no longer available.
+ADR 0014 also removes the FreeCAD proxy. Its former tools and configuration are no longer available.
 
 ## Context
 
@@ -20,7 +20,9 @@ The MCP already exposed the former extractor through `drawing_extract`.
 However, installation required a second package, and the demo called that package directly.
 The two entry points had different path checks, source metadata, and rendering code.
 
-The required output sequence is a dimensioned technical drawing, an editable 3D model, and then STEP AP242.
+The complete service requires a dimensioned technical drawing and a verified 3D model exported as STEP.
+Drawing and model creation can occur in either order; their final revisions must agree.
+AP214 geometry can satisfy the hackathon metric. AP242 and semantic PMI are optional M3 capabilities for that metric.
 Only analysis that supports these outputs is necessary.
 Colored overlay exports and complete JSON-file exports are outside this change.
 
@@ -36,8 +38,8 @@ Colored overlay exports and complete JSON-file exports are outside this change.
 | Full JSON-file export and batch CLI | No export tool | One JSON file per input | Remove the CLI; do not add an export tool |
 | Source identity and permitted roots | Bounded snapshot, SHA-256, resolved path checks | Direct filesystem reads | Use the MCP PDF service for both clients |
 | Analysis isolation and timeout | Worker thread; no analysis timeout | Direct process execution | Use a separate request process with a timeout |
-| FreeCAD tools and MCP transport | FreeCAD proxy, stdio, Streamable HTTP | None | Keep the MCP interface |
-| Drawing authoring and semantic AP242 | Require separate verified CAD adapters | Not supplied | Keep the drawing-first workflow and adapter tests |
+| CAD execution and MCP transport | Former FreeCAD proxy, stdio, Streamable HTTP | None | Keep MCP transport; use the headless backend from ADR 0014 |
+| Drawing authoring and semantic AP242 | Require separate verified CAD adapters | Not supplied | Compare final drawing/model revisions; test optional M3 capabilities separately |
 
 ## Decision
 
@@ -50,7 +52,8 @@ Colored overlay exports and complete JSON-file exports are outside this change.
 7. Keep the analysis regression tests with the MCP tests. Keep their source evidence outside the skill package.
 8. Use `PdfService` from the demo backend API. Do not register a second MCP server.
 
-The MCP still supplies six local tools and dynamically discovered `freecad_*` tools.
+Use `drawing2cad_status` and `cad_capabilities` to discover the current tool scope.
+The current MCP uses the headless build123d worker. It has no FreeCAD proxy or `freecad_*` tool surface.
 It supplies no new overlay or JSON-file export tool.
 The demo retains its browser display and review flags. It does not host the MCP endpoint.
 
@@ -73,8 +76,9 @@ The frame and title block are excluded. Read their scale and manufacturing data 
 Use the existing page and crop tools to examine critical dimensions and all unclear details.
 
 The analysis cannot prove dimension associations, editable CAD construction, semantic PMI, or STEP-only reconstruction.
-Create and review the controlling dimensioned drawing before the 3D build.
-Test each CAD and AP242 capability separately through a verified adapter.
+Create the drawing and model in either order. Compare their final revisions before domain delivery.
+Domain STEP release requires an accepted drawing review after the current model build.
+Test each CAD capability separately. Test AP242 and semantic PMI when that optional M3 profile is requested.
 
 Tests must cover source identity, compact and filtered results, supported samples, rejected transforms, timeout behavior, and process isolation.
 The demo tests must verify that it calls the same PDF service and preserves its browser response.
@@ -85,5 +89,5 @@ Run reports belong in ignored output directories. Do not treat this decision as 
 One package supplies PDF preparation and vector analysis to agents and the demo API.
 Clients retain the existing MCP extraction call and the same transport configuration.
 Each analysis call has process-start overhead. The isolation avoids shared PyMuPDF state between concurrent requests.
-All installations now include PyMuPDF, including deployments that only need native text or FreeCAD tools.
+All installations now include PyMuPDF, including deployments that only need native text or CAD operations.
 No additional capability for headless CAD operation follows from this consolidation.
