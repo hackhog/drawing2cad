@@ -264,9 +264,16 @@ def build_shape(description: dict[str, Any]):
             feature_results.append({"feature_id": feature.id, "type": feature.type, "status": "pass", "volume_before_mm3": before, "volume_after_mm3": after})
         except CadBuildError as error:
             error.feature_id = feature.id
+            error.checks = [*({"check": "feature_execution", "feature_id": item["feature_id"], "status": "pass"}
+                               for item in feature_results),
+                            {"check": "feature_execution", "feature_id": feature.id, "status": "fail"}]
             raise
         except Exception as error:
-            raise CadBuildError("KERNEL_OPERATION", str(error)[:1000], feature.id) from error
+            failure = CadBuildError("KERNEL_OPERATION", str(error)[:1000], feature.id)
+            failure.checks = [*({"check": "feature_execution", "feature_id": item["feature_id"], "status": "pass"}
+                                for item in feature_results),
+                              {"check": "feature_execution", "feature_id": feature.id, "status": "fail"}]
+            raise failure from error
     return shape, feature_results
 
 

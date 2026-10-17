@@ -58,6 +58,10 @@ def test_failed_feature_retains_identifier(runner):
     result = runner.run("build", description=description)
     assert result["error"]["code"] == "HOLE_ENTRY", result
     assert result["error"]["feature_id"] == "outside"
+    assert result["checks"] == [
+        {"check": "feature_execution", "feature_id": "base", "status": "pass"},
+        {"check": "feature_execution", "feature_id": "outside", "status": "fail"},
+    ]
 
 
 def test_worker_cannot_redirect_parent_record(runner):

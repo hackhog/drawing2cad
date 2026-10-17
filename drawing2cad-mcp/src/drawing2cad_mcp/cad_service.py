@@ -386,6 +386,25 @@ class CadService:
         self._sources(state["sources"])
 
     def _build(self, name, arguments):
+        def failed(payload, *, build, validation=None, agreement=None, replay=None, analysis=None,
+                   service_checks=None, fallback_code="BUILD_CHECK_FAILED"):
+            phases = [("build", build), ("validation", validation), ("reconstruction", replay),
+                      ("independent_analysis", analysis)]
+            checks = [{**deepcopy(check), "phase": label} for label, phase in phases
+                      if isinstance(phase, dict) for check in phase.get("checks", [])
+                      if check.get("status") in {"pass", "fail"}]
+            if isinstance(agreement, dict) and agreement.get("status") in {"pass", "fail"}:
+                checks.append({**deepcopy(agreement), "phase": "agreement"})
+            checks.extend(deepcopy(service_checks or []))
+            cause = next((phase["error"] for _, phase in phases if isinstance(phase, dict)
+                          and isinstance(phase.get("error"), dict)), {})
+            payload["error"] = {"code": cause.get("code", fallback_code),
+                                "message": cause.get("message", "The build failed its executed checks."),
+                                "feature_id": cause.get("feature_id")}
+            payload["feature_id"] = payload["error"]["feature_id"]
+            payload["checks"] = checks
+            return payload
+
         def action(state, directory):
             self.check_build(name, arguments, state)
             state["build"], state["release"], state["source_review"] = None, None, None
@@ -393,7 +412,7 @@ class CadService:
                 "export_profile": arguments.get("export_profile", "ap214"), "pmi": arguments.get("pmi")}
             result = self.runner.run("build_code" if name == "build_code" else "build", description=state["description"], **options)
             if result.get("status") != "pass":
-                return {"status": "fail", "build": result, "validation": {"status": "not_tested"}}
+                return failed({"status": "fail", "build": result, "validation": {"status": "not_tested"}}, build=result)
             candidate = self._candidate(result)
             candidate_hash = _sha(candidate.read_bytes())
             imported = self.runner.run("validate", description=state["description"], input_step=candidate)
@@ -418,7 +437,8 @@ class CadService:
             imported["checks"] = [item for item in import_checks if item.get("check") != "fresh_worker_reimport"] + [deepcopy(fresh_check)]
             if imported.get("status") != "pass":
                 state["build"] = {"status": "fail", "description_revision": state["revision"], "description_sha256": state["description_sha256"], "candidate_path": str(candidate), "candidate_sha256": candidate_hash, "build": result, "validation": imported, "feature_replay": "pass" if name == "build_from_description" else "not_tested"}
-                return {"status": "fail", "build": deepcopy(state["build"]), "released": False}
+                return failed({"status": "fail", "build": deepcopy(state["build"]), "released": False},
+                              build=result, validation=imported)
             if imported.get("step", {}).get("sha256") != candidate_hash:
                 raise CadError("VALIDATION_HASH_MISMATCH", "The imported STEP bytes do not match the candidate.")
             if not fresh:
@@ -430,10 +450,20 @@ class CadService:
             status = "pass" if reimport_passed and imported.get("status") == "pass" and agreement["status"] != "fail" else "fail"
             record = {"status": status, "description_revision": state["revision"], "description_sha256": state["description_sha256"], "candidate_path": str(candidate), "candidate_sha256": candidate_hash, "build": result, "validation": imported, "agreement": agreement, "feature_replay": "pass" if name == "build_from_description" else "not_tested"}
             record["export_profile"] = options.get("export_profile", "ap214")
+            service_checks = []
+            fallback_code = "BUILD_CHECK_FAILED"
             if record["export_profile"] == "ap242":
                 schemas = imported.get("step", {}).get("schemas", [])
                 if not any(schema.startswith("AP242_MANAGED_MODEL_BASED_3D_ENGINEERING") for schema in schemas):
-                    raise CadError("AP242_SCHEMA_REQUIRED", "The selected AP242 export must have an AP242 schema header.")
+                    record["status"] = "fail"
+                    state["build"] = record
+                    payload = failed({"status": "fail", "build": deepcopy(record), "released": False},
+                                     build=result, validation=imported, agreement=agreement)
+                    payload["error"] = {"code": "AP242_SCHEMA_REQUIRED",
+                                        "message": "The selected AP242 export must have an AP242 schema header.",
+                                        "feature_id": None}
+                    payload["checks"].append({"check": "ap242_schema_header", "status": "fail", "phase": "validation"})
+                    return payload
                 replay = self.runner.run("reconstruct_step", input_step=candidate)
                 record["step_only_reconstruction"] = replay
                 if _sha(candidate.read_bytes()) != candidate_hash:
@@ -445,6 +475,9 @@ class CadService:
                              and replay_worker and replay_worker not in {build_worker, import_worker})
                 if not replay_ok:
                     record["status"] = status = "fail"
+                    fallback_code = "STEP_RECONSTRUCTION_FAILED"
+                    service_checks.append({"check": "step_only_reconstruction", "status": "fail",
+                                           "phase": "reconstruction"})
                 analysis = self.runner.run("analyze_ap242", input_step=candidate)
                 from .adapters.stepcode_pmi import verify_nominal_pmi
                 nominal = verify_nominal_pmi(analysis, expected=result.get("pmi", {}).get("dimensions", []),
@@ -465,8 +498,17 @@ class CadService:
                                and analysis_worker not in {build_worker, import_worker, replay_worker})
                 if not analysis_ok:
                     record["status"] = status = "fail"
+                    if fallback_code == "BUILD_CHECK_FAILED":
+                        fallback_code = "INDEPENDENT_ANALYSIS_FAILED"
+                    service_checks.append({"check": "independent_analysis_binding", "status": "fail",
+                                           "phase": "independent_analysis"})
             state["build"] = record
-            return {"status": status, "build": deepcopy(record), "released": False}
+            payload = {"status": status, "build": deepcopy(record), "released": False}
+            return (failed(payload, build=result, validation=imported, agreement=agreement,
+                           replay=record.get("step_only_reconstruction"),
+                           analysis=record.get("independent_analysis"), service_checks=service_checks,
+                           fallback_code=fallback_code)
+                    if status == "fail" else payload)
         return self._perform(name, arguments, action)
 
     @staticmethod
