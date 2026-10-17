@@ -70,10 +70,11 @@ A built model without release is a finished run with release state `blocked`. On
 | Variable | Required | Meaning |
 |---|---|---|
 | `DRAWING2CAD_AGENT_BASE_URL` | for runs | OpenAI-compatible base URL, for example `https://<resource>.cognitiveservices.azure.com/openai/v1` |
-| `DRAWING2CAD_AGENT_MODEL` | for runs | Model or deployment name; it must support function tools on Chat Completions |
+| `DRAWING2CAD_AGENT_MODEL` | for runs | Model or deployment name; it must support function tools on the selected API |
+| `DRAWING2CAD_AGENT_API` | no | `chat` (Chat Completions, default) or `responses` (Responses API, for example for `gpt-6.1-sol`) |
 | `DRAWING2CAD_AGENT_API_KEY` | for runs | API key; never in Git |
 | `DRAWING2CAD_AGENT_API_KEY_HEADER` | no | `Authorization` (Bearer, default) or `api-key` (Azure AI Foundry) |
-| `DRAWING2CAD_AGENT_REASONING_EFFORT` | no | Sent as `reasoning_effort` |
+| `DRAWING2CAD_AGENT_REASONING_EFFORT` | no | Sent as `reasoning_effort` (Chat Completions) or `reasoning.effort` (Responses API) |
 | `DRAWING2CAD_DATA_DIR` | no | Data directory; `/data` in the container |
 | `DRAWING2CAD_SKILL_PATH` | no | Skill file for the agent; the image sets it |
 | `DRAWING2CAD_MCP_URL` | no | MCP endpoint for agent runs; default `http://127.0.0.1:$PORT/mcp` |

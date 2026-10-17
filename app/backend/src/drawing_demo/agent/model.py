@@ -1,8 +1,10 @@
-"""Model call for OpenAI-compatible Chat Completions endpoints (ADR 0018).
+"""Model call for OpenAI-compatible Chat Completions and Responses endpoints (ADR 0018).
 
 `drawing2cad_mcp.local_model_client.drive` exchanges messages in the Ollama chat format.
-This module translates them to Chat Completions and back, so that Azure AI Foundry, OpenRouter,
-OpenAI, or the OpenAI endpoint of Ollama can supply the model. It reads no files and runs no tools.
+This module translates them to Chat Completions or to the Responses API and back, so that Azure AI Foundry,
+OpenRouter, OpenAI, or the OpenAI endpoint of Ollama can supply the model. Some models (for example, gpt-6.1-sol
+on Azure AI Foundry) accept function tools with reasoning only through the Responses API.
+It reads no files and runs no tools.
 """
 
 from __future__ import annotations
@@ -47,6 +49,8 @@ class ModelSettings:
     api_key_header: str = "Authorization"
     # Some models reject function tools with reasoning on Chat Completions (for example, gpt-6.1-sol needs "none").
     reasoning_effort: str | None = None
+    # "chat" (Chat Completions) or "responses" (Responses API).
+    api: str = "chat"
 
     @classmethod
     def from_env(cls) -> "ModelSettings | None":
@@ -58,11 +62,28 @@ class ModelSettings:
             return None
         header = os.environ.get("DRAWING2CAD_AGENT_API_KEY_HEADER", "Authorization").strip() or "Authorization"
         effort = os.environ.get("DRAWING2CAD_AGENT_REASONING_EFFORT", "").strip() or None
-        return cls(base_url.rstrip("/"), model, api_key, header, effort)
+        api = os.environ.get("DRAWING2CAD_AGENT_API", "chat").strip() or "chat"
+        if api not in ("chat", "responses"):
+            raise ValueError("DRAWING2CAD_AGENT_API must be chat or responses.")
+        return cls(base_url.rstrip("/"), model, api_key, header, effort, api)
 
     def headers(self) -> dict[str, str]:
         value = f"Bearer {self.api_key}" if self.api_key_header.lower() == "authorization" else self.api_key
         return {"Content-Type": "application/json", self.api_key_header: value}
+
+
+def _token_limits(messages: list[dict[str, Any]]) -> tuple[set[int], set[int]]:
+    """Positions of the image messages and tool results that are sent complete."""
+    image_positions = [i for i, m in enumerate(messages) if m.get("images")]
+    tool_positions = [i for i, m in enumerate(messages) if m["role"] == "tool"]
+    return set(image_positions[-KEPT_IMAGE_MESSAGES:]), set(tool_positions[-KEPT_TOOL_RESULTS:])
+
+
+def _tool_content(message: dict[str, Any], complete: bool) -> str:
+    content = message.get("content", "")
+    if not complete and message.get("tool_name") not in COMPLETE_TOOL_RESULTS and len(content) > SHORTENED_TOOL_CHARS:
+        return f"{content[:SHORTENED_TOOL_CHARS]} {SHORTENED_TOOL_NOTE}"
+    return content
 
 
 def to_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -73,10 +94,7 @@ def to_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     result: list[dict[str, Any]] = []
     open_ids: list[str] = []
-    image_positions = [i for i, m in enumerate(messages) if m.get("images")]
-    kept = set(image_positions[-KEPT_IMAGE_MESSAGES:])
-    tool_positions = [i for i, m in enumerate(messages) if m["role"] == "tool"]
-    complete_tools = set(tool_positions[-KEPT_TOOL_RESULTS:])
+    kept, complete_tools = _token_limits(messages)
     for position, message in enumerate(messages):
         role = message["role"]
         if role == "assistant":
@@ -92,11 +110,8 @@ def to_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif role == "tool":
             if not open_ids:
                 raise ValueError("A tool result has no open tool call.")
-            content = message.get("content", "")
-            if (position not in complete_tools and message.get("tool_name") not in COMPLETE_TOOL_RESULTS
-                    and len(content) > SHORTENED_TOOL_CHARS):
-                content = f"{content[:SHORTENED_TOOL_CHARS]} {SHORTENED_TOOL_NOTE}"
-            result.append({"role": "tool", "tool_call_id": open_ids.pop(0), "content": content})
+            result.append({"role": "tool", "tool_call_id": open_ids.pop(0),
+                           "content": _tool_content(message, position in complete_tools)})
         elif message.get("images") and position not in kept:
             result.append({"role": role, "content": f"{message.get('content', '')} {OMITTED_IMAGE_NOTE}"})
         elif message.get("images"):
@@ -106,6 +121,76 @@ def to_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         else:
             result.append({"role": role, "content": message.get("content", "")})
     return result
+
+
+def to_responses(messages: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
+    """Translate Ollama-style messages to Responses API instructions and input items.
+
+    The system message becomes the instructions. Tool calls and results become function_call and
+    function_call_output items; results take the open call IDs in request order, as in `to_openai`.
+    Requests are stateless (store=false); reasoning items of earlier turns are not sent again.
+    """
+    instructions: str | None = None
+    items: list[dict[str, Any]] = []
+    open_ids: list[str] = []
+    kept, complete_tools = _token_limits(messages)
+    for position, message in enumerate(messages):
+        role = message["role"]
+        if role == "system" and instructions is None:
+            instructions = message.get("content", "")
+        elif role == "assistant":
+            if message.get("content"):
+                items.append({"role": "assistant", "content": message["content"]})
+            calls = message.get("tool_calls") or []
+            open_ids = [call["id"] for call in calls]
+            items += [{"type": "function_call", "call_id": call["id"], "name": call["function"]["name"],
+                       "arguments": _arguments_text(call["function"].get("arguments"))} for call in calls]
+        elif role == "tool":
+            if not open_ids:
+                raise ValueError("A tool result has no open tool call.")
+            items.append({"type": "function_call_output", "call_id": open_ids.pop(0),
+                          "output": _tool_content(message, position in complete_tools)})
+        elif message.get("images") and position not in kept:
+            items.append({"role": role, "content": f"{message.get('content', '')} {OMITTED_IMAGE_NOTE}"})
+        elif message.get("images"):
+            parts: list[dict[str, Any]] = [{"type": "input_text", "text": message.get("content", "")}]
+            parts += [{"type": "input_image", "image_url": "data:image/png;base64," + image} for image in message["images"]]
+            items.append({"role": role, "content": parts})
+        else:
+            items.append({"role": role, "content": message.get("content", "")})
+    return instructions, items
+
+
+def responses_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Function tools in the Responses format. The MCP schemas are not written for strict validation."""
+    return [{"type": "function", "name": tool["function"]["name"], "description": tool["function"].get("description", ""),
+             "parameters": tool["function"].get("parameters", {}), "strict": False} for tool in tools]
+
+
+def _parsed_arguments(text: str) -> Any:
+    try:
+        return json.loads(text) if text else {}
+    except ValueError:
+        # Keep invalid JSON visible; drive() rejects non-object arguments with a tool error.
+        return text
+
+
+def from_responses(body: dict[str, Any]) -> dict[str, Any]:
+    """Translate a Responses API result to the Ollama response shape that `drive` reads."""
+    output = body.get("output")
+    if not isinstance(output, list):
+        raise ValueError("The model returned no output.")
+    texts = [part.get("text", "") for item in output if item.get("type") == "message"
+             for part in item.get("content") or [] if part.get("type") == "output_text"]
+    calls = [{"id": item["call_id"], "function": {"name": item["name"], "arguments": _parsed_arguments(item.get("arguments", ""))}}
+             for item in output if item.get("type") == "function_call"]
+    usage = body.get("usage") or {}
+    return {
+        "message": {"role": "assistant", "content": "".join(texts), **({"tool_calls": calls} if calls else {})},
+        "done_reason": (body.get("incomplete_details") or {}).get("reason") or body.get("status"),
+        "prompt_eval_count": usage.get("input_tokens"),
+        "eval_count": usage.get("output_tokens"),
+    }
 
 
 def _arguments_text(arguments: Any) -> str:
@@ -120,12 +205,7 @@ def from_openai(body: dict[str, Any]) -> dict[str, Any]:
     message = choices[0]["message"]
     calls = []
     for call in message.get("tool_calls") or []:
-        text = call.get("function", {}).get("arguments", "{}")
-        try:
-            arguments: Any = json.loads(text) if text else {}
-        except ValueError:
-            # Keep invalid JSON visible; drive() rejects non-object arguments with a tool error.
-            arguments = text
+        arguments = _parsed_arguments(call.get("function", {}).get("arguments", "{}"))
         calls.append({"id": call["id"], "function": {"name": call["function"]["name"], "arguments": arguments}})
     usage = body.get("usage") or {}
     response: dict[str, Any] = {
@@ -149,10 +229,21 @@ def make_model_call(settings: ModelSettings):
     """Return a `model_call(plan, payload, timeout)` function for `drive()`."""
 
     def model_call(plan: dict[str, Any], payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-        body = {"model": settings.model, "messages": to_openai(payload["messages"]), "tools": payload["tools"],
-                **plan.get("options", {})}
-        if settings.reasoning_effort:
-            body["reasoning_effort"] = settings.reasoning_effort
+        if settings.api == "responses":
+            instructions, items = to_responses(payload["messages"])
+            path, parse = "/responses", from_responses
+            body: dict[str, Any] = {"model": settings.model, "input": items, "tools": responses_tools(payload["tools"]),
+                                    "store": False, **plan.get("options", {})}
+            if instructions is not None:
+                body["instructions"] = instructions
+            if settings.reasoning_effort:
+                body["reasoning"] = {"effort": settings.reasoning_effort}
+        else:
+            path, parse = "/chat/completions", from_openai
+            body = {"model": settings.model, "messages": to_openai(payload["messages"]), "tools": payload["tools"],
+                    **plan.get("options", {})}
+            if settings.reasoning_effort:
+                body["reasoning_effort"] = settings.reasoning_effort
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         deadline = time.monotonic() + timeout
         attempt = rate_limits = 0
@@ -160,7 +251,7 @@ def make_model_call(settings: ModelSettings):
             attempt += 1
             remaining = deadline - time.monotonic()
             try:
-                with urlopen(Request(settings.base_url + "/chat/completions", data, settings.headers()),
+                with urlopen(Request(settings.base_url + path, data, settings.headers()),
                              timeout=max(1.0, min(ATTEMPT_TIMEOUT_SECONDS, remaining))) as response:
                     raw = response.read(MAX_RESPONSE_BYTES + 1)
                 break
@@ -181,6 +272,6 @@ def make_model_call(settings: ModelSettings):
             time.sleep(RETRY_DELAY_SECONDS)
         if len(raw) > MAX_RESPONSE_BYTES:
             raise ValueError("The model response exceeds 8 MiB.")
-        return from_openai(json.loads(raw))
+        return parse(json.loads(raw))
 
     return model_call

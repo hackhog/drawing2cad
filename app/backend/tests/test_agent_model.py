@@ -6,7 +6,9 @@ import json
 import pytest
 
 from drawing_demo.agent import model
-from drawing_demo.agent.model import ModelSettings, from_openai, make_model_call, to_openai
+from drawing_demo.agent.model import (
+    ModelSettings, from_openai, from_responses, make_model_call, responses_tools, to_openai, to_responses,
+)
 
 
 def test_tool_results_take_the_ids_of_their_calls_in_order():
@@ -214,3 +216,75 @@ def test_only_recent_tool_results_and_schemas_stay_complete():
     assert len(tools[1]["content"]) < len(large)
     assert all(m["content"] == large for m in tools[2:])  # The latest results stay complete.
     assert [m["tool_call_id"] for m in tools] == [f"c{i}" for i in range(model.KEPT_TOOL_RESULTS + 2)]
+
+
+def test_responses_input_has_instructions_calls_outputs_and_images():
+    messages = [
+        {"role": "system", "content": "Follow the skill."},
+        {"role": "user", "content": "Reconstruct."},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "function": {"name": "pdf_info", "arguments": {"source_id": "s"}}},
+                                                           {"id": "c2", "function": {"name": "part_schema", "arguments": {}}}]},
+        {"role": "tool", "tool_name": "pdf_info", "content": "{}"},
+        {"role": "tool", "tool_name": "part_schema", "content": "{\"schema\": 1}"},
+        {"role": "user", "content": "Image evidence.", "images": ["AAA"]},
+    ]
+    instructions, items = to_responses(messages)
+    assert instructions == "Follow the skill."
+    assert items[0] == {"role": "user", "content": "Reconstruct."}
+    assert items[1] == {"type": "function_call", "call_id": "c1", "name": "pdf_info", "arguments": json.dumps({"source_id": "s"})}
+    assert [i["call_id"] for i in items[3:5]] == ["c1", "c2"] and items[4]["output"] == "{\"schema\": 1}"
+    assert items[5]["content"][1] == {"type": "input_image", "image_url": "data:image/png;base64,AAA"}
+
+
+def test_responses_tools_are_not_strict():
+    tools = [{"type": "function", "function": {"name": "pdf_info", "description": "Inspect.", "parameters": {"type": "object"}}}]
+    assert responses_tools(tools) == [{"type": "function", "name": "pdf_info", "description": "Inspect.",
+                                       "parameters": {"type": "object"}, "strict": False}]
+
+
+def test_responses_output_becomes_the_drive_message():
+    body = {"status": "completed", "usage": {"input_tokens": 120, "output_tokens": 30}, "output": [
+        {"type": "reasoning", "summary": []},
+        {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Reading the PDF."}]},
+        {"type": "function_call", "call_id": "call_1", "name": "pdf_info", "arguments": "{\"source_id\": \"s\"}"},
+        {"type": "function_call", "call_id": "call_2", "name": "bad", "arguments": "{not json"},
+    ]}
+    result = from_responses(body)
+    assert result["message"]["content"] == "Reading the PDF."
+    assert result["message"]["tool_calls"][0] == {"id": "call_1", "function": {"name": "pdf_info", "arguments": {"source_id": "s"}}}
+    assert result["message"]["tool_calls"][1]["function"]["arguments"] == "{not json"
+    assert result["prompt_eval_count"] == 120 and result["eval_count"] == 30 and result["done_reason"] == "completed"
+    with pytest.raises(ValueError):
+        from_responses({"error": "x"})
+
+
+def test_model_call_posts_responses_with_reasoning(monkeypatch):
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen.update(url=request.full_url, body=json.loads(request.data))
+        return _response({"status": "completed", "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": "ok"}]}]})
+
+    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    settings = ModelSettings("https://example.test/openai/v1", "gpt-6.1-sol", "k", "api-key", "medium", "responses")
+    payload = {"messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "x"}],
+               "tools": [{"type": "function", "function": {"name": "t", "parameters": {}}}]}
+    assert make_model_call(settings)({}, payload, 30)["message"]["content"] == "ok"
+    assert seen["url"] == "https://example.test/openai/v1/responses"
+    body = seen["body"]
+    assert body["instructions"] == "S" and body["input"] == [{"role": "user", "content": "x"}]
+    assert body["reasoning"] == {"effort": "medium"} and body["store"] is False and body["tools"][0]["strict"] is False
+    assert "messages" not in body and "reasoning_effort" not in body
+
+
+def test_settings_select_the_api(monkeypatch):
+    for name, value in (("BASE_URL", "https://example.test/v1"), ("MODEL", "m"), ("API_KEY", "k")):
+        monkeypatch.setenv("DRAWING2CAD_AGENT_" + name, value)
+    monkeypatch.delenv("DRAWING2CAD_AGENT_API", raising=False)
+    assert ModelSettings.from_env().api == "chat"
+    monkeypatch.setenv("DRAWING2CAD_AGENT_API", "responses")
+    assert ModelSettings.from_env().api == "responses"
+    monkeypatch.setenv("DRAWING2CAD_AGENT_API", "completions")
+    with pytest.raises(ValueError, match="chat or responses"):
+        ModelSettings.from_env()
