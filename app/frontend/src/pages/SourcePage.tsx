@@ -207,8 +207,11 @@ function RunsCard({ sourceId }: { sourceId: string }) {
                 <li key={run.run_id}>
                   <Link to="/runs/$runId" params={{ runId: run.run_id }}
                     className={cn("flex items-center gap-2 rounded-md px-1.5 py-2 hover:bg-accent")}>
-                    <span className="flex-1 font-medium text-card-foreground">{run.run_id}</span>
-                    <span className="text-[11px] text-muted-foreground">Rev. {run.part?.revision ?? "–"}</span>
+                    {/* Run IDs are long; the start time identifies a run in this list, the ID stays in the tooltip. */}
+                    <span className="min-w-0 flex-1 truncate font-medium text-card-foreground" title={run.run_id}>
+                      Lauf {time(run.job.started_at)}
+                    </span>
+                    <span className="text-[11px] whitespace-nowrap text-muted-foreground">Rev. {run.part?.revision ?? "–"}</span>
                     <StatusBadge tone={tone}>{label}</StatusBadge>
                     <ChevronRight className="size-3.5 text-muted-foreground" />
                   </Link>
