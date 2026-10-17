@@ -16,14 +16,15 @@ _SHOWN = {"type", "enum", "const", "minimum", "maximum", "exclusiveMinimum", "ex
 _MAX_EXPECTED = 160
 
 
-def pointer(error: ValidationError) -> str:
-    """Return the JSON Pointer of the invalid field. The root is the empty string."""
-    return "".join("/" + str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
+def pointer(error: ValidationError, prefix: str = "") -> str:
+    """Return the JSON Pointer of the invalid field. The root is the empty string.
+    The prefix locates a nested object that was validated separately, for example "/arguments"."""
+    return prefix + "".join("/" + str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
 
 
-def describe(error: ValidationError) -> tuple[str, str]:
+def describe(error: ValidationError, prefix: str = "") -> tuple[str, str]:
     """Return (JSON Pointer, message). The message names the schema rule, never the input value."""
-    target = pointer(error)
+    target = pointer(error, prefix)
     location = target or "the argument root"
     rule = str(error.validator)
     if rule == "required" and isinstance(error.instance, dict):

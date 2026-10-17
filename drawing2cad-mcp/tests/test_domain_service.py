@@ -541,3 +541,12 @@ def test_reads_during_active_operation_return_a_snapshot(domain):
     assert part["read_mode"] == drawing["read_mode"] == "snapshot_during_active_operation"
     assert part["part"]["revision"] == 1 and part["run_id"] == "plate"
     assert "read_mode" not in service.call(CTX, "part_read", {"run_id": "plate"})
+
+
+def test_job_submit_schema_error_points_to_the_nested_argument(domain):
+    service, *_ = domain
+    with pytest.raises(DomainError) as error:
+        service.call(CTX, "job_submit", {"operation": "build_from_description", "idempotency_key": "nested-error",
+                                         "arguments": {"run_id": "/srv/private/secret", "expected_revision": 1}})
+    assert error.value.target == "/arguments/run_id"
+    assert "secret" not in error.value.message

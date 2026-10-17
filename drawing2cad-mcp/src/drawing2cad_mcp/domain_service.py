@@ -183,7 +183,7 @@ class DomainService:
         return value
 
     @staticmethod
-    def _validate(name, arguments):
+    def _validate(name, arguments, prefix=""):
         if name not in DOMAIN_SCHEMAS:
             raise DomainError("UNKNOWN_TOOL", "The domain operation is not supported.")
         try:
@@ -194,7 +194,7 @@ class DomainService:
         except ValidationError as error:
             # The JSON Pointer and the failed schema rule tell the agent which field to correct.
             # The message never repeats the input value, because it can be private.
-            target, message = describe_schema_error(error)
+            target, message = describe_schema_error(error, prefix)
             raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + message,
                               target=target, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
         except (ValueError, TypeError, RecursionError):
@@ -232,7 +232,8 @@ class DomainService:
             return {"items": self.jobs.list(ctx, **args)}
         if name == "job_submit":
             operation, operation_args = args["operation"], args["arguments"]
-            self._validate(operation, operation_args)
+            # The nested arguments are a separate request; the pointer still names the field of job_submit.
+            self._validate(operation, operation_args, "/arguments")
             with self._run_lock(ctx, operation_args["run_id"]) as (cad, directory):
                 self._state(cad, directory, operation_args["expected_revision"])
                 return self.jobs.submit(ctx, operation, operation_args, args["idempotency_key"])
