@@ -1,10 +1,14 @@
-# Reviewmarker-Injektion, Revision 02, Schema 1
+# Review marker injection: Revision 02, Schema 1
 
-Die Eingangsprüfung validiert gezielt mm-Einheit, amb3_-Namespace, eindeutige IDs, Zielkörper, Reviewklassen, Ansichtsgruppen, endliche Anzeige-/Ankerkoordinaten, RGB-Werte und verwendete Text-/Quellhashfelder. Sie behauptet keine vollständige allgemeine JSON-Schemavalidierung. Alle Prüfungen erfolgen vor der Dokumentmutation.
+The input check validates mm units, the amb3_ namespace, unique IDs, target solids, review classes, and view groups. It also examines finite display and anchor coordinates, RGB values, and the text and source-hash fields used here. It does not provide complete general JSON schema validation. All checks occur before document mutation.
 
-Dieser Code ist Dokumentation und wird ausschließlich als Inline-Python über den FreeCAD-MCP ausgeführt. Er ist keine Skriptdatei. `metadata` ist das vollständige Objekt `drawing2cad.review-annotations/1`, aus der namespaced AP242-Eigenschaft `drawing2cad.review_annotations.v1` gelesen. Keine externe JSON-Datei ist beim späteren Import erforderlich.
+This code is documentation. Execute it only as inline Python through the FreeCAD proxy of `drawing2cad-mcp`. It is not a script file.
 
-Die Marker sind Reviewinformationen, keine zusätzlichen Original-Zeichnungs-PMI, keine Fertigungsmaße und keine Produktkörper. Die 31 originalen Zeichnungsangaben bleiben getrennt. Vor Änderungen validiert die Funktion alle Flächenanker und alle logischen Konstruktionsreferenzen. Mehrdeutige oder fehlende Treffer brechen ab; `FaceN` wird ausschließlich als Laufzeitergebnis gespeichert.
+`metadata` is the complete `drawing2cad.review-annotations/1` object read from the namespaced AP242 property `drawing2cad.review_annotations.v1`. No external JSON file is necessary for subsequent import.
+
+Markers contain review information. They are not additional original drawing PMI, manufacturing dimensions, or product solids. The 31 original drawing specifications remain separate.
+
+Before changes, the function validates all face anchors and logical construction references. Missing or ambiguous matches stop processing. `FaceN` is stored only as a runtime result.
 
 ```python
 def amb3_inject_review(doc, root, metadata):
@@ -161,13 +165,20 @@ def amb3_inject_review(doc, root, metadata):
             'body_geometry_changed':False}
 ```
 
-Aufruf: `amb3_inject_review(doc, doc.getObject('CrossBoreCut3'), metadata)`. Die Funktion speichert nicht selbst. Der Aufrufer bestimmt den getrennten Kandidatenpfad und führt erneute Geometrie-/Metadatenprüfungen aus. Für eine Seitenansicht die Gruppe `amb3_side` einschalten und `amb3_front` ausblenden. Für die Frontansicht umgekehrt. `amb3_global` enthält die Legende.
+Call `amb3_inject_review(doc, doc.getObject('CrossBoreCut3'), metadata)`. The function does not save the document. The caller sets a separate candidate path and repeats geometry and metadata checks.
 
-Für einen normalen Produkt-STEP-Export dürfen Review-Kanten **nicht** als zusätzliche Bauteile in die zu exportierende Objektliste gelangen. Persistenz entsteht über die deklarierte namespaced Property; die Anwendung rekonstruiert die separaten Reviewgruppen daraus. Das ist eine dokumentierte Anwendungserweiterung, keine Behauptung einer universellen grafischen PMI-Unterstützung in Fremdviewern.
+For a side view, show `amb3_side` and hide `amb3_front`. For a front view, do the reverse. `amb3_global` contains the legend.
 
+For a normal product STEP export, **exclude** review edges from the object list. Do not export them as additional parts. The declared namespaced property provides persistence. The application rebuilds separate review groups from that property.
 
-## Eng begrenzte Korrektur in Revision 02
+This is a documented application extension. It does not claim universal graphical PMI support in external viewers.
 
-Die native `Face.optimalBoundingBox`-Dokumentation wurde am installierten FreeCAD-Objekt geprüft: `optimalBoundingBox([useTriangulation = True, useShapeTolerance = False])`. Revision 02 verwendet ausdrücklich `False, False` auf einer Kopie ohne Triangulation. Bei getrimmten Toroidflächen liefert die normale `BoundBox` gelegentlich unterschiedlich konservative Grenzen trotz gleicher Geometrie. Dieser Darstellungs-/Berechnungsunterschied wird durch die optimale geometrische Box ersetzt; kein numerischer Grenzwert wird gelockert.
+## Specific correction in Revision 02
 
-Alle 44 Ankerreferenzen aus Original und dem frisch aus STEP rekonstruierten Körper wurden gegengeprüft. Nur die Boundingboxwerte der zehn Toroidflächen ändern sich gegenüber Revision 01; die übrigen Felder, Reviewaussagen und Layoutdaten bleiben erhalten. Maximale Original-/Neuaufbau-Abweichung der optimalen Boxen: 4,7255e-11 mm. Negative Tests prüfen weiterhin Ablehnung von verschobenen und mehrdeutigen Ankern. Die alte Revision wird unverändert aufbewahrt.
+The native `Face.optimalBoundingBox` documentation was inspected on the installed FreeCAD object: `optimalBoundingBox([useTriangulation = True, useShapeTolerance = False])`. Revision 02 explicitly uses `False, False` on a copy without triangulation.
+
+For trimmed toroidal faces, normal `BoundBox` sometimes returns different conservative bounds for identical geometry. The optimal geometric box replaces this display or calculation difference. No numeric limit is relaxed.
+
+All 44 anchor references were compared between the original solid and the solid freshly rebuilt from STEP. Only bounding-box values for the ten toroidal faces change from Revision 01. Other fields, review statements, and layout data remain unchanged.
+
+The maximum difference between original and rebuilt optimal boxes was 4,7255e-11 mm. Negative tests still test rejection of displaced and ambiguous anchors. The old revision is retained unchanged.

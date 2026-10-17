@@ -1,0 +1,4 @@
+interface:
+  display_name: "drawing2cad"
+  short_description: "Reproducible CAD and AP242 through MCP"
+  default_prompt: "Use $drawing2cad to verify a dimensioned drawing, build editable CAD from it, and test an AP242 master with PMI."

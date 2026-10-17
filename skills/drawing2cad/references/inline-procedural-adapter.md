@@ -1,14 +1,23 @@
 # Inline AP242 procedural construction adapter
 
-Bounding-box correction verified during the 2026-10-16 history review: compute edge fingerprints from `e.copy(True, False).BoundBox`, without copied triangulation. A previously displayed circle had a mesh-dependent Y maximum of 24.9346711067 instead of the exact 25 mm. This removes display-state dependence; the 1e-6 matching tolerance and bidirectional curve-distance checks remain unchanged.
+The 2026-10-16 history review verified a bounding-box correction. Calculate edge fingerprints from `e.copy(True, False).BoundBox`, without copied triangulation. A previously displayed circle had a mesh-dependent Y maximum of 24.9346711067 instead of the exact 25 mm. The correction removes dependence on the display state. The 1e-6 matching tolerance and curve-distance checks in both directions remain unchanged.
 
-This is documentation containing inline MCP code, not an executable script file. Send the Python blocks to the FreeCAD MCP in an isolated headless FreeCADCmd process via stdin. Never save them as .py files.
+This document contains inline MCP code. It is not an executable script file. Send the Python blocks through the FreeCAD proxy of `drawing2cad-mcp`. Supply them to an isolated headless FreeCADCmd process through standard input. Do not save them as .py files.
 
-Supported subset: axis-aligned rectangular extrusions; full circular extrusions along +Z or +X; refined union, difference and intersection; constant-radius edge blends with exact evaluated base EDGE_CURVE anchors. Only millimetres. The bounded Part21 parser does not use eval. Unknown construction operators, ambiguous edges, unit mismatches or geometry mismatches fail closed. The final product BREP is a verification reference, never a construction placeholder. Standard importers may only display this BREP; the adapter recreates native editable operations. Full EXPRESS validation and interoperability with other CAD adapters are not claimed.
+The supported subset contains:
+
+- Axis-aligned rectangular extrusions.
+- Full circular extrusions along +Z or +X.
+- Refined union, difference, and intersection.
+- Constant-radius edge blends with exact evaluated base EDGE_CURVE anchors.
+
+Only millimetres are supported. The bounded Part21 parser does not use eval. Unknown construction operators, ambiguous edges, unit mismatches, or geometry mismatches stop processing. The final product BREP is a verification reference. Do not use it as a construction placeholder.
+
+A standard importer can show the BREP without editable operations. The adapter rebuilds native editable operations. Full EXPRESS validation and interoperability with other CAD adapters are not claimed.
 
 ## Export
 
-Append after semantic and graphical PMI serialization. Never pass the appended procedural graph through an OCC rewrite because this OCC version does not type the edge-blend/procedural entities. Existing input entity text is preserved exactly. Auxiliary BREP geometry has no separate product root.
+Append the procedural graph after semantic and graphical PMI serialization. Do not pass the appended procedural graph through an OCC rewrite. This OCC version does not type the edge-blend or procedural entities. Existing input entity text is preserved exactly. Auxiliary BREP geometry has no separate product root.
 
 ```python
 import re as sth_p21_re
@@ -467,7 +476,7 @@ def sth_export_constructive(step_path,contract_path,build_path,out_path):
 
 ```
 
-Entry: `sth_export_constructive(step_path, contract_path, build_report_path, output_step_path)`. The initial export uses the approved contract plus exact intermediate BREP topology; the import below requires only the resulting STEP.
+Entry point: `sth_export_constructive(step_path, contract_path, build_report_path, output_step_path)`. The initial export uses the approved contract and exact intermediate BREP topology. The import below requires only the resulting STEP.
 
 ## STEP-only import and verification
 
@@ -1031,18 +1040,49 @@ def sth_verify_replay(step_path,report_path,fcstd_path=None,docname='AP242Replay
 
 ```
 
-Entry: `sth_rebuild_step(step_path, fcstd_path=None)` returns document, final feature, feature map, proof report and decoded neutral operations. `sth_verify_replay` is the Maschinenteil-specific validation: it also edits the first cross-bore radius and the front fillet radius, then restores each. Run it in two separate new FreeCADCmd processes.
+Entry point: `sth_rebuild_step(step_path, fcstd_path=None)`. It returns the document, final feature, feature map, proof report, and decoded neutral operations.
 
-Preflight 2026-10-16: 53 native editable operations, four native fillets/24 selected edges, one valid solid. Volume 68474.48859372552 mm3; reconstruction symmetric difference 0. Radius 1.25 to 1.0 changes volume by 53.01437599075143 mm3; expected 53.01437602932776. HubFrontR2 radius 2.0 to 1.8 is valid and changes volume. Both restores have symmetric difference 0. Final PMI-master replay reports are separate artifacts.
+`sth_verify_replay` is specific to Maschinenteil validation. It also changes the first cross-bore radius and the front fillet radius, then restores each. Run it in two separate new FreeCADCmd processes.
+
+The 2026-10-16 preflight found 53 native editable operations, four native fillets with 24 selected edges, and one valid solid. Volume was 68474.48859372552 mm3. Reconstruction symmetric difference was 0.
+
+A radius change from 1.25 to 1.0 changed volume by 53.01437599075143 mm3. The expected change was 53.01437602932776. Changing HubFrontR2 radius from 2.0 to 1.8 produced valid geometry and changed volume. Both restores had symmetric difference 0. Final PMI-master replay reports are separate artifacts.
 
 ## Additional edit-to-STEP test
 
-A separate fresh process decoded the preflight STEP only, edited CrossBoreTool1 Radius from 1.25 to 1.0, extracted all 53 native parameters and exact fillet edge topology from that reconstructed document, and exported a new constructive AP242. A further new process imported only that edited STEP: 53 native operations, volume 68527.50296971627 mm3, symmetric difference 0, changed native radius 1.0. No source FCStd or source contract was used. See construction_probe/edit_roundtrip/roundtrip_export_report.json and roundtrip_fresh_import_report.json. This proves geometry and construction authoring for the tested subset; it does not claim automatic PMI updating after edits.
+A separate fresh process decoded only the preflight STEP. It changed CrossBoreTool1 Radius from 1.25 to 1.0. It extracted all 53 native parameters and exact fillet edge topology from the reconstructed document. Then it exported a new constructive AP242.
+
+A further new process imported only that edited STEP. It produced 53 native operations, volume 68527.50296971627 mm3, symmetric difference 0, and changed native radius 1.0. No source FCStd or source contract was used.
+
+See construction_probe/edit_roundtrip/roundtrip_export_report.json and roundtrip_fresh_import_report.json. This verifies geometry and construction authoring for the tested subset. It does not verify automatic PMI updates after edits.
 
 ## Reuse boundary
 
-The export/import functions implement only the stated supported entity subset. The verification function sth_verify_replay and the sample part names are specific to Maschinenteil: do not reuse its numerical test oracle for another drawing. Derive new checks from that approved source. The adapter restores explicit operations and nominal parameters; it does not claim recovery of undeclared design constraints, universal topological naming under arbitrary edits, full EXPRESS validation, or tested adapters for other CAD systems.
+The export and import functions implement only the stated entity subset. The verification function sth_verify_replay and sample part names are specific to Maschinenteil. Do not reuse its numeric test oracle for another drawing. Derive new checks from that approved source.
+
+The adapter restores explicit operations and nominal parameters. It does not claim:
+
+- Recovery of undeclared design constraints.
+- Universal topological naming under arbitrary edits.
+- Full EXPRESS validation.
+- Tested adapters for other CAD systems.
 
 ## Final revision04 verification
 
-Final master Maschinenteil_AP242_Master.step SHA256 f274ad0508606801171c1d30e67203be693711960ef13b8a5b1d1b4ee12a40fe. Two independent new FreeCADCmd processes (GuiUp=0) read only this STEP and passed: 53 native editable operations, four fillets with 24 exact selected edge references, one product transfer root and one valid solid; final symmetric difference 0 in each run. Both radius-edit-and-restore tests passed in both runs. Operation graph SHA256 5494395cd7874deb10d8ddda788f1922f5bca4af56d0f2d44b50b4edbdb47326. Frozen contract04 SHA256 839f88e17b19721062b37af50882caed8b1ca9a2da343f69371d4eb4be487c01. Reports: Maschinenteil_STEP_Replay_1_Pruefung.json, Maschinenteil_STEP_Replay_2_Pruefung.json, Maschinenteil_AP242_Konstruktion_Gesamtpruefung.json.
+Final master: Maschinenteil_AP242_Master.step.
+SHA256: f274ad0508606801171c1d30e67203be693711960ef13b8a5b1d1b4ee12a40fe.
+
+Two independent new FreeCADCmd processes (GuiUp=0) read only this STEP and passed. Each run found:
+
+- 53 native editable operations.
+- Four fillets with 24 exact selected edge references.
+- One product transfer root.
+- One valid solid.
+- Final symmetric difference 0.
+
+Both radius edit and restore tests passed in both runs.
+
+Operation graph SHA256: 5494395cd7874deb10d8ddda788f1922f5bca4af56d0f2d44b50b4edbdb47326.
+Frozen contract04 SHA256: 839f88e17b19721062b37af50882caed8b1ca9a2da343f69371d4eb4be487c01.
+
+Reports: Maschinenteil_STEP_Replay_1_Pruefung.json, Maschinenteil_STEP_Replay_2_Pruefung.json, Maschinenteil_AP242_Konstruktion_Gesamtpruefung.json.

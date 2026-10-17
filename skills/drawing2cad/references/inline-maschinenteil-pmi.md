@@ -1,26 +1,30 @@
-# Maschinenteil: getesteter Inline-PMI-Export
+# Maschinenteil: tested inline PMI export
 
-Dieser Nachweis gehört ausschließlich zur freigegebenen Zeichnung `Maschinenteil_dwg.pdf`, SHA-256 `21bdfbfe9adf3d23245759c1a3855465123ef4a60268cc54b9a1474286bf8c36`. Keine Geometrie oder Maßwerte für andere Werkstücke übernehmen. Der Python-Block ist Dokumentation; als String über den FreeCAD-MCP an die Standardeingabe eines verborgenen `FreeCADCmd -c` übergeben. Keine `.py`-, Makro- oder anderen ausführbaren Skriptdateien erzeugen.
+This evidence applies only to the approved drawing `Maschinenteil_dwg.pdf`, SHA-256 `21bdfbfe9adf3d23245759c1a3855465123ef4a60268cc54b9a1474286bf8c36`. Do not reuse its geometry or dimensions for other parts.
 
-## Bestätigtes Ergebnis
+The Python block is documentation. Send it as a string through the FreeCAD proxy of `drawing2cad-mcp`. Supply the string to standard input of a hidden `FreeCADCmd -c` process. Do not create `.py` files, macros, or other executable script files.
 
-Final visuell geprüft gegen Modellvertrag Revision04, SHA-256 `839f88e17b19721062b37af50882caed8b1ca9a2da343f69371d4eb4be487c01`. PMI-Kandidat vor Ergänzung des Konstruktionsbaums: SHA-256 `2fbbd17f39d0be9f1c48afc78d129a82d1a08185edc3f2003af4063ae0874b8c`. Der Code lädt die aktuelle Vertragsdatei; die Hashes dokumentieren diesen konkreten geprüften Lauf.
+## Verified result
 
-FreeCAD 1.1.4 / OCCT 7.8.1: 29 numerische PMI, 2 geometrisch verknüpfte Fertigungseigenschaften und 31 tatsächlich im STEP enthaltene Tessellierungs-Präsentationen. XCAF-Neuimport bestätigt alle 29 Werte und Präsentationen. Geometrischer symmetrischer Differenzkörper zum nativen Modell hat Volumen 0 mm³ bei festem Grenzwert 1e-5 mm³. Die getrennt ermittelte Volumenintegration weicht um -0.0005555709 mm³ ab; daraus nicht auf einen Geometrieunterschied schließen und nicht den eingefrorenen Geometriegrenzwert nachträglich ändern.
+The final visual check used model contract Revision04, SHA-256 `839f88e17b19721062b37af50882caed8b1ca9a2da343f69371d4eb4be487c01`. The PMI candidate before construction-tree addition had SHA-256 `2fbbd17f39d0be9f1c48afc78d129a82d1a08185edc3f2003af4063ae0874b8c`. The code loads the current contract file. These hashes identify the specific verified run.
 
-M10 ist eine über `PROPERTY_DEFINITION_REPRESENTATION` mit realer Zylinderfläche verbundene semantische Gewindebezeichnung. Es ist kein vollständig typisiertes Gewindefeature; Steigung und Toleranzklasse sind unbekannt. Der allgemeine R1-Hinweis enthält zusätzlich ein typisiertes Längenmaß 1 mm und ist mit allen modellierten R1-Flächen verbunden. Nutzerannahmen stehen separat unter `metadata_id`, originale Zeichnungs-PMI unter `source_id`.
+FreeCAD 1.1.4 / OCCT 7.8.1 produced 29 numeric PMI, 2 manufacturing properties linked to geometry, and 31 tessellated presentations. All 31 presentations are in the STEP file. A fresh XCAF import verified all 29 values and the presentations.
 
-## Relevante Implementierungsdetails
+The symmetric-difference solid between exported geometry and the native model has volume 0 mm³. The fixed limit is 1e-5 mm³. A separate volume integration differs by -0.0005555709 mm³. Do not interpret this integration difference as a geometry difference. Do not change the frozen geometry limit after the test.
 
-- `STEPCAFControl_Writer.Write` liefert in dieser PythonOCC-Version `bool`; nicht mit `IFSelect_RetDone` vergleichen. `ReadFile` liefert weiterhin diesen Status-Enum.
-- XCAF `DimensionPresentation` ohne grafische Shape erzeugt hier nur reale ShapeAspects/GISUs, keine numerische Dimension. Diese dienen anschließend als Ziele der zwei Manufacturing Properties und der Annahmen. Sie werden nicht als zusätzliche Zeichnungsmaße gezählt.
-- Die DraughtingModel-, AnnotationPlane-, Callout- und Occurrence-Entitäten für manuell gebaute Properties ausdrücklich per `AddWithRefs` aufnehmen. Nur die Assoziation hinzuzufügen kann einen unbekannten Representation-Verweis und fehlende Ebenen erzeugen.
-- In dieser Bindung lieferte die generische `IsKind(get_type_descriptor())`-Suche ungeeignete Treffer; für ShapeAspect-Unterarten deren exakten `DynamicType().Name()` auswählen und mit dem jeweiligen konkreten Klassentyp downcasten.
-- Lochkreis und Winkel verwenden aus realen Lochachsen abgeleitete Circle-/Line-Entitäten mit `SHAPE_ASPECT_DERIVING_RELATIONSHIP`, keine erfundenen materiellen Zylinderflächen.
-- Der Export schreibt `Maschinenteil_PMI_Spezifikation.json`: vollständige Flächensignaturen, Bezugslisten, abgeleitete Referenzpunkte/-geometrie, Ebenen, Textanker, Bemaßungslayout und grafische Polylinien. Der übergeordnete Modellvertrag übernimmt diese Spezifikation vor dem endgültigen Hash-Freeze.
-- Sichtbarkeit durch unabhängigen STEP-Parser prüfen: alle 31 DMIA müssen die jeweils richtige Semantik, benannte Callouts, AnnotationPlane und TessellatedAnnotationOccurrence verbinden. Native FreeCAD-Ansicht aus diesen tatsächlichen STEP-Polylinien erzeugen.
+M10 is a semantic thread designation linked to a real cylindrical face through `PROPERTY_DEFINITION_REPRESENTATION`. It is not a fully typed thread feature. Pitch and tolerance class are unknown. The general R1 note also contains a typed length dimension of 1 mm. It is linked to all modeled R1 faces. User assumptions use `metadata_id`. Original drawing PMI use `source_id`.
 
-## Inline-Code
+## Implementation details
+
+- In this PythonOCC version, `STEPCAFControl_Writer.Write` returns `bool`. Do not compare it with `IFSelect_RetDone`. `ReadFile` still returns that status enumeration.
+- Without a graphical shape, XCAF `DimensionPresentation` creates real ShapeAspects/GISUs here, but no numeric dimension. These become targets for the two manufacturing properties and the assumptions. Do not count them as additional drawing dimensions.
+- For manually constructed properties, explicitly add the DraughtingModel, AnnotationPlane, Callout, and Occurrence entities with `AddWithRefs`. Adding only the association can produce an unknown Representation reference and missing planes.
+- In this binding, the generic `IsKind(get_type_descriptor())` search returned unsuitable matches. Select ShapeAspect subtypes by their exact `DynamicType().Name()`. Then downcast with the applicable concrete class.
+- The bolt circle and angles use Circle and Line entities derived from real hole axes. They use `SHAPE_ASPECT_DERIVING_RELATIONSHIP`, not invented physical cylindrical faces.
+- The export writes `Maschinenteil_PMI_Spezifikation.json`. It contains complete face signatures, reference lists, derived reference points and geometry, planes, text anchors, dimension layout, and graphical polylines. Add this specification to the parent model contract before the final hash freeze.
+- Use an independent STEP parser for the visibility check. Each of the 31 DMIA must connect the correct semantics, named callouts, AnnotationPlane, and TessellatedAnnotationOccurrence. Create the native FreeCAD view from these actual STEP polylines.
+
+## Inline code
 
 ```python
 import os, math, json, hashlib

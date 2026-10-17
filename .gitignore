@@ -8,7 +8,7 @@ tmp/
 
 # Historical generated reports/snapshots stored beside the sources
 /drawing2cad-mcp/VALIDATION.md
-/skills/freecad-ap242/references/tooling/*.json
+/skills/drawing2cad/references/tooling/*.json
 
 # Machine-specific configuration and environment variables
 *.local.toml

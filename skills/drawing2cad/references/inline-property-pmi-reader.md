@@ -1,8 +1,8 @@
-# Inline-Leser: numerische PMI und semantische Texteigenschaften
+# Inline reader: numeric PMI and semantic text properties
 
-Dieser geprüfte Leser ergänzt den nominalen Leser für `PROPERTY_DEFINITION` mit Gewindebezeichnung und allgemeiner positiver Radiusangabe. Er erhält die STEP-Geometriebezüge und alle Präsentationspolylinien. Erwartete IDs, Werte, Typen, Bezüge und Notizbedeutungen zusätzlich gegen den Modellvertrag prüfen. Andere semantische Eigenschaften, Toleranzen und Datumsysteme sind damit nicht allgemein unterstützt.
+This verified reader extends the nominal reader. It supports `PROPERTY_DEFINITION` for a thread designation and a general positive radius specification. It preserves STEP geometry references and all presentation polylines. Also compare expected IDs, values, types, references, and note meanings with the model contract. Other semantic properties, tolerances, and datum systems are not generally supported.
 
-Den Code ausschließlich im Speicher über FreeCAD-MCP ausführen. `read_step_pmi_extended(step_path, expected_count)` liefert `annotations` und separat `metadata_properties`. Der Import benötigt nur STEP, keinen ursprünglichen Modellvertrag oder FCStd. Der Vertrag dient anschließend als unabhängige Sollprüfung.
+Execute the code only in memory through the FreeCAD proxy of `drawing2cad-mcp`. `read_step_pmi_extended(step_path, expected_count)` returns `annotations` and separate `metadata_properties`. The import requires only STEP. It does not require the original model contract or FCStd. Use the contract afterward for an independent check of expected results.
 
 ```python
 def read_step_pmi_extended(path, expected_count=None):
@@ -236,9 +236,11 @@ def read_step_pmi_extended(path, expected_count=None):
     return {'annotations':output,'metadata_properties':extra_metadata}
 ```
 
-## Native Anzeige
+## Native display
 
-Die folgende Anzeige liest keine Zeichnung: Sie übernimmt die vom STEP-Leser gelieferten Polylinien und semantischen Datensätze in das bereits aus STEP rekonstruierte native Dokument. Die Ansichtsgruppen entsprechen dem Maschinenteil-Fall; für andere Modelle die tatsächlichen gespeicherten Ebenennamen verwenden. Nach dem Laden eines headless gespeicherten Dokuments `touch`, `recompute` und `Gui.updateGui` ausführen, damit der Körper vor dem Screenshot tatsächlich gerendert ist. Native PMI sind ein geprüfter Nominalstand, keine automatisch mitgeführten Skizzenzwänge.
+The following display component does not read a drawing. It transfers polylines and semantic records from the STEP reader into the native document already rebuilt from STEP. Its view groups apply to Maschinenteil. For other models, use the actual stored plane names.
+
+After loading a document saved headless, run `touch`, `recompute`, and `Gui.updateGui`. This makes the body render before the screenshot. Native PMI represent a verified nominal state. They are not sketch constraints that update automatically.
 
 ```python
 

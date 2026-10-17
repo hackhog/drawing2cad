@@ -1,14 +1,18 @@
-# Geprüfte Inline-Leser, Adapterbausteine 0.1.0
+# Verified inline readers: adapter components 0.1.0
 
-Diese Codeblöcke sind Dokumentation für Inline-Aufrufe über den FreeCAD-MCP; keine Skriptdateien daraus erzeugen. Funktionen in einem frischen Python-Prozess definieren, Pfad und erwartete Repräsentation/PMI-Anzahl explizit übergeben. Die Blöcke lesen STEP und erzeugen deklarative Daten, keine CAD-Dokumente. Das native Rekonstruieren und dessen geometrische Prüfung folgen weiterhin dem Skill.
+These code blocks document inline calls through the FreeCAD proxy of `drawing2cad-mcp`. Do not create script files from them. Define the functions in a fresh Python process. Supply the path, expected representation, and expected PMI count explicitly.
 
-Die Ausführungsumgebung muss die im Prozessprotokoll genannten OCC-Bindings bereitstellen. Änderungen an den Blöcken versionieren und frisch testen. Die Dokumentation ist ein vollständig ausgeschriebener Ausgangspunkt; nicht auf früher vorhandene MCP-Variablen zurückgreifen.
+The blocks read STEP and create declarative data. They do not create CAD documents. Use the skill for the native rebuild and its geometric verification.
 
-## CSG nach neutralen Datensätzen
+The execution environment must provide the OCC bindings listed in the process log. Version and test changes to these blocks in a fresh process. This documentation provides a complete starting point. Do not use MCP variables left from earlier calls.
 
-Unterstützt genau eine benannte CSG-Repräsentation mit einer Wurzel, boolesche Hüllen und planare Extrusionen aus Polygon oder geschlossenem Kreis. Andere Konstruktionen werden abgewiesen. Körper-Knoten werden in Abhängigkeitsreihenfolge ausgegeben. CSG-Hüllen sind keine zusätzlichen nativen Features. Polygonpunkte sind bereits in Repräsentationskoordinaten; normalisierte Ausgabelängen sind mm.
+## CSG to neutral records
 
-Die Funktion prüft grundlegende Struktur, Einheiten und Profile. Selbstüberschneidung, vollständige EXPRESS-Konformität und Geometriegleichheit sind zusätzliche Prüfaufgaben; diese Funktion allein bestätigt sie nicht.
+The reader supports exactly one named CSG representation with one root. It supports Boolean wrappers and planar extrusions from a polygon or closed circle. It rejects other constructions.
+
+Solid nodes are returned in dependency order. CSG wrappers are not additional native features. Polygon points are already in representation coordinates. Normalized output lengths are in mm.
+
+The function examines basic structure, units, and profiles. Separate checks must examine self-intersection, full EXPRESS conformity, and geometry equivalence. This function alone does not verify them.
 
 ```python
 def read_step_csg(path, representation_name):
@@ -178,19 +182,25 @@ def read_step_csg(path, representation_name):
             "nodes":nodes,"wrapper_to_node":wrappers}
 ```
 
-Aufruf im selben frischen Prozess: `tree = read_step_csg(master_path, representation_name)`. Der Rückgabewert enthält `nodes`, `root`, `units_to_mm`, `source_sha256` und Hüllen-Zuordnung. Native Konstruktion:
+In the same fresh process, call `tree = read_step_csg(master_path, representation_name)`. The result contains `nodes`, `root`, `units_to_mm`, `source_sha256`, and wrapper mappings.
 
-- `cylinder` → editierbarer Zylinder mit Mittelpunkt/Achse, Radius und Tiefe.
-- `polygon_extrusion` → editierbares geschlossenes Profil plus Extrusion. Rechtecke dürfen nach Orthogonalitäts-/Eckpunktprüfung zu nativen Quadern werden.
-- `boolean` → Vereinigung, geordnete Differenz oder Schnittmenge; `base` und `tool` über Knoten-IDs verknüpfen.
-- Attribute `profile_id`, `normal`, `bound_orientation` und `face_same_sense` berücksichtigen und prüfen. Nicht unterstützte Orientierung nicht stillschweigend umdeuten.
-- Native Objekte mit stabiler logischer ID und importierter STEP-Referenz kennzeichnen. Nach dem Aufbau und nach einem Änderungstest neu berechnen.
+Build the native model as follows:
 
-## PMI-Werte, Zuordnungen und Polylinien
+- For `cylinder`, create an editable cylinder with center, axis, radius, and depth.
+- For `polygon_extrusion`, create an editable closed profile and extrusion. For rectangles, examine orthogonality and corner points before using native boxes.
+- For `boolean`, create a union, ordered difference, or intersection. Link `base` and `tool` through node IDs.
+- Apply `profile_id`, `normal`, `bound_orientation`, and `face_same_sense`, and do a check of the result. Do not silently reinterpret an unsupported orientation.
+- Identify native objects with a stable logical ID and the imported STEP reference. Recompute after construction and after an edit test.
 
-Unterstützt die im Referenzfall geprüften nominalen Größen-/Abstands-/Winkelmaße mit `source_id`, jeweils einem zugehörigen Draughting-Callout und tessellierten Polylinien. Keine allgemeine GD&T-/Datum-/Toleranz-Implementierung behaupten. Für einen Vertrag mit solchen Anforderungen ist Erweiterung plus Nachweis erforderlich.
+## PMI values, associations, and polylines
 
-Die lexikalische Auswertung ist nötig, weil einige Tessellierungsarrays im getesteten SWIG-Binding nur als opake Zeiger erscheinen. STEP-Inhalt wird tokenisiert, nie als Programm ausgewertet. Der Adapter ist für das kontrollierte Exportprofil gedacht; nicht jede im Standard erlaubte Darstellung wird unterstützt. Zusätzliche fachliche PMI, die nicht in diesem Profil erscheinen, dürfen beim Abgleich mit dem Modellvertrag nicht verschwinden.
+The reader supports nominal size, distance, and angle dimensions tested in the reference case. Each dimension has `source_id`, one associated draughting callout, and tessellated polylines.
+
+Do not claim a general GD&T, datum, or tolerance implementation. If a contract requires these features, extend the implementation and verify them.
+
+Lexical processing is necessary because some tessellation arrays appear only as opaque pointers in the tested SWIG binding. The adapter tokenizes STEP content. It never evaluates that content as a program.
+
+The adapter is intended for the controlled export profile. It does not support every representation permitted by the standard. During the contract comparison, retain checks for additional PMI outside this profile. Do not silently omit these PMI.
 
 ```python
 def read_step_pmi(path, expected_count=None):
@@ -381,6 +391,8 @@ def read_step_pmi(path, expected_count=None):
     return output
 ```
 
-Aufruf: `pmi = read_step_pmi(master_path, expected_count=contract_pmi_count)`. Anschließend die erwarteten ID-Mengen, Semantik und Zielreferenzen mit dem Vertrag vergleichen, alle Polylinien in ihrer Ebene prüfen und grafisch anzeigen. `expected_count=None` erlaubt variable Anzahl, ersetzt aber keinen Vollständigkeitsnachweis.
+Call `pmi = read_step_pmi(master_path, expected_count=contract_pmi_count)`. Then compare the expected ID sets, semantics, and target references with the contract. Examine all polylines in their planes and display them graphically. `expected_count=None` permits a variable count. It does not replace a completeness check.
 
-Für die native Anzeige jede nichtdegenerierte Punktfolge über `Part.makePolygon` rekonstruieren und je PMI zu einem Compound zusammenfassen; die Metadaten separat mit diesem Anzeigeobjekt verknüpfen. Anzeigen nach Annotationsebene gruppieren. Die autoritative Semantik bleibt im AP242; eine native Text-/Shape-Anzeige allein ist kein semantischer Rückexport.
+For native display, rebuild each nondegenerate point sequence with `Part.makePolygon`. Combine the sequences for each PMI in a compound. Link the metadata separately to this display object. Group displays by annotation plane.
+
+The authoritative semantics remain in AP242. A native text or shape display alone is not a semantic re-export.

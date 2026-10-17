@@ -1,8 +1,14 @@
-# Inline-Container für Adapter- und Reviewdaten
+# Inline container for adapter and review data
 
-Diese Ergänzung speichert Bedienzuordnung und Prüfmarkierungen im selben STEP-Hauptmodell. Die Konstruktion bleibt in den auswertbaren Standard-Operationsentities; die 31 ursprünglichen PMI des Maschinenteil-Falls werden nicht umdefiniert. Die Inhalte der zusätzlichen JSON-Eigenschaften sind **anwendungsspezifische Adapterdaten**, keine standardisierten parametrischen STEP-Constraints oder zusätzlichen Zeichnungsanforderungen. Ein fremder CAD-Adapter muss diese Schemata ausdrücklich implementieren.
+This extension stores user interface mappings and review markers in the same STEP master model. Construction remains in the evaluable standard operation entities. The 31 original PMI in the Maschinenteil case keep their meaning.
 
-Voraussetzung: den Parserblock aus `inline-procedural-adapter.md` inline laden. Folgenden Code ebenfalls nur im Speicher über FreeCAD-MCP ausführen. Er benötigt keine Sessionvariablen, nur die dort definierten P21-Parser-/Serializer-Funktionen. `append_adapter_properties` kopiert einen bestehenden Kandidaten unter einen neuen Namen, bewahrt alle vorhandenen Entities und hängt Standardentities je Eigenschaft an. Vorhandene Eigenschaften gleichen Namens werden nicht still überschrieben. JSON wird bei Bedarf in nummerierte Textstücke von maximal 4000 ASCII-Zeichen zerlegt. Ein einzelner großer JSON-String führte beim geprüften OCCT-7.8.1-Leser zu `input buffer overflow`; zusammengefügte kleine Stücke erhalten dieselben Daten.
+The additional JSON properties contain **application-specific adapter data**. They are not standardized parametric STEP constraints or additional drawing requirements. An external CAD adapter must explicitly implement these schemas.
+
+First, load the parser block from `inline-procedural-adapter.md` inline. Execute the following code only in memory through the FreeCAD proxy of `drawing2cad-mcp`. It requires no session variables. It requires only the P21 parser and serializer functions defined in that block.
+
+`append_adapter_properties` copies an existing candidate to a new name. It preserves all existing entities and appends standard entities for each property. It does not silently overwrite existing properties with the same name.
+
+If necessary, it divides JSON into numbered text segments of up to 4000 ASCII characters. A single large JSON string caused `input buffer overflow` in the tested OCCT-7.8.1 reader. Reassembled smaller segments preserve the same data.
 
 ```python
 def read_adapter_properties(step_path, expected_schemas):
@@ -128,4 +134,9 @@ def append_adapter_properties(source_path, output_path, properties):
             'schemas': schemas, 'exact_metadata_roundtrip': True}
 ```
 
-Die beiden vorgesehenen Schlüssel sind `drawing2cad.editable_ui.v1` mit Schema `drawing2cad.editable-ui/1` und `drawing2cad.review_annotations.v1` mit Schema `drawing2cad.review-annotations/1`. Ihre jeweiligen Renderer müssen Payload, Referenzen, Einheiten, Feature-IDs und Geometrieanker validieren; niemals eingebetteten Code ausführen. Nach einer Änderung werden betroffene PMI und Reviewanker erneut geprüft. Ein Hash oder eine erfolgreiche JSON-Rücklesung allein beweist keine geometrisch richtige Markierung.
+The two specified keys and schemas are:
+
+- `drawing2cad.editable_ui.v1` with schema `drawing2cad.editable-ui/1`.
+- `drawing2cad.review_annotations.v1` with schema `drawing2cad.review-annotations/1`.
+
+Each renderer must validate its payload, references, units, feature IDs, and geometry anchors. Never execute embedded code. After an edit, repeat the checks of affected PMI and review anchors. A hash or successful JSON readback alone does not prove that a marker is geometrically correct.

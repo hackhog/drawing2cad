@@ -1,8 +1,12 @@
-# Editierbare Bedienansicht aus AP242 – Inline-Adapter
+# Editable user interface from AP242: inline adapter
 
-Voraussetzung: Parser-, Geometrie- und Importfunktionen aus `inline-procedural-adapter.md` sowie `read_adapter_properties` aus `inline-review-envelope.md` inline laden. Dann den folgenden Block ebenfalls ausschließlich über FreeCAD-MCP inline ausführen. Keine Skriptdatei erforderlich. Eintritt: `hist3_rebuild_editable(step_path, fcstd_path=None, docname="Maschinenteil_Editierbar")`. Die STEP-Datei ist die einzige Modellquelle; die Bedienmetadaten werden aus ihrer namensgebundenen Property gelesen.
+First, load the parser, geometry, and import functions from `inline-procedural-adapter.md` inline. Also load `read_adapter_properties` from `inline-review-envelope.md`. Then execute the following block inline through the FreeCAD proxy of `drawing2cad-mcp`. No script file is necessary.
 
-Im geprüften Maschinenteil-Fall werden 53 Standardoperationen nativ rekonstruiert; die sechs ausgewählten Rechteckextrusionen werden in je eine vollständig bemaßte Skizze und `Part::Extrusion` abgebildet. Die 56 unabhängigen Maße der Tabelle stammen ausschließlich aus den STEP-Operationsentities. Es werden keine gemeinsamen Lochkreis-, Muster- oder Lagezwänge rekonstruiert oder erfunden. Positionen/Achsen bleiben über Placement editierbar. Dies ist eine rekonstruierte Operationsfolge, nicht die ursprüngliche Benutzerhistorie.
+Entry point: `hist3_rebuild_editable(step_path, fcstd_path=None, docname="Maschinenteil_Editierbar")`. The STEP file is the only model source. The adapter reads user interface metadata from its named property.
+
+In the verified Maschinenteil case, the adapter rebuilds 53 standard operations as native operations. It maps each of six selected rectangular extrusions to a fully dimensioned sketch and `Part::Extrusion`. The 56 independent dimensions in the table come only from STEP operation entities.
+
+The adapter does not rebuild or invent shared bolt-circle, pattern, or position constraints. Positions and axes remain editable through Placement. The result is a reconstructed operation sequence, not the original user history.
 
 ```python
 
@@ -159,4 +163,6 @@ def hist3_rebuild_editable(step_path,fcstd_path=None,docname='AP242NativeRebuild
 
 ```
 
-Minimaler Fingerprint-Patch (beide Definitionen in der prozeduralen Referenz): `bb=e.BoundBox` durch `bb=e.copy(True,False).BoundBox` ersetzen. Die GUI-Triangulation kann BBox-Extrema approximieren; die unvermaschte Kopie nutzt die Geometrie. Toleranz und beidseitige Kantendistanzprüfung bleiben unverändert.
+## Fingerprint correction
+
+In both definitions in the procedural reference, replace `bb=e.BoundBox` with `bb=e.copy(True,False).BoundBox`. GUI triangulation can approximate bounding-box extremes. The copy without a mesh uses the geometry. Keep the tolerance and the distance check in both directions between edges unchanged.

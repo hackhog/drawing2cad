@@ -1,27 +1,50 @@
 # drawing2cad
 
-Werkzeuge und ein reproduzierbarer Agenten-Workflow zur Rekonstruktion von CAD-Modellen aus technischen PDF-Zeichnungen. Der Python-MCP bereitet PDFs auf und bündelt den Zugriff auf den vorhandenen FreeCAD-MCP. Der Skill beschreibt Modellierung, Quellenbelege, offene Maße und die Prüfung von CAD-/STEP-Ergebnissen.
+This project supplies tools and a reproducible agent workflow to reconstruct CAD models from technical PDF drawings.
+The Python MCP prepares PDFs and gives access to the existing FreeCAD MCP through one interface.
+The skill specifies model construction, source evidence, unresolved dimensions, and tests of CAD and STEP outputs.
 
-## Projektstruktur
+## Project structure
 
-| Pfad | Inhalt |
+| Path | Contents |
 |---|---|
-| [drawing2cad-mcp/](drawing2cad-mcp/README.md) | Python-Server, Installation, Konfiguration und Tests |
-| [skills/freecad-ap242/](skills/freecad-ap242/SKILL.md) | Skill, Ablauf, Adapterbeschreibungen und Referenzen |
-| `resources/` | Originalzeichnungen und CAD-Referenzen für die Validierung |
-| `output/` | Lokal erzeugte Modelle, Zeichnungen, Vorschaubilder und Prüfberichte |
-| `tmp/` | Lokale temporäre Arbeitsdaten |
+| [drawing2cad-mcp/](drawing2cad-mcp/README.md) | Python server, installation, configuration, and tests |
+| [skills/drawing2cad/](skills/drawing2cad/SKILL.md) | Skill, workflow, adapter instructions, and references |
+| `resources/` | Original drawings and CAD references for verification |
+| `output/` | Locally generated models, drawings, preview images, and test reports |
+| `tmp/` | Local temporary data |
 
-## Einstieg
+## Start
 
-Die [MCP-Dokumentation](drawing2cad-mcp/README.md#installation) enthält die Einrichtung mit Python, Poppler und FreeCAD sowie die Testbefehle. Die portable Vorlage [drawing2cad-mcp.example.toml](drawing2cad-mcp/drawing2cad-mcp.example.toml) wird als `drawing2cad-mcp.local.toml` kopiert und für den jeweiligen Rechner angepasst.
+Use the [MCP documentation](drawing2cad-mcp/README.md#installation) for Python, Poppler, FreeCAD, and test commands.
+Copy [drawing2cad-mcp.example.toml](drawing2cad-mcp/drawing2cad-mcp.example.toml) to `drawing2cad-mcp.local.toml`.
+Set the configuration values for your computer.
 
-Der MCP liefert PDF-Metadaten, Text, gerenderte Seiten und Detailausschnitte sowie die weitergeleiteten FreeCAD-Werkzeuge. CAD-Historie, semantische PMI und Headless-Exporte müssen für den jeweiligen Adapter und Werkzeugstand separat geprüft werden; ein STEP-Export allein belegt diese Eigenschaften nicht.
+The MCP supplies PDF metadata, text, page images, detail images, and FreeCAD tools.
+Test CAD history, semantic PMI, and exports without a GUI for each adapter and tool version.
+A successful STEP export does not prove these properties.
 
-## Versionierung
+The [work instructions](AGENTS.md) specify this sequence: **dimensioned technical drawing → verified parametric 3D model → STEP**.
+Record the drawing revision, model comparison, and export separately.
+The [skill](skills/drawing2cad/references/drawing-first.md) specifies the tests for new designs, changes, and imports from STEP alone.
 
-Quellcode, Tests, Abhängigkeitsdateien, Beispielkonfigurationen, Skill-Referenzen und Originalressourcen gehören ins Repository. Die 36 vorhandenen Ressourcendateien umfassen zusammen rund 13 MiB und werden ohne Git LFS verwaltet.
+## Documentation
 
-Generierte Modelle, Zeichnungen, Renderings und Laufberichte gehören ausschließlich in die ignorierten Verzeichnisse `output/`, `outputs/`, `out/`, `artifacts/` oder `tmp/`. Diese Ausschlüsse gelten auch in Unterverzeichnissen. Die Dateien bleiben lokal verfügbar und werden nicht versioniert. Umgebungen, Caches, FreeCAD-Backups und rechnerabhängige Konfigurationen sind ebenfalls ignoriert. Fest gepflegte Skill-Referenzen und Regressionseingaben sind Bestandteil des Quellprojekts.
+Write all project documentation in technical English in accordance with ASD-STE100.
+Use the [documentation language guide](skills/drawing2cad/references/documentation-language.md) for project terms and the review procedure.
+Keep original source records and historical test evidence unchanged.
 
-`.gitattributes` vereinheitlicht Textdateien auf LF und erhält die Originalbytes der Ressourcen und STEP-Dateien, damit ihre Quellprüfsummen beim Klonen unverändert bleiben. PDF-, Bild- und native CAD-Dateien werden als binär behandelt. Tatsächliche CAD-Modelle und Zeichnungen außerhalb der generierten Ausgabeordner werden nicht pauschal ausgeschlossen.
+## Version control
+
+Keep source code, tests, dependency files, example configurations, maintained skill references, and original resources in the repository.
+The 36 existing resource files have a total size of approximately 13 MiB. The repository does not use Git LFS.
+
+Put generated models, drawings, images, and run reports in `output/`, `outputs/`, `out/`, `artifacts/`, or `tmp/`.
+Git ignores these directories at all levels. The files stay available locally.
+Git also ignores environments, caches, FreeCAD backups, and machine-specific configurations.
+Maintained skill references and regression inputs are part of the source project.
+
+`.gitattributes` sets LF line endings for text files. It preserves the original bytes of resources and STEP files.
+This preserves source hashes when you clone the repository.
+Git treats PDF, image, and native CAD files as binary files.
+The ignore rules do not exclude all CAD models and drawings outside generated output directories.

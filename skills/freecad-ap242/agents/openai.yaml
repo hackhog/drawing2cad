@@ -1,4 +1,0 @@
-interface:
-  display_name: "FreeCAD AP242"
-  short_description: "CAD über MCP mit reproduzierbarem AP242-Aufbau"
-  default_prompt: "Nutze $freecad-ap242, um aus der angegebenen Zeichnung ein reproduzierbares AP242-Hauptmodell mit editierbaren Operationen und PMI zu erzeugen und zu prüfen."
