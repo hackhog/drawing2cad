@@ -145,12 +145,16 @@ def _dress(shape, feature, part):
     return shape.fillet(size, selected) if feature.type == "fillet" else shape.chamfer(size, None, selected)
 
 
-def export_shape(shape, description: dict[str, Any], output_dir: str | Path) -> dict[str, Any]:
+def export_shape(shape, description: dict[str, Any], output_dir: str | Path, *, export_profile: str = "ap214", pmi: dict | None = None) -> dict[str, Any]:
     """Write a candidate only. A separate import worker must approve release."""
     from build123d import Shape, Unit, export_step
     from OCP.Interface import Interface_Static
     from OCP.STEPControl import STEPControl_Controller
 
+    if export_profile not in {"ap214", "ap242"}:
+        raise CadBuildError("UNSUPPORTED_EXPORT_PROFILE", "Use ap214 or ap242.")
+    if pmi is not None and export_profile != "ap242":
+        raise CadBuildError("UNSUPPORTED_PMI_PROFILE", "Semantic PMI requires the AP242 profile.")
     part = parse_description(description)
     if not isinstance(shape, Shape):
         raise CadBuildError("INVALID_RESULT", "The worker result must be a build123d Shape.")
@@ -163,6 +167,9 @@ def export_shape(shape, description: dict[str, Any], output_dir: str | Path) -> 
     if candidate.exists():
         raise CadBuildError("OUTPUT_EXISTS", "The candidate path already exists; use a fresh job directory.")
     shape.label = part.name
+    if export_profile == "ap242":
+        from .adapters.ap242 import export_ap242_candidate
+        return export_ap242_candidate(shape, description, directory, pmi=pmi)
     STEPControl_Controller.Init_s()
     Interface_Static.SetCVal_s("write.step.schema", "AP214IS")
     export_step(shape, candidate, unit=Unit.MM)
@@ -171,7 +178,7 @@ def export_shape(shape, description: dict[str, Any], output_dir: str | Path) -> 
     return {"status": "fail" if any(item["status"] == "fail" for item in checks) else "pass", "candidate_step": str(candidate), "checks": checks, "measured": measured["measured"], "step": {key: value for key, value in metadata.items() if key != "checks"}, "versions": {"build123d": version("build123d"), "ocp": version("cadquery-ocp-novtk")}}
 
 
-def build(description: dict[str, Any], output_dir: str | Path) -> dict[str, Any]:
+def build_shape(description: dict[str, Any]):
     """Replay the ordered feature list and measure each resulting solid."""
     part = parse_description(description)
     shape = None
@@ -203,7 +210,14 @@ def build(description: dict[str, Any], output_dir: str | Path) -> dict[str, Any]
             raise
         except Exception as error:
             raise CadBuildError("KERNEL_OPERATION", str(error)[:1000], feature.id) from error
-    result = export_shape(shape, description, output_dir)
+    return shape, feature_results
+
+
+def build(description: dict[str, Any], output_dir: str | Path, *, export_profile: str = "ap214", pmi: dict | None = None) -> dict[str, Any]:
+    """Build a candidate with the selected exchange adapter."""
+    shape, feature_results = build_shape(description)
+    part = parse_description(description)
+    result = export_shape(shape, description, output_dir, export_profile=export_profile, pmi=pmi)
     result["feature_results"] = feature_results
     result["coverage"] = {"constructed_features": len(feature_results), "declared_features": len(part.features), "status": "pass", "source_feature_coverage": "not_tested", "reason": "Execution coverage is not proof that all source features were declared."}
     return result

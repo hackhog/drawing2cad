@@ -47,9 +47,13 @@ The service accepts a trusted `AccessContext` from an adapter; no tool argument 
 The existing demo is separate from this service.
 
 The editable source for declarative construction is the versioned JSON part description.
-The prototype exports AP214 geometry and records the actual file schema.
-It does not export editable construction or semantic PMI.
-AP242 construction, adapter edits, and semantic and graphical PMI remain binding M3 requirements.
+The default profile exports AP214 geometry and records the actual file schema.
+The optional `ap242` profile embeds application-specific construction and supports nominal
+diameter and linear PMI. Read `pmi_schema` before use. The remote `step_reconstruct`
+tool accepts an existing STEP artifact ID and hash, then returns diagnostic replay outputs.
+It does not release or change the original run. External STEP upload is not yet supported.
+See [ADR 0017](../docs/adr/0017-ap242-application-construction-and-pmi.md) for the contract,
+validation boundaries, and remaining M3 requirements.
 
 ## Tools
 
@@ -75,6 +79,8 @@ Use the live catalog for exact schemas and limits.
 | `part_create`, `part_read`, `part_update` | Stored description revisions and results. |
 | `create_base_body`, `add_hole`, `add_pocket`, `add_cut`, `add_chamfer`, `add_fillet` | Granular operations on the same feature representation. |
 | `build_from_description` | Build the description, export a candidate, and validate a fresh-worker import. |
+| `pmi_schema` | Read the closed nominal PMI contract for the optional AP242 profile. |
+| `step_reconstruct` | Rebuild an existing STEP artifact in fresh workers. Return separate diagnostic artifacts; do not approve or change the source run. |
 | `build_code` | Optional in-memory execution, requiring configuration and a verified sandbox. |
 | `export_step` | Release a candidate after trusted re-import, dimension checks, and source-review coverage. |
 | `part_export_review` | Review records, coverage, manifest, and event evidence. |

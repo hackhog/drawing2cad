@@ -82,7 +82,7 @@ LOCAL_TOOLS.extend(_tool(name, STEP_DESCRIPTIONS[name], schema,
                    for name, schema in STEP_SCHEMAS.items())
 LOCAL_TOOLS.extend(_tool(name, MEASUREMENT_DESCRIPTIONS[name], schema) for name, schema in MEASUREMENT_SCHEMAS.items())
 LOCAL_TOOLS.extend(_tool(name, CAD_DESCRIPTIONS[name], schema,
-                         read_only=name in {"part_schema", "part_validate"}) for name, schema in CAD_SCHEMAS.items())
+                         read_only=name in {"part_schema", "pmi_schema", "part_validate"}) for name, schema in CAD_SCHEMAS.items())
 LEGACY_TOOLS = [_tool(name, "Deprecated drawing-first evidence profile. " + WORKFLOW_DESCRIPTIONS[name], schema,
                          read_only=name in {"workflow_read_run", "workflow_check_readiness"})
                    for name, schema in WORKFLOW_SCHEMAS.items()]
@@ -119,7 +119,7 @@ class Application:
             self.access_context = AccessContext(settings.domain.principal)
             self.domain_catalog = {
                 name: _tool(name, DOMAIN_DESCRIPTIONS[name], schema,
-                            read_only=name in {"domain_schema", "part_schema", "part_validate", "drawing_schema", "drawing_validate",
+                            read_only=name in {"domain_schema", "part_schema", "pmi_schema", "part_validate", "drawing_schema", "drawing_validate",
                                                "source_get", "source_list", "artifact_get", "artifact_list",
                                                "artifact_read", "job_get", "job_list", "notes_read", "upload_get"})
                 for name, schema in DOMAIN_SCHEMAS.items()
@@ -212,7 +212,9 @@ class Application:
                     "backend": "build123d", "version": kernel_version, "sandbox": runtime,
                     "tools": list(CAD_SCHEMAS), "inline_code_configured": self.settings.cad.allow_build_code,
                     "max_tool_calls": self.settings.cad.max_tool_calls,
-                    "step_schema": "AP214IS", "editable_source": "versioned_json_part_description",
+                    "step_schema": "AP214IS", "default_export_profile": "ap214",
+                    "export_profiles": ["ap214", "ap242"],
+                    "editable_source": "versioned_json_part_description",
                     "metric_acceptance": "Requires source review, independent STEP analysis, and target-CAD test."},
             "measurement_tools": list(MEASUREMENT_SCHEMAS),
             "domain_services": {**{name: {"available": False, "reason": "Verified backend adapter is not implemented."}
@@ -222,6 +224,14 @@ class Application:
                                 **{name: {"available": executable, "backend": "build123d"}
                                    for name in ("parametric_build", "model_change", "headless_cad_validation")}},
         }
+        result["domain_services"]["ap242_export"] = {
+            "available": executable, "writer_profile": "AP242DIS", "backend": "OCCT_XDE",
+            "construction": "application_specific_embedded_description",
+            "native_target_cad_features": "not_tested", "full_express_conformance": "not_tested"}
+        result["domain_services"]["pmi_authoring"] = {
+            "available": executable, "schema_tool": "pmi_schema", "kinds": ["diameter", "linear"],
+            "readback": "OCCT_XDE_same_kernel", "graphical_presentation": "tessellated_strokes",
+            "target_viewer_display": "not_tested", "tolerances_datums_threads": "unsupported"}
         if self.domain is not None:
             try:
                 drafting_available = executable and version("ezdxf") is not None
@@ -235,6 +245,11 @@ class Application:
                 }
             result["domain_services"]["remote_storage"] = {"available": True, "schema": "drawing2cad.domain/1"}
             result["domain_services"]["jobs"] = {"available": True, "cancellation": "cooperative"}
+            result["domain_services"]["step_only_reconstruction"] = {
+                "available": executable, "tool": "step_reconstruct",
+                "input": "owned_existing_artifact_id_and_hash", "external_step_upload": False,
+                "adapter": "drawing2cad-construction/1", "native_target_cad_features": "not_tested",
+                "outputs": "diagnostic_artifacts_not_released"}
             result["step_inspection"]["tools"] = [name for name in STEP_SCHEMAS if name in self.domain_catalog]
             result["step_inspection"]["available"] = bool(result["step_inspection"]["tools"])
             result["workflow"] = {"available": False, "deprecated": True, "tools": []}
@@ -288,7 +303,7 @@ class Application:
             if name in LOCAL_CATALOG:
                 # Run tools validate inside the persistent service so failed
                 # attempts remain in the run budget and event trace.
-                if name not in CAD_SCHEMAS or name in {"part_schema", "part_validate", "cad_worker_probe"}:
+                if name not in CAD_SCHEMAS or name in {"part_schema", "pmi_schema", "part_validate", "cad_worker_probe"}:
                     VALIDATORS[name].validate(arguments)
                 if name == "drawing2cad_status":
                     return json_result(await self.status())

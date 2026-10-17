@@ -16,7 +16,8 @@ def _object(properties, required=None):
 ID = {"type": "string", "pattern": "^[a-z]+_[0-9a-f]{32}$"}
 HASH = {"type": "string", "pattern": "^[0-9a-f]{64}$"}
 RUN = deepcopy(CAD_SCHEMAS["part_read"]["properties"])
-REVISION = deepcopy(CAD_SCHEMAS["build_from_description"]["properties"])
+REVISION = {key: deepcopy(CAD_SCHEMAS["build_from_description"]["properties"][key])
+            for key in ("run_id", "expected_revision")}
 PAGE = {"type": "integer", "minimum": 1}
 DPI = {"type": "integer", "minimum": 36, "maximum": 600}
 LIST = {"limit": {"type": "integer", "minimum": 1, "maximum": 100},
@@ -33,6 +34,11 @@ DOMAIN_DESCRIPTIONS["part_export_review"] = "Export path-free JSON part, run man
 DOMAIN_DESCRIPTIONS["export_step"] = "Release validated STEP after the current drawing passes layout checks and an identified review. Drawing and part revisions must agree. AP242 and semantic PMI remain separate M3 requirements."
 
 _EXTRA = {
+    "step_reconstruct": (_object({"artifact_id": ID, "expected_sha256": HASH,
+        "parameter_changes": {"type": "object", "maxProperties": 100,
+            "propertyNames": {"pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},
+            "additionalProperties": {"type": "number"}}}, ["artifact_id", "expected_sha256"]),
+        "Replay supported embedded AP242 construction from an authorized STEP artifact alone in a fresh restricted worker. Optional named parameter changes must pass existing measurements. Return diagnostic artifacts, not a released part or native target-CAD history."),
     "domain_schema": (_object({}), "Read versioned shared-domain tool inputs, public record schemas, and integration boundaries."),
     "upload_begin": (_object({"filename": {"type": "string", "minLength": 1, "maxLength": 255},
                               "size_bytes": {"type": "integer", "minimum": 1, "maximum": 20 * 1024 * 1024}, "sha256": HASH}),

@@ -43,7 +43,12 @@ See the [MCP guide](drawing2cad-mcp/README.md) for tools, configuration, and tes
 | M2 Web, [#26](https://github.com/hackhog/drawing2cad/issues/26) | HTTP API and React/shadcn/TanStack interface in the same Python application, using the shared services. Pending. |
 | M3 AP242 | STEP-only construction reconstruction, driving parameter edits through adapters, semantic PMI, and graphical PMI. |
 
-The web interface and M3 remain required follow-up work.
+The web interface and complete M3 acceptance remain required follow-up work.
+The initial [AP242 adapter](docs/adr/0017-ap242-application-construction-and-pmi.md)
+adds application-specific construction replay and nominal PMI. External STEP ingestion,
+independent conformance, and target-viewer display remain open in #25.
+CAD-specific export and native feature adapters are separate in
+[#33](https://github.com/hackhog/drawing2cad/issues/33).
 The JSON description is the editable source for the declarative M1 path.
 A free-code fallback also requires its exact recorded inline payload. JSON alone does not replay that construction.
 It does not prove editable construction or semantic PMI inside STEP.
