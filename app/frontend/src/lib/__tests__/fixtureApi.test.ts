@@ -1,5 +1,5 @@
 // Behavior of the simulated service that the UI depends on. These tests do not establish
-// end-to-end acceptance; the real #24 services replace the fixture for that.
+// end-to-end acceptance; the real shared services replace the fixture for that.
 import { describe, expect, it } from "vitest";
 import { ApiFailure } from "../errors";
 import { FixtureApi } from "../fixtureApi";

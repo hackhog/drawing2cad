@@ -4,10 +4,10 @@ Date: 2026-10-17
 
 ## Status
 
-Initial implementation for [issue 25](https://github.com/hackhog/drawing2cad/issues/25).
+Initial implementation for M3.
 This decision does not close M3 acceptance. It extends ADR 0014.
-CAD-specific export and native feature adapters are a separate feature in
-[issue 33](https://github.com/hackhog/drawing2cad/issues/33). They do not block neutral AP242 delivery.
+CAD-specific export and native feature adapters are a separate feature.
+They do not block neutral AP242 delivery.
 
 ## Decision
 
@@ -97,10 +97,10 @@ to verify the generated output; they do not require a public import workflow.
 
 ## Separate CAD-specific feature
 
-Issue 33 owns native NX, SOLIDWORKS, and other target-format derivatives, their
+The CAD-specific feature owns native NX, SOLIDWORKS, and other target-format derivatives, their
 licenses and deployment constraints, and native feature reconstruction tests.
 Run those adapters after neutral STEP validation. Generic import is not a native-history test.
-Issue 25 keeps the neutral drawing2cad adapter, STEP-only parameter regeneration,
+M3 keeps the neutral drawing2cad adapter, STEP-only parameter regeneration,
 and semantic and graphical PMI acceptance.
 
 ## Sources

@@ -26,7 +26,7 @@
     {
       "id": "webui",
       "type": "frontend",
-      "label": "Web UI foundation",
+      "label": "Web UI",
       "sublabel": "React, TanStack, shadcn, nginx",
       "pos": [
         320,
@@ -40,8 +40,8 @@
     {
       "id": "demoapi",
       "type": "backend",
-      "label": "Web adapter: planned",
-      "sublabel": "Routes use shared contracts",
+      "label": "Web API",
+      "sublabel": "FastAPI routes, run records",
       "pos": [
         660,
         140
@@ -66,16 +66,44 @@
       ]
     },
     {
+      "id": "model",
+      "type": "external",
+      "label": "Model endpoint",
+      "sublabel": "OpenAI-compatible, optional",
+      "pos": [
+        180,
+        330
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "runner",
+      "type": "backend",
+      "label": "Agent runner",
+      "sublabel": "drive(), one run at a time",
+      "pos": [
+        495,
+        330
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
       "id": "agent",
       "type": "external",
       "label": "Agent or LiteLLM",
       "sublabel": "drawing2cad skill",
       "pos": [
         40,
-        480
+        520
       ],
       "size": [
-        180,
+        160,
         64
       ]
     },
@@ -86,7 +114,7 @@
       "sublabel": "IDs, schemas, trusted context",
       "pos": [
         320,
-        480
+        520
       ],
       "size": [
         200,
@@ -157,13 +185,32 @@
       "id": "webhttp",
       "from": "webui",
       "to": "demoapi",
-      "label": "HTTP API: planned"
+      "label": "HTTP /api"
     },
     {
       "id": "webdomain",
       "from": "demoapi",
       "to": "demotools",
       "label": "same service instance"
+    },
+    {
+      "id": "queuerun",
+      "from": "demoapi",
+      "to": "runner",
+      "label": "queue run"
+    },
+    {
+      "id": "modelcall",
+      "from": "runner",
+      "to": "model",
+      "label": "Chat Completions"
+    },
+    {
+      "id": "runnermcp",
+      "from": "runner",
+      "to": "mcp",
+      "label": "Streamable HTTP /mcp, loopback",
+      "variant": "emphasis"
     },
     {
       "id": "mcptransport",
@@ -217,7 +264,7 @@
         "PDF bytes arrive through bounded resumable uploads",
         "Source, run, job, and artifact IDs keep paths internal",
         "Persistent jobs, notes, revisions, and review gates",
-        "MCP and future web routes share one Python service"
+        "MCP and web routes share one Python service"
       ]
     },
     {
@@ -232,9 +279,9 @@
     },
     {
       "dot": "rose",
-      "title": "Web and acceptance follow-up",
+      "title": "Web delivery and acceptance follow-up",
       "items": [
-        "Issue #26: connect the web UI to shared service routes",
+        "Web routes and agent runs share one service instance",
         "No automatic arbitrary projection or section extraction",
         "Drawing review follows the current model build",
         "Resource acceptance remains deferred until milestones finish"
@@ -242,11 +289,11 @@
     },
     {
       "dot": "cyan",
-      "title": "M3: bounded adapter, #25 open",
+      "title": "M3: bounded adapter, open",
       "items": [
         "AP242 with application construction and nominal PMI",
         "Fresh worker replay and parameter-change checks",
-        "PDF input only; CAD exports are separate in #33",
+        "PDF input only; CAD-specific exports are separate",
         "STEPcode checks and actual stored-PMI inspection views"
       ]
     }

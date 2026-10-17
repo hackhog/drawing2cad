@@ -11,6 +11,7 @@ export const keys = {
   runs: (sourceId: string) => ["runs", { sourceId }] as const,
   run: (id: string) => ["run", id] as const,
   notes: (runId: string) => ["notes", runId] as const,
+  runFiles: (runId: string) => ["runFiles", runId] as const,
 };
 
 const POLL_MS = 600;
@@ -43,3 +44,7 @@ export const runQuery = (api: WebApi, id: string) =>
 
 export const notesQuery = (api: WebApi, runId: string) =>
   queryOptions({ queryKey: keys.notes(runId), queryFn: () => api.listNotes(runId) });
+
+// Loaded on request; the trace grows while the run is active, so each opening reads the current list.
+export const runFilesQuery = (api: WebApi, runId: string) =>
+  queryOptions({ queryKey: keys.runFiles(runId), queryFn: () => api.listRunFiles(runId), staleTime: 0 });

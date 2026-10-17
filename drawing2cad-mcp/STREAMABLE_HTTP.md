@@ -18,7 +18,7 @@ The `compose.mcp-http.yaml` override adds an authenticated listener on host loop
 The CAD child retains its own network and filesystem restrictions.
 
 The domain profile supplies persistent PDF uploads and artifact downloads through MCP tools.
-It does not supply separate REST upload/download routes. The web API and React interface belong to #26.
+It does not supply separate REST upload/download routes. The web API and React interface belong to the M2 web part.
 The [existing demo](../app/README.md) has a separate UI and API; it does not host this MCP endpoint.
 The current MCP executes CAD only through the headless build123d worker. It has no FreeCAD proxy.
 

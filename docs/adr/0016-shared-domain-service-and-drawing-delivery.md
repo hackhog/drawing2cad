@@ -4,13 +4,10 @@ Date: 2026-10-17
 
 ## Status
 
-Implementation decision for [M2 MCP, issue 24](https://github.com/hackhog/drawing2cad/issues/24).
+Implementation decision for the M2 MCP and shared services.
 This extends [ADR 0014](0014-headless-build123d-metric-prototype.md).
 It does not report a completed resource acceptance trial.
-
-Issue #12 is closed. Resource acceptance tests are deferred until the milestones are complete.
-This replaces the earlier statement that #12 retains open metric acceptance work.
-Issues #7 and #11 remain deferred.
+Resource acceptance tests follow after the delivery milestones.
 
 ## Context
 
@@ -37,7 +34,7 @@ The public contracts use source, run, job, and artifact IDs.
 Adapters resolve these identifiers to private paths inside the service.
 Tool arguments cannot select the principal or an arbitrary server path.
 The MCP deployment uses one configured principal. Bearer access is shared across its authorized clients.
-Separate web authentication and identity mapping belong to [issue 26](https://github.com/hackhog/drawing2cad/issues/26).
+Separate web authentication and identity mapping belong to the M2 web service.
 This implementation does not claim hostile multi-tenant isolation.
 
 Docker enables the domain profile by default, with state under `/data/domain`.
@@ -105,7 +102,7 @@ Layout success does not prove correct source interpretation or sufficient views.
 
 ### Diagnostic output for failed layouts
 
-Issue 41 adds collision identifiers and actual rendered bounds to drawing reports.
+Drawing reports include collision identifiers and actual rendered bounds.
 The restricted worker can produce a marked diagnostic PDF when a valid declaration fails its layout checks.
 The domain service verifies fixed artifact paths, sizes, hashes, and revision bindings before it registers these artifacts.
 The existing authenticated artifact interface supplies the PDF and JSON report.
@@ -131,7 +128,7 @@ Reports expose artifact IDs and public evidence without server storage paths.
 The geometry exporter remains AP214.
 JSON is the editable construction source; DXF is the editable drawing output.
 Neither proves editable construction or semantic PMI inside STEP.
-[Issue 25](https://github.com/hackhog/drawing2cad/issues/25) retains AP242 construction, adapter edits, and semantic and graphical PMI.
+AP242 construction, adapter edits, and semantic and graphical PMI belong to M3.
 
 ## Consequences
 

@@ -20,6 +20,7 @@
 - Keep each pull request within its issue scope. Create a separate issue for additional work.
 - Describe the tests and their actual results in the pull request description. Identify checks that did not run.
 - Do not report historical results as new tests.
+- Do not refer to GitHub issues or pull requests in the documentation, code comments, or the diagram source. Put work status and history in issues and pull requests. Document only the current state, the decisions, and the necessary references. Commit messages and pull request descriptions can refer to issues. CI checks the Markdown files and the diagram source.
 - Merge a pull request only after CI passes and review is complete.
 - Before removal, preserve uncommitted changes and needed ignored files. Remove the issue worktree after merge.
 

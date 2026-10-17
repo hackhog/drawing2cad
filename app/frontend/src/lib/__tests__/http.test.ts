@@ -1,6 +1,6 @@
-// Error mapping of the upload helper that the legacy adapter uses.
+// Error mapping of the HTTP helpers that the web adapter uses.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { failure, uploadFile } from "../http";
+import { failure, request, uploadFile } from "../http";
 
 /** Minimal XMLHttpRequest stub: `send` answers with the configured response on the next tick. */
 function stubXhr(answer: { status: number; text?: string; network?: boolean }) {
@@ -63,5 +63,22 @@ describe("uploadFile", () => {
   it("reports an unreachable server as NETWORK_ERROR", async () => {
     stubXhr({ status: 0, network: true });
     await expect(uploadFile("/api/x", pdf, () => {})).rejects.toMatchObject({ code: "NETWORK_ERROR" });
+  });
+});
+
+describe("request", () => {
+  const respond = (status: number, body: string) =>
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(status === 204 ? null : body, { status })));
+
+  it("returns JSON and nothing for 204", async () => {
+    respond(200, '{"a":1}');
+    await expect(request("/api/x")).resolves.toEqual({ a: 1 });
+    respond(204, "");
+    await expect(request("/api/x", { method: "DELETE" })).resolves.toBeUndefined();
+  });
+
+  it("maps a missing model endpoint to CAPABILITY_UNAVAILABLE", async () => {
+    respond(503, JSON.stringify({ detail: { code: "CAPABILITY_UNAVAILABLE", message: "Kein Modell-Endpunkt", field: null, recovery: ".env" } }));
+    await expect(request("/api/sources/s/runs", { method: "POST" })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE", recovery: ".env" });
   });
 });

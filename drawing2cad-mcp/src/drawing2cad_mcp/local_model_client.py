@@ -29,9 +29,13 @@ ALLOWED_TOOLS = frozenset({
     "pdf_calibrate", "pdf_measure_distance", "pdf_measure_circle", "part_validate",
     "part_create", "part_read", "part_update", "create_base_body", "add_hole", "add_pocket",
     "add_cut", "add_chamfer", "add_fillet", "build_from_description", "export_step", "part_export_review",
+    # The domain profile adds drawing delivery and run notes. The local-path profile does not list these tools.
+    "drawing_schema", "drawing_validate", "drawing_render", "drawing_read", "drawing_review", "artifact_preview",
+    "notes_read", "notes_update",
 })
 MUTATION_TOOLS = frozenset({"part_create", "part_update", "create_base_body", "add_hole", "add_pocket",
-                            "add_cut", "add_chamfer", "add_fillet", "build_from_description"})
+                            "add_cut", "add_chamfer", "add_fillet", "build_from_description",
+                            "drawing_render", "drawing_review"})
 QUESTION_TOOL = {"type": "function", "function": {
     "name": "request_user_input", "description": "Record a required user question and stop the trial. Use a documented reasonable assumption when the source permits it.",
     "parameters": {"type": "object", "additionalProperties": False, "required": ["question", "reason"],
@@ -141,22 +145,31 @@ def tool_catalog(catalog):
             for item in catalog if item["name"] in ALLOWED_TOOLS] + [QUESTION_TOOL]
 
 
+def source_scope(plan):
+    """The authorized source: an uploaded source ID and hash (domain profile), else a local PDF path."""
+    if "source_id" in plan:
+        return {"source_id": plan["source_id"], "sha256": plan["source_sha256"]}
+    return {"path": plan["source_path"]}
+
+
 def authorize_call(name, arguments, plan, available):
     """Keep the model within the declared input and part namespace."""
     if name not in available or name not in ALLOWED_TOOLS:
         raise ValueError("The requested tool is not permitted for this trial.")
     if not isinstance(arguments, dict):
         raise ValueError("Tool arguments must be an object.")
+    scope = source_scope(plan)
     if name.startswith("pdf_") or name == "drawing_extract":
-        if arguments.get("path") != plan["source_path"]:
-            raise ValueError("The PDF path differs from the authorized source.")
+        key = "source_id" if "source_id" in scope else "path"
+        if arguments.get(key) != scope[key]:
+            raise ValueError("The PDF source differs from the authorized source.")
     if "run_id" in arguments:
         run_id = arguments["run_id"]
         if not isinstance(run_id, str) or not run_id.startswith(plan["run_prefix"] + "-"):
             raise ValueError("The part run must use the trial prefix and a hyphen.")
     if name == "part_create":
         sources = arguments.get("sources", [])
-        if not sources or any(source.get("path") != plan["source_path"] or source.get("role") != "construction" for source in sources):
+        if not sources or any({key: source.get(key) for key in scope} != scope or source.get("role") != "construction" for source in sources):
             raise ValueError("Only the declared construction PDF is permitted.")
     return arguments
 
@@ -212,14 +225,18 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
     """Execute one bounded conversation. Tool errors remain visible to the model."""
     tools = tool_catalog(catalog)
     available = {item["function"]["name"] for item in tools}
+    domain = "source_id" in plan
+    source = f"source ID {plan['source_id']} (SHA-256 {plan['source_sha256']})" if domain else plan["source_path"]
     prompt = ("Follow the supplied drawing2cad skill. Use only listed MCP tools for PDF and CAD work. "
               "Do not write or execute model code. Inspect the actual source image before construction. "
               "Do not claim independent review, source completeness, or measured checks without evidence. "
               "The M1 target is a validated STEP geometry artifact and editable JSON description. "
               "AP242, drawings, semantic PMI, independent conformance and NX opening remain untested unless a tool proves them. "
               "Record reasonable assumptions and continue. Use request_user_input only for a required question with no reasonable assumption. "
-              f"Use only the authorized PDF {plan['source_path']}. Use run IDs that start with {plan['run_prefix']}-. "
-              f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
+              f"Use only the authorized PDF {source}. Use run IDs that start with {plan['run_prefix']}-. "
+              + ("Release needs a reviewed, dimensioned drawing of the current part revision: use drawing_schema, drawing_validate, "
+                 "drawing_render, artifact_preview, and drawing_review before export_step. " if domain else "")
+              + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content":
         "Reconstruct the authorized PDF as a parameterized part description. Validate the model, release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits."}]
     summary = {"status": "running", "model": plan["model"], "tool_requests": 0, "mcp_calls": 0, "model_turns": 0,

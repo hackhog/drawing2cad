@@ -34,13 +34,27 @@ The worker requires the supported Linux sandbox.
 A host without that sandbox cannot silently execute CAD without isolation.
 See the [MCP guide](drawing2cad-mcp/README.md) for tools, configuration, and tests.
 
+## Web app with agent runs
+
+From the repository root:
+
+```bash
+docker compose up --build        # builds without credentials; open http://localhost:8000
+```
+
+Upload drawing PDFs, review the analysis, and start a run.
+A run lets an agent build the model only through the `drawing2cad-mcp` endpoint of the backend; step 4 shows the released STEP in 3D
+([ADR 0018](docs/adr/0018-agent-runner-in-the-web-backend.md)).
+Runs need an OpenAI-compatible model endpoint: copy `.env.example` to `.env`, fill in the values, and run `docker compose up -d`.
+Without `.env`, the app starts and shows runs as unavailable. See the [app guide](app/README.md).
+
 ## Delivery milestones
 
 | Milestone | Deliverables and limits |
 |---|---|
 | M1 metric prototype | Editable JSON part description, validated STEP candidate, review list, coverage report, manifest, and trace. |
-| M2 MCP, [#24](https://github.com/hackhog/drawing2cad/issues/24) | Shared Python services, PDF uploads, source/artifact IDs, persistent jobs and notes, and dimensioned DXF/PDF drawing delivery. |
-| M2 Web, [#26](https://github.com/hackhog/drawing2cad/issues/26) | HTTP API and React/shadcn/TanStack interface in the same Python application, using the shared services. Pending. |
+| M2 MCP | Shared Python services, PDF uploads, source/artifact IDs, persistent jobs and notes, and dimensioned DXF/PDF drawing delivery. |
+| M2 Web | HTTP API and React/shadcn/TanStack interface in the same Python application, using the shared services. |
 | M3 AP242 | STEP-only construction reconstruction, driving parameter edits through adapters, semantic PMI, and graphical PMI. |
 
 The web interface and complete M3 acceptance remain required follow-up work.
@@ -48,10 +62,9 @@ The initial [AP242 adapter](docs/adr/0017-ap242-application-construction-and-pmi
 adds application-specific construction replay and nominal PMI. AP242 builds require
 bounded independent STEPcode analysis. Headless PDF/PNG inspection shows the actual
 stored PMI strokes, with annotation-plane detail views. Full conformance and the
-remaining PMI scope stay open in #25. Product input is PDF; external STEP
+remaining PMI scope are not complete. Product input is PDF; external STEP
 upload is out of scope. Internal re-import tests verify generated STEP output.
-CAD-specific export and native feature adapters are separate in
-[#33](https://github.com/hackhog/drawing2cad/issues/33).
+CAD-specific export and native feature adapters are outside this adapter.
 The JSON description is the editable source for the declarative M1 path.
 A free-code fallback also requires its exact recorded inline payload. JSON alone does not replay that construction.
 It does not prove editable construction or semantic PMI inside STEP.
@@ -63,7 +76,7 @@ A server-side geometry pass is separate from independent STEP analysis and an NX
 Missing tests remain `not_tested`.
 [ADR 0016](docs/adr/0016-shared-domain-service-and-drawing-delivery.md) defines the M2 service boundary and drawing limits.
 The drawing adapter renders supplied 2D view geometry with native DXF dimensions. It does not derive arbitrary projections or sections from a solid.
-Independent source review is still required. Resource acceptance trials remain deferred until the milestones are complete; #12 is closed.
+Independent source review is still required. Resource acceptance trials follow after the delivery milestones.
 
 ## Architecture
 

@@ -243,7 +243,7 @@ class Measurement(ClosedModel):
         default=None, description="Measurement axis. For a hole with entry_position, this must point from the opening into the part.")
     axial_length: Positive | None = None
     entry_position: tuple[Number, Number, Number] | None = Field(
-        default=None, description="Optional source-derived center of a planar circular hole opening. The entry check supports connected full cylinders, cones, and planar shoulders. If omitted, entry_side is not_tested.")
+        default=None, description="Optional source-derived center of the planar circular opening where the hole cavity meets the part surface. A stepped bore is one connected cavity: each of its bores uses the outer opening as entry, never an internal shoulder. The check traverses connected full cylinders, cones, and planar shoulders to that opening. If omitted, entry_side is not_tested.")
     second_position: tuple[Number, Number, Number] | None = None
     component: Literal["distance", "X", "Y", "Z"] = "distance"
     direction: tuple[Number, Number, Number] | None = None

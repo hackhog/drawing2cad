@@ -1,5 +1,5 @@
 // Synthetic contract fixtures. They describe a fictitious plate, not a customer part.
-// Simulated data does not establish end-to-end acceptance (#26).
+// Simulated data does not establish end-to-end acceptance.
 import type { Assumption, Operation, Parameter, Uncertainty, ValidationResult } from "./contract";
 import type { Drawing, ExtractResult, Stroke } from "./drawing";
 

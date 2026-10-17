@@ -1,7 +1,7 @@
 [project]
 name = "drawing-demo"
 version = "0.1.0"
-description = "Drawing2CAD demo API with PDF analysis through drawing2cad-mcp"
+description = "Drawing2CAD web API and agent runs on the shared drawing2cad-mcp domain service"
 readme = "README.md"
 authors = [
     { name = "dernerl", email = "50828248+dernerl@users.noreply.github.com" }
@@ -9,8 +9,9 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "cascadio>=0.1.1",
-    "drawing2cad-mcp",
+    "drawing2cad-mcp[cad]",
     "fastapi>=0.143.3",
+    "httpx2>=2.13.1",
     "numpy>=2",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.54.0",
@@ -25,7 +26,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.13.1",
     "pytest>=9.1.1",
 ]
 

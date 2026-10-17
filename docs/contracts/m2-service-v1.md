@@ -1,7 +1,7 @@
 # M2 shared service contract
 
 Contract identifier: `drawing2cad.domain/1`.
-Issue #24 supplies the shared service and MCP adapter. Issue #26 supplies the web adapter and frontend.
+The M2 MCP part supplies the shared service and MCP adapter. The M2 web part supplies the web adapter and frontend.
 
 ## Application boundary
 
@@ -94,7 +94,7 @@ An accepted drawing review is necessary for `export_step`.
 Parameter changes and rebuilds invalidate the applicable release evidence.
 Historical artifacts remain readable, but cannot authorize release of a later revision.
 
-The current geometry export is AP214. AP242 construction and semantic PMI belong to M3, issue #25.
+The current geometry export is AP214. AP242 construction and semantic PMI belong to M3.
 Record target-CAD opening and independent STEP analysis separately.
 An unperformed test remains `not_tested`.
 
@@ -114,4 +114,4 @@ Domain run events and CAD events are separate evidence streams.
 They do not constitute a complete log of all MCP requests.
 
 This contract does not define HTTP routes or browser authentication flows.
-Those adapters remain in issue #26.
+Those adapters belong to the M2 web part.
