@@ -533,7 +533,7 @@ dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
 name = "drawing2cad-mcp"
-version = "0.8.0"
+version = "0.9.0"
 source = { directory = "../../drawing2cad-mcp" }
 dependencies = [
     { name = "jsonschema" },

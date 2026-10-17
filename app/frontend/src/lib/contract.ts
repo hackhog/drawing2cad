@@ -122,6 +122,8 @@ export interface Run {
   run_id: string;
   source_id: string;
   phase: RunPhase;
+  /** The model and the drawing2cad-mcp version that execute an agent run. */
+  agent?: { model: string; mcp_version: string } | null;
   /** The phase in which a failed run stopped. */
   failed_phase?: RunPhase | null;
   job: Job;

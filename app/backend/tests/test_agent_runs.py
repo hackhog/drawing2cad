@@ -136,6 +136,7 @@ def test_a_run_is_queued_with_a_model_endpoint(environment):
         assert res.status_code == 201
         run = res.json()
         assert run["phase"] == "queued" and run["part"] is None and submitted == [run["run_id"]]
+        assert run["agent"] == {"model": "m", "mcp_version": api.mcp_version}
         assert [r["run_id"] for r in client.get(f"/api/sources/{source['source_id']}/runs").json()] == [run["run_id"]]
         assert client.get(f"/api/runs/{run['run_id']}").json()["job"]["status"] == "queued"
 
