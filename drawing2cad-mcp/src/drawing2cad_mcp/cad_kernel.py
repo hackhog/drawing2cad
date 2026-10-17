@@ -14,12 +14,16 @@ from .cad_validation import axis_vector, measure_shape, step_metadata
 class CadBuildError(ValueError):
     """A failed operation with an actionable feature identifier."""
 
-    def __init__(self, code: str, message: str, feature_id: str | None = None):
+    def __init__(self, code: str, message: str, feature_id: str | None = None, *, details: dict | None = None):
         super().__init__(message)
         self.code, self.message, self.feature_id = code, message, feature_id
+        self.details = details
 
     def as_dict(self):
-        return {"code": self.code, "message": self.message, "feature_id": self.feature_id}
+        result = {"code": self.code, "message": self.message, "feature_id": self.feature_id}
+        if self.details is not None:
+            result["details"] = self.details
+        return result
 
 
 def _positive(value, part):
@@ -44,13 +48,23 @@ def _primitive(feature, part, *, cutting=False):
     kind = profile.shape if cutting else feature.type
     plane = _plane(feature.origin, getattr(feature, "axis", "Z"), part)
     depth = _positive(profile.depth if cutting else feature.height, part)
+    taper = resolve(getattr(feature, "taper_angle", 0.0), part)
     if kind == "box":
-        return Solid.make_box(_positive(profile.length, part), _positive(profile.width, part), depth, plane)
+        length, width = _positive(profile.length, part), _positive(profile.width, part)
+        if not taper:
+            return Solid.make_box(length, width, depth, plane)
+        wire = Wire.make_polygon([(0, 0, 0), (length, 0, 0), (length, width, 0), (0, width, 0)], close=True)
     if kind == "cylinder":
-        return Solid.make_cylinder(_positive(profile.diameter, part) / 2, depth, plane)
-    if kind == "profile_extrusion":
+        radius = _positive(profile.diameter, part) / 2
+        if not taper:
+            return Solid.make_cylinder(radius, depth, plane)
+        end_radius = radius - depth * math.tan(math.radians(taper))
+        if end_radius <= 0:
+            raise CadBuildError("INVALID_TAPER", "The tapered cut must retain a positive end radius.")
+        return Solid.make_cone(radius, end_radius, depth, plane)
+    if kind in {"profile_extrusion", "profile"}:
         edges = []
-        for segment in feature.segments:
+        for segment in profile.segments:
             start = (*[resolve(value, part) for value in segment.start], 0)
             end = (*[resolve(value, part) for value in segment.end], 0)
             if segment.kind == "line":
@@ -59,19 +73,23 @@ def _primitive(feature, part, *, cutting=False):
                 middle = (*[resolve(value, part) for value in segment.mid], 0)
                 edges.append(Edge.make_three_point_arc(start, middle, end))
         wire = Wire(edges)
-    else:
+    elif kind != "box":
         points = [(resolve(x, part), resolve(y, part), 0) for x, y in profile.points]
         wire = Wire.make_polygon(points, close=True)
     if not wire.is_closed or not wire.is_valid:
         raise CadBuildError("INVALID_PROFILE", "The profile must be one closed, valid wire.")
-    face = Face(wire)
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+    from OCP.gp import gp_Dir, gp_Pln, gp_Pnt
+
+    # Set the underlying plane, not only the face orientation. The tapered
+    # prism uses the plane normal even when a clockwise face is reversed.
+    face = Face(BRepBuilderAPI_MakeFace(gp_Pln(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), wire.wrapped, True).Face())
     if not face.is_valid or face.area <= 1e-9:
         raise CadBuildError("INVALID_PROFILE", "The profile must be simple and have positive area.")
     # Normalize winding so the same signed taper has the same meaning for all
     # input contours. Positive taper reduces the profile along the extrusion.
     if face.normal_at().Z < 0:
         face = -face
-    taper = resolve(getattr(feature, "taper_angle", 0.0), part)
     solid = Solid.extrude_taper(face, (0, 0, depth), taper) if taper else Solid.extrude(face, (0, 0, depth))
     return plane.location * solid
 
@@ -127,6 +145,41 @@ def _hole(shape, feature, part):
     return shape.cut(tool)
 
 
+def _adjacent_to_plane(shape, edge, plane, tolerance):
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.GeomAbs import GeomAbs_Plane
+
+    normal = tuple(value / math.hypot(*plane.normal) for value in plane.normal)
+    for face in shape.faces():
+        if not any(edge.is_same(candidate) for candidate in face.edges()):
+            continue
+        surface = BRepAdaptor_Surface(face.wrapped)
+        if surface.GetType() != GeomAbs_Plane:
+            continue
+        actual = surface.Plane()
+        direction, location = actual.Axis().Direction(), actual.Location()
+        if abs(sum(a * b for a, b in zip(normal, (direction.X(), direction.Y(), direction.Z())))) < 1 - 1e-9:
+            continue
+        offset = sum(n * (p - q) for n, p, q in zip(normal, (location.X(), location.Y(), location.Z()), plane.origin))
+        if abs(offset) <= tolerance:
+            return True
+    return False
+
+
+def _edge_selection_details(selected, expected_count):
+    """Bound the geometric evidence needed to correct an edge selector."""
+    summaries = []
+    for edge in selected[:64]:
+        geometry = edge.geom_type.name.lower()
+        bounds = edge.bounding_box(optimal=False)
+        center = edge.arc_center if geometry == "circle" else edge.center()
+        summaries.append({"geometry": geometry, "center": list(center),
+                          "bbox_min": list(bounds.min), "bbox_max": list(bounds.max),
+                          "length_mm": float(edge.length)})
+    return {"expected_count": expected_count, "selected_count": len(selected),
+            "selected_edges": summaries, "truncated": len(selected) > len(summaries)}
+
+
 def _dress(shape, feature, part):
     selector = feature.selector
     selected = []
@@ -137,10 +190,14 @@ def _dress(shape, feature, part):
             continue
         if selector.radius is not None and (geometry != "circle" or abs(edge.radius - selector.radius) > selector.tolerance):
             continue
-        if all(lo - selector.tolerance <= value <= hi + selector.tolerance for lo, value, hi in zip(selector.center_min, center, selector.center_max)):
-            selected.append(edge)
+        if not all(lo - selector.tolerance <= value <= hi + selector.tolerance for lo, value, hi in zip(selector.center_min, center, selector.center_max)):
+            continue
+        if selector.adjacent_plane is not None and not _adjacent_to_plane(shape, edge, selector.adjacent_plane, selector.tolerance):
+            continue
+        selected.append(edge)
     if len(selected) != selector.expected_count:
-        raise CadBuildError("EDGE_SELECTION", f"Expected {selector.expected_count} edges; the geometric selector found {len(selected)}. Narrow the region or correct expected_count.")
+        raise CadBuildError("EDGE_SELECTION", f"Expected {selector.expected_count} edges; the geometric selector found {len(selected)}. Narrow the region or correct expected_count.",
+                            details=_edge_selection_details(selected, selector.expected_count))
     size = _positive(feature.size, part)
     return shape.fillet(size, selected) if feature.type == "fillet" else shape.chamfer(size, None, selected)
 

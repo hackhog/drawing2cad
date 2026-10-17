@@ -7,7 +7,7 @@ import math
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-PART_SCHEMA_VERSION = "1.0"
+PART_SCHEMA_VERSION = "1.1"
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")]
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-100000, le=100000, strict=True)]
 Positive = Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False, strict=True)]
@@ -29,6 +29,37 @@ FEATURE_AXIS_DESCRIPTION = (
 
 class ClosedModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+DiagnosticNumber = Annotated[float, Field(allow_inf_nan=False, ge=-1e9, le=1e9, strict=True)]
+DiagnosticPoint = tuple[DiagnosticNumber, DiagnosticNumber, DiagnosticNumber]
+
+
+class SelectedEdgeDiagnostic(ClosedModel):
+    geometry: Literal["line", "circle", "ellipse", "hyperbola", "parabola", "bezier", "bspline", "offset", "other"]
+    center: DiagnosticPoint
+    bbox_min: DiagnosticPoint
+    bbox_max: DiagnosticPoint
+    length_mm: Annotated[float, Field(allow_inf_nan=False, ge=0, le=1e9, strict=True)]
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if any(lo > hi for lo, hi in zip(self.bbox_min, self.bbox_max)):
+            raise ValueError("Diagnostic edge bounds must be ordered.")
+        return self
+
+
+class EdgeSelectionDiagnostic(ClosedModel):
+    expected_count: Annotated[int, Field(ge=1, le=1000, strict=True)]
+    selected_count: Annotated[int, Field(ge=0, le=1000000, strict=True)]
+    selected_edges: Annotated[list[SelectedEdgeDiagnostic], Field(max_length=64)]
+    truncated: Annotated[bool, Field(strict=True)]
+
+    @model_validator(mode="after")
+    def consistent_count(self):
+        if len(self.selected_edges) != min(64, self.selected_count) or self.truncated != (self.selected_count > 64):
+            raise ValueError("Diagnostic counts and truncation must agree.")
+        return self
 
 
 class SourceRegion(ClosedModel):
@@ -95,6 +126,7 @@ class CylinderFeature(Feature):
     height: Scalar
     origin: Vector3 = (0.0, 0.0, 0.0)
     axis: AxisName = Field(default="Z", description=FEATURE_AXIS_DESCRIPTION)
+    taper_angle: Scalar = Field(default=0.0, description="Positive degrees reduce the radius along the signed axis. Diameter is specified at origin.")
 
 
 class ExtrusionFeature(Feature):
@@ -197,11 +229,29 @@ class PolygonCut(ClosedModel):
     depth: Scalar
 
 
+class ProfileCut(ClosedModel):
+    shape: Literal["profile"]
+    segments: Annotated[list[Annotated[LineSegment | ArcSegment, Field(discriminator="kind")]], Field(min_length=2, max_length=256)]
+    depth: Scalar
+
+
 class CutFeature(Feature):
     type: Literal["pocket", "cut"]
-    profile: Annotated[BoxCut | CylinderCut | PolygonCut, Field(discriminator="shape")]
+    profile: Annotated[BoxCut | CylinderCut | PolygonCut | ProfileCut, Field(discriminator="shape")]
     origin: Vector3
     axis: AxisName = Field(default="Z", description=FEATURE_AXIS_DESCRIPTION)
+    taper_angle: Scalar = Field(default=0.0, description="Positive degrees reduce the tool profile along the signed cut axis. The profile is specified at origin.")
+
+
+class AdjacentPlane(ClosedModel):
+    origin: tuple[Number, Number, Number]
+    normal: tuple[Number, Number, Number]
+
+    @model_validator(mode="after")
+    def nonzero_normal(self):
+        if math.hypot(*self.normal) <= 1e-9:
+            raise ValueError("The adjacent plane normal must be nonzero.")
+        return self
 
 
 class EdgeSelector(ClosedModel):
@@ -211,6 +261,7 @@ class EdgeSelector(ClosedModel):
     expected_count: Annotated[int, Field(ge=1, le=1000, strict=True)]
     tolerance: Positive = 0.00001
     radius: Positive | None = None
+    adjacent_plane: AdjacentPlane | None = Field(default=None, description="Require a neighboring planar face on this plane. Use global coordinates; selector tolerance is in mm.")
 
     @model_validator(mode="after")
     def ordered(self):
@@ -232,7 +283,7 @@ FeatureType = Annotated[BoxFeature | CylinderFeature | ExtrusionFeature | Profil
 
 class Measurement(ClosedModel):
     id: Identifier
-    kind: Literal["bbox", "volume", "hole", "arc_radius", "outer_diameter", "axis_distance", "plane_distance", "section_distance", "surface_radius", "cone_angle", "cone_width", "line_angle", "plane_angle"]
+    kind: Literal["bbox", "volume", "hole", "arc_radius", "outer_diameter", "axis_distance", "plane_distance", "section_distance", "surface_radius", "cone_angle", "cone_width", "line_angle", "plane_angle", "draft_angle", "fillet_radius"]
     evidence_ids: EvidenceIds
     basis: Literal["printed_dimension", "independent_measurement"]
     tolerance: Positive = 0.01
@@ -247,20 +298,26 @@ class Measurement(ClosedModel):
     second_position: tuple[Number, Number, Number] | None = None
     component: Literal["distance", "X", "Y", "Z"] = "distance"
     direction: tuple[Number, Number, Number] | None = None
+    spatial_tolerance: Positive | None = Field(default=None, description="Surface anchor tolerance in mm for draft_angle and fillet_radius; default 0.01 mm. Their numerical tolerance is separately given by tolerance (degrees or mm).")
+    fillet_section_normal: tuple[Number, Number, Number] | None = Field(default=None, description="Optional global normal of the circular fillet section. Required for bounded principal-curvature measurement of a non-analytic fillet. Does not change analytic cylinder or torus axis matching.")
 
     @model_validator(mode="after")
     def required_fields(self):
         count = 3 if self.kind == "bbox" else 1
         if len(self.expected) != count or any(value <= 0 for value in self.expected):
             raise ValueError(f"{self.kind} requires {count} positive expected value(s).")
-        located = self.kind in {"hole", "arc_radius", "outer_diameter", "axis_distance", "plane_distance", "section_distance", "surface_radius", "cone_angle", "cone_width", "line_angle", "plane_angle"}
+        located = self.kind in {"hole", "arc_radius", "outer_diameter", "axis_distance", "plane_distance", "section_distance", "surface_radius", "cone_angle", "cone_width", "line_angle", "plane_angle", "draft_angle", "fillet_radius"}
         if self.direction is not None:
-            if self.kind not in {"plane_distance", "section_distance", "surface_radius", "line_angle", "plane_angle"} or self.axis is not None or math.hypot(*self.direction) <= 1e-9:
+            if self.kind not in {"plane_distance", "section_distance", "surface_radius", "line_angle", "plane_angle", "draft_angle", "fillet_radius"} or self.axis is not None or math.hypot(*self.direction) <= 1e-9:
                 raise ValueError("A nonzero direction can replace axis only for plane, section, surface-radius, or line measurements.")
         if located and (self.position is None or (self.axis is None and self.direction is None)):
             raise ValueError(f"A {self.kind} measurement requires position and axis or a supported direction.")
         if not located and (self.position is not None or self.axis is not None):
             raise ValueError("This measurement does not use position or axis.")
+        if self.spatial_tolerance is not None and self.kind not in {"draft_angle", "fillet_radius"}:
+            raise ValueError("Only draft_angle and fillet_radius use spatial_tolerance.")
+        if self.fillet_section_normal is not None and (self.kind != "fillet_radius" or math.hypot(*self.fillet_section_normal) <= 1e-9):
+            raise ValueError("Only fillet_radius can specify a nonzero fillet_section_normal.")
         if self.kind not in {"hole", "outer_diameter"} and self.axial_length is not None:
             raise ValueError("Only a cylindrical measurement uses axial_length.")
         if self.entry_position is not None:
@@ -292,7 +349,7 @@ class ReviewFlag(ClosedModel):
 
 
 class PartDescription(ClosedModel):
-    schema_version: Literal["1.0"]
+    schema_version: Literal["1.0", "1.1"]
     name: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$")]
     units: Literal["mm"]
     coordinate_system: Literal["right_handed_xyz"]
@@ -319,7 +376,7 @@ def description_schema() -> dict[str, Any]:
 def _pointer(parts: tuple | list, description: Any) -> str:
     # Pydantic adds union branch names. They are not keys in the input JSON.
     current, tokens = description, []
-    branches = {"box", "cylinder", "extrusion", "profile_extrusion", "line", "three_point_arc", "hole", "pocket", "cut", "chamfer", "fillet", "polygon", "float", "constrained-float", "ValueRef"}
+    branches = {"box", "cylinder", "extrusion", "profile_extrusion", "profile", "line", "three_point_arc", "hole", "pocket", "cut", "chamfer", "fillet", "polygon", "float", "constrained-float", "ValueRef"}
     for item in parts:
         if isinstance(current, dict) and item not in current and item in branches:
             continue
@@ -387,6 +444,12 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
             if parameters[name].unit != unit:
                 defect("parameter_unit", pointer, f"This feature value requires {unit}.")
     for index, feature in enumerate(part.features):
+        if part.schema_version == "1.0" and (
+            isinstance(feature, CutFeature) and (isinstance(feature.profile, ProfileCut) or feature.taper_angle != 0.0)
+            or isinstance(feature, CylinderFeature) and feature.taper_angle != 0.0
+            or isinstance(feature, DressFeature) and feature.selector.adjacent_plane is not None
+        ):
+            defect("schema_version", f"/features/{index}", "This feature requires schema_version 1.1.")
         operation = getattr(feature, "operation", None)
         if index == 0 and operation != "base":
             defect("feature_order", "/features/0", "The first feature must be a base solid.")
@@ -398,12 +461,14 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
                     defect("invalid_taper", f"/features/{index}/taper_angle", "The taper angle magnitude must be less than 45 degrees.")
             except (ValueError, StopIteration):
                 pass
-        if isinstance(feature, ProfileExtrusionFeature):
+        segment_profile = feature.profile if isinstance(feature, CutFeature) and isinstance(feature.profile, ProfileCut) else feature
+        if isinstance(segment_profile, (ProfileExtrusionFeature, ProfileCut)):
             try:
                 segments = [(segment, tuple(resolve(v, part) for v in segment.start),
-                             tuple(resolve(v, part) for v in segment.end)) for segment in feature.segments]
+                             tuple(resolve(v, part) for v in segment.end)) for segment in segment_profile.segments]
                 for segment_index, (segment, start, end) in enumerate(segments):
-                    pointer = f"/features/{index}/segments/{segment_index}"
+                    prefix = "/profile" if isinstance(segment_profile, ProfileCut) else ""
+                    pointer = f"/features/{index}{prefix}/segments/{segment_index}"
                     if math.dist(start, end) <= 1e-7:
                         defect("invalid_profile", pointer, "Segment endpoints must be distinct.")
                     if math.dist(end, segments[(segment_index + 1) % len(segments)][1]) > 1e-7:
@@ -439,6 +504,9 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
                     if number <= 0:
                         defect("invalid_dimension", f"/features/{index}/profile/{field}", "Profile dimensions must be positive.")
     targets = set(parameters) | {item.id for item in part.features} | set(evidence)
+    for index, measurement in enumerate(part.measurements):
+        if part.schema_version == "1.0" and measurement.kind in {"draft_angle", "fillet_radius"}:
+            defect("schema_version", f"/measurements/{index}", "This measurement requires schema_version 1.1.")
     for index, flag in enumerate(part.review_flags):
         if flag.target_id not in targets:
             defect("unknown_target", f"/review_flags/{index}/target_id", "The review target does not exist.")

@@ -89,6 +89,7 @@ For example, a positive Y extrusion can map positive local y to negative global 
 Check the transformed profile bounds before construction, especially for non-Z and negative-axis features.
 Extrusions support a bounded draft angle. Blind holes can include an explicit drill-tip angle.
 The blind depth is the cylindrical depth; the conical tip extends beyond it.
+Schema 1.1 also supports tapered cuts and pockets. Use [draft-and-fillets.md](draft-and-fillets.md) for their direction and validation rules.
 
 Geometry checks include cylindrical diameters and lengths, circular edges, cone angle and width,
 axis spacing, parallel-plane spacing, planar draft angles, and straight-edge angles.

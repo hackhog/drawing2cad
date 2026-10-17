@@ -73,6 +73,52 @@ def test_schema_distinguishes_absolute_sheet_and_local_view_positions():
     assert "Local view" in definitions["LinearDimension"]["properties"]["label_position"]["description"]
 
 
+def test_draft_and_fillet_notes_survive_dxf_and_pdf_render(tmp_path):
+    ezdxf = pytest.importorskip("ezdxf")
+    pymupdf = pytest.importorskip("pymupdf")
+    description, spec = drawing_fixture()
+    texts = ["Inner walls: draft 3 deg toward floor.",
+             "Inside floor joins: R1.5 mm, except marked transitions.",
+             "Section A-A transitions: R3 mm at marked edges."]
+    spec["notes"] = [{"text": text, "position": [15, 35 + 10 * index], "evidence_ids": ["drawing"]}
+                     for index, text in enumerate(texts)]
+    validated = drawing_validate(spec, description, 1)
+    assert validated["status"] == "pass", validated
+    assert [note["evidence_ids"] for note in validated["resolved"]["notes"]] == [["drawing"]] * 3
+    assert validated["checks"]["source_accuracy"] == "not_tested"
+    assert validated["checks"]["cad_equivalence"] == "not_tested"
+    result = render_drawing(spec, description, 1, tmp_path)
+    assert result["status"] == "pass", result
+    entities = ezdxf.readfile(tmp_path / "drawing.dxf").modelspace()
+    actual = {entity.dxf.text for entity in entities.query("TEXT")}
+    assert set(texts) <= actual
+    with pymupdf.open(tmp_path / "drawing.pdf") as document:
+        page = document[0]
+        for index in range(3):
+            y = 35 + 10 * index
+            clip = pymupdf.Rect(14 * page.rect.width / 297, (210 - y - 5) * page.rect.height / 210,
+                                150 * page.rect.width / 297, (210 - y + 1) * page.rect.height / 210)
+            raster = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), clip=clip, colorspace=pymupdf.csGRAY)
+            assert sum(value < 230 for value in raster.samples) > 20
+
+
+def test_manufacturing_note_requires_known_source_evidence():
+    description, spec = drawing_fixture()
+    spec["notes"][0].update(text="Inner walls: draft 3 deg toward floor.", evidence_ids=["missing"])
+    result = drawing_validate(spec, description, 1)
+    assert result["status"] == "fail"
+    assert any(item["code"] == "unknown_evidence" and item["id"] == "note_0" for item in result["defects"])
+
+
+def test_general_fillet_note_does_not_replace_native_round_dimension():
+    description, spec = drawing_fixture()
+    spec["views"][0]["dimensions"] = [spec["views"][0]["dimensions"][0]]
+    spec["notes"][0]["text"] = "All round edges: R4 mm."
+    result = drawing_validate(spec, description, 1)
+    assert result["status"] == "fail"
+    assert any(item["code"] == "unmarked_radius" and item["id"] == "hole_circle" for item in result["defects"])
+
+
 def test_scaled_nonzero_origin_preserves_absolute_frame_notes_and_dimension_values(tmp_path):
     ezdxf = pytest.importorskip("ezdxf")
     description, spec = drawing_fixture()
