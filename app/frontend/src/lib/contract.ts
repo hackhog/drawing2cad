@@ -102,12 +102,10 @@ export interface Review {
   validation: ValidationResult[];
 }
 
+/** The one note of a run, with its own revision. Revision 0 means that no note exists yet. */
 export interface RunNote {
-  note_id: string;
   revision: number;
-  author: string;
   text: string;
-  created_at: string;
 }
 
 export interface Job {
@@ -134,8 +132,8 @@ export interface Run {
   review: Review | null;
   error: ServiceError | null;
   simulated: boolean;
-  /** Final text of the agent conversation, stored as the note of its part run (ADR 0018). */
-  agent_report?: string;
+  /** Final text of the agent conversation, from its trace. It is also the first text of the run note (ADR 0018). */
+  agent_report?: string | null;
 }
 
 export interface ServiceError {

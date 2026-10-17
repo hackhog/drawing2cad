@@ -33,7 +33,7 @@ interface RunRecord {
   startedAt: number;
   firstPhase: number;
   artifacts: Artifact[];
-  notes: RunNote[];
+  note: RunNote;
   /** Output creation in progress, shared by concurrent reads of the same finished revision. */
   building: Promise<void> | null;
 }
@@ -124,7 +124,7 @@ export class FixtureApi implements WebApi {
       part: {
         revision: 1, parameters: fixtureParameters(), operations: FIXTURE_OPERATIONS, capabilities: { parameter_edit: true },
       },
-      startedAt: this.now(), firstPhase: 0, artifacts: [], notes: [], building: null,
+      startedAt: this.now(), firstPhase: 0, artifacts: [], note: { revision: 0, text: "" }, building: null,
     };
     this.runs.set(record.runId, record);
     return this.view(record);
@@ -163,26 +163,22 @@ export class FixtureApi implements WebApi {
     return this.view(record);
   }
 
-  async listNotes(runId: string): Promise<RunNote[]> {
+  async getNote(runId: string): Promise<RunNote> {
     await this.latency();
-    return [...this.run(runId).notes];
+    return { ...this.run(runId).note };
   }
 
-  async addNote(runId: string, expectedRevision: number, text: string): Promise<RunNote> {
+  async saveNote(runId: string, expectedRevision: number, text: string): Promise<RunNote> {
     await this.latency();
     const record = this.run(runId);
-    if (expectedRevision !== record.notes.length) {
+    if (expectedRevision !== record.note.revision) {
       throw new ApiFailure({
         code: "REVISION_CONFLICT", field: "expected_revision",
-        message: `Notizen haben Revision ${record.notes.length}, erwartet war ${expectedRevision}.`,
+        message: `Die Notiz hat Revision ${record.note.revision}, erwartet war ${expectedRevision}.`,
       }, 409);
     }
-    const note: RunNote = {
-      note_id: this.id("note"), revision: record.notes.length + 1, author: "Konstruktion",
-      text: text.trim(), created_at: new Date(this.now()).toISOString(),
-    };
-    record.notes.push(note);
-    return note;
+    record.note = { revision: record.note.revision + 1, text };
+    return { ...record.note };
   }
 
   /** A simulated run has no agent trace and no MCP part state. */

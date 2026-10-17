@@ -1,5 +1,5 @@
 // Adapter for the web backend (app/backend, ADR 0018): stored sources, their analysis, agent runs, and artifacts.
-// Parameter edits and notes are not available yet; the capabilities report this, and the UI explains it.
+// Parameter edits are not available yet; the capabilities report this, and the UI explains it.
 import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
 import type { ExtractResult } from "./drawing";
 import { unavailable } from "./errors";
@@ -23,8 +23,13 @@ export class HttpApi implements WebApi {
   changeParameters(_runId: string, _expectedRevision: number, _changes: ParameterChange[]): Promise<Run> {
     return Promise.reject(unavailable("Das Ändern von Parametern"));
   }
-  listNotes(): Promise<RunNote[]> { return Promise.reject(unavailable("Notizen")); }
-  addNote(): Promise<RunNote> { return Promise.reject(unavailable("Notizen")); }
+  getNote(runId: string): Promise<RunNote> { return request(`/api/runs/${id(runId)}/note`); }
+  saveNote(runId: string, expectedRevision: number, text: string): Promise<RunNote> {
+    return request(`/api/runs/${id(runId)}/note`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected_revision: expectedRevision, text }),
+    });
+  }
   listRunFiles(runId: string): Promise<RunFiles> { return request(`/api/runs/${id(runId)}/files`); }
   readArtifact(artifactId: string): Promise<Blob> { return requestBlob(`/api/artifacts/${id(artifactId)}/content`); }
   stepPreview(file: File): Promise<Blob> { return uploadFile<Blob>("/api/model", file, () => {}, "blob"); }

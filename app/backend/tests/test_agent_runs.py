@@ -258,6 +258,32 @@ def test_a_conversation_error_fails_the_run_even_with_a_built_part(environment):
         assert result["failed_phase"] == "drawing"
 
 
+def test_the_run_note_is_revisioned_and_keeps_the_agent_report(environment):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        assert client.get(f"/api/runs/{run['run_id']}/note").json()["detail"]["code"] == "NO_PART"
+        part_run = run["part_prefix"] + "-plate"
+        services.backend.call("part_create", run_id=part_run, description=description(source["source_id"], source["sha256"]),
+                              sources=[{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}])
+        services.jobs.update(run["run_id"], part_run_id=part_run, job={"status": "running"})
+        note = f"/api/runs/{run['run_id']}/note"
+        assert client.get(note).json() == {"revision": 0, "text": ""}
+        # The agent writes its report into the note at the end of the run.
+        assert client.put(note, json={"expected_revision": 0, "text": "x"}).json()["detail"]["code"] == "RUN_ACTIVE"
+        (services.jobs.directory(run["run_id"]) / "summary.json").write_text('{"final_text": "Report"}')
+        services.runner.store_report(part_run, "Report")
+        services.jobs.update(run["run_id"], phase="done", job={"status": "succeeded"})
+        assert client.get(note).json() == {"revision": 1, "text": "Report"}
+        assert client.put(note, json={"expected_revision": 1, "text": "Report\nRadius geklärt"}).json()["revision"] == 2
+        stale = client.put(note, json={"expected_revision": 1, "text": "y"})
+        assert stale.status_code == 409 and stale.json()["detail"]["code"] == "REVISION_CONFLICT"
+        # The agent report comes from the trace, so a changed note does not change it.
+        assert client.get(f"/api/runs/{run['run_id']}").json()["agent_report"] == "Report"
+        assert client.get("/api/capabilities").json()["notes"] is True
+
+
 class Server(uvicorn.Server):
     def install_signal_handlers(self):
         pass  # Keep the signal handlers of the test runner.

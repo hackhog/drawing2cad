@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import io
+import json
 import os
 from pathlib import Path
 import struct
@@ -25,6 +26,7 @@ from drawing2cad_mcp import __version__ as mcp_version
 from drawing2cad_mcp.part_schema import part_validate
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from .agent.mapping import artifact_view, part_view, review_view
 from .agent.model import ModelSettings
@@ -143,7 +145,7 @@ def _all(backend: DomainBackend, operation: str, **arguments: Any) -> list[dict[
 
 
 def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
-    """Part, review, artifacts, and agent report of the domain part run of a web run."""
+    """Part, review, and artifacts of the domain part run of a web run."""
     backend = services.backend
     part_run = record["part_run_id"]
     state = backend.call("part_read", run_id=part_run)["part"]
@@ -154,8 +156,15 @@ def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     listed = sorted(_all(backend, "artifact_list", run_id=part_run), key=lambda artifact: artifact["created"])
     artifacts = (artifact_view(a, source["sha256"]) for a in listed)
     return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release"))),
-            "artifacts": [a for a in artifacts if a is not None],
-            "agent_report": backend.call("notes_read", run_id=part_run)["text"] or None}
+            "artifacts": [a for a in artifacts if a is not None]}
+
+
+def agent_report(services: Services, record: dict[str, Any]) -> str | None:
+    """Final text of the agent conversation, from the agent trace of the run. Users can change the run note later."""
+    summary = services.jobs.directory(record["run_id"]) / "summary.json"
+    if not summary.is_file():
+        return None
+    return json.loads(summary.read_text(encoding="utf-8")).get("final_text") or None
 
 
 def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
@@ -167,8 +176,11 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
     view["agent"] = record.get("agent")
     view["iterations"] = record.get("iterations")  # Records from before this field have none.
-    view.update(part=None, review=None, artifacts=[], simulated=False)
-    if record["part_run_id"] is None or record["job"]["status"] in ("queued", "running"):
+    view.update(part=None, review=None, artifacts=[], simulated=False, agent_report=None)
+    if record["job"]["status"] in ("queued", "running"):
+        return view
+    view["agent_report"] = agent_report(services, record)
+    if record["part_run_id"] is None:
         return view
     return {**view, **services.result(record)}
 
@@ -189,7 +201,7 @@ def health() -> dict[str, Any]:
 def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
     return {
         "contract_version": CONTRACT_VERSION, "simulated": False, "runs": s.runner.available, "parameter_edit": False,
-        "notes": False, "downloads": True, "model_preview": True, "step_preview_upload": True,
+        "notes": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
         "max_pdf_bytes": s.backend.max_source_bytes,
         "agent_model": s.runner.settings.model if s.runner.available and s.runner.settings else None,
     }
@@ -261,6 +273,43 @@ def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any
 @router.get("/runs/{run_id}")
 def get_run(run_id: str, s: Services = Depends(services)) -> dict[str, Any]:
     return run_view(s, s.jobs.get(run_id))
+
+
+def _note_run(s: Services, run_id: str) -> str:
+    """The domain part run that holds the note of a web run. Notes belong to a part, so a run without part has none."""
+    record = s.jobs.get(run_id)
+    if record["part_run_id"] is None:
+        raise ServiceError(409, "NO_PART", "Dieser Lauf hat kein Teil angelegt; Notizen gehören zum Teil.",
+                           recovery="Einen Lauf mit angelegtem Teil öffnen.")
+    return record["part_run_id"]
+
+
+@router.get("/runs/{run_id}/note")
+def get_note(run_id: str, s: Services = Depends(services)) -> dict[str, Any]:
+    """The revisioned note of the part run. Revision 0 means that no note exists yet."""
+    try:
+        note = s.backend.call("notes_read", run_id=_note_run(s, run_id))
+    except ServiceError as error:
+        if error.detail["code"] != "NOT_FOUND":
+            raise
+        return {"revision": 0, "text": ""}
+    return {"revision": note["revision"], "text": note["text"]}
+
+
+class NoteChange(BaseModel):
+    expected_revision: int
+    text: str
+
+
+@router.put("/runs/{run_id}/note")
+def save_note(run_id: str, change: NoteChange, s: Services = Depends(services)) -> dict[str, Any]:
+    """Replace the note with an optimistic revision check. The agent writes its report there at the end of a run."""
+    if s.jobs.get(run_id)["job"]["status"] in ("queued", "running"):
+        raise ServiceError(409, "RUN_ACTIVE", "Der Lauf ist noch aktiv; der Agent schreibt seinen Bericht in die Notiz.",
+                           recovery="Warten, bis der Lauf beendet ist, und dann speichern.")
+    note = s.backend.call("notes_update", run_id=_note_run(s, run_id), expected_revision=change.expected_revision,
+                          text=change.text)
+    return {"revision": note["revision"], "text": note["text"]}
 
 
 @router.get("/runs/{run_id}/files")

@@ -36,7 +36,7 @@ All components use the `WebApi` interface in `src/lib/webApi.ts`. The Vite mode 
 
 | Vite mode | Adapter | Behavior |
 |---|---|---|
-| `development`, `production` | `httpApi.ts` | Web backend: stored sources, analysis, agent runs, artifacts, and STEP display. Parameter edits and notes show as unavailable. |
+| `development`, `production` | `httpApi.ts` | Web backend: stored sources, analysis, agent runs, artifacts, and STEP display. The run note can be changed. Parameter edits show as unavailable. |
 | `fixture` (`npm run dev:fixture`) | `fixtureApi.ts` | Simulated service with synthetic data (`fixtures.ts`). A banner and a "Simuliert" badge mark all results. |
 
 The fixture adapter imitates job phases, revisions, stale artifacts, revision conflicts, and unknown IDs.
