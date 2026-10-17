@@ -8,7 +8,8 @@ This project guide does not replace the standard.
 ## Scope
 
 Apply the language rule to README files, skill instructions, reference guides, technical plans, and new reports.
-Use English for new explanatory code comments and tool documentation.
+Apply the rule to new code comments, docstrings, tool descriptions, and architecture decision records.
+Keep user-interface text in its specified product language.
 Keep original drawings, source quotations, measured data, file paths, identifiers, and schema fields unchanged.
 Keep verified reference code and records from completed runs unchanged.
 If an English account of a historical run is necessary, create a separate report with a reference to the original record.
@@ -39,7 +40,8 @@ These technical nouns identify project concepts. They do not extend the approved
 | Term | Project meaning |
 |---|---|
 | dimensioned technical drawing | An editable drawing sheet with dimensions and the necessary views, sections, and notes. |
-| controlling drawing | The verified drawing revision that supplies the design requirements for a model build. |
+| controlling drawing | The verified drawing revision used for design requirements and model comparison. |
+| part description | The versioned JSON source of parameters, ordered features, evidence, and review data for the M1 prototype. |
 | model contract | Declarative data that specify sources, parameters, relations, operations, PMI, review data, and tests. |
 | fixed contract | A model contract with a recorded revision and hash. Changes require a new revision. |
 | operation graph | The directed acyclic graph of construction operations and their dependencies. |
@@ -55,7 +57,7 @@ These technical nouns identify project concepts. They do not extend the approved
 | source evidence | A recorded observation or quotation from a permitted source. |
 | MCP proxy | The component that forwards tool calls to the configured MCP server. |
 
-Use exact software names when necessary: `FreeCAD`, `Sketcher`, `TechDraw`, `Pad`, `Pocket`, `STEP AP242`, and `drawing2cad-mcp`.
+Use exact software names when necessary: `build123d`, `OCP`, `OpenCascade`, `FreeCAD`, `STEP AP242`, and `drawing2cad-mcp`.
 Define a new technical term at first use. Use the same term for the same concept in subsequent text.
 Do not rename a code identifier to meet a prose rule.
 

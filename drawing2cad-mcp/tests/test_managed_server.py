@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from mcp.types import CallToolRequestParams
 
-from drawing2cad_mcp.config import PdfSettings, Settings
+from drawing2cad_mcp.config import PdfSettings, ServerSettings, Settings
 from drawing2cad_mcp.server import Application
 from test_pdf import make_pdf
 
@@ -26,7 +26,8 @@ async def test_hidden_proxy_never_starts_discovers_or_dispatches(app):
     app.proxy = proxy
     async with app.lifespan(app.server):
         names = {tool.name for tool in (await app.on_list_tools(None)).tools}
-        assert "workflow_create_run" in names and "step_inspect" in names
+        assert "part_create" in names and "step_inspect" in names
+        assert "workflow_create_run" not in names
         assert not any(name.startswith("freecad_") for name in names)
         await app.status(refresh=True)
         result = await call(app, "freecad_execute_code", code="raise AssertionError()")
@@ -59,6 +60,7 @@ async def test_step_failure_preserves_structured_next_action(app, tmp_path):
 
 
 async def test_workflow_roundtrip_errors_and_no_forged_success(app, tmp_path):
+    app.settings.server.expose_legacy_workflow = True
     source = make_pdf(tmp_path / "drawing.pdf")
     source_hash = sha256(source.read_bytes()).hexdigest()
     result = await call(app, "workflow_create_run", run_id="server-test", mode="new_drawing", units="mm",
@@ -72,3 +74,10 @@ async def test_workflow_roundtrip_errors_and_no_forged_success(app, tmp_path):
     assert "CAD_VALIDATION_UNAVAILABLE" in {item["code"] for item in readiness.structured_content["defects"]}
     reread = await call(app, "workflow_read_run", run_id="server-test")
     assert reread.structured_content["run"]["state_revision"] == 0
+
+
+async def test_legacy_workflow_requires_explicit_configuration(app):
+    result = await call(app, "workflow_create_run")
+    assert result.structured_content["error"]["code"] == "LEGACY_WORKFLOW_DISABLED"
+    assert app.get_schema("workflow_create_run") is None
+    assert not (await call(app, "part_schema")).is_error

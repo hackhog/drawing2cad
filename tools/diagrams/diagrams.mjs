@@ -1,113 +1,42 @@
-// Build and check the diagrams in docs/diagrams (ADR 0011).
-//
-//   node diagrams.mjs          for each <name>.json: archify finalize -> <name>.html,
-//                              then SVG export light/dark and diagrams.lock.json
-//   node diagrams.mjs --check  (CI) checks without archify that JSON and HTML agree
-//                              with the lock file and that the SVG export of the
-//                              committed HTML is byte-identical
-//
-// The JSON file is always the source. Never edit the HTML by hand.
-// archify is a locally installed skill (not in the repository). Set its path
-// with ARCHIFY_BIN. The SVG export uses the export dialog of the
-// archify viewer itself and is deterministic.
+// Build generated architecture artifacts from versioned JSON, or verify exact parity.
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { chromium } from 'playwright-core';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { renderDiagram } from './renderer.mjs';
 
-const repoRoot = resolve(import.meta.dirname, '../..');
-const diagramDir = join(repoRoot, 'docs/diagrams');
-const lockPath = join(diagramDir, 'diagrams.lock.json');
-const variants = ['light', 'dark'];
+const root = resolve(import.meta.dirname, '../..');
+const directory = join(root, 'docs/diagrams');
+const lockPath = join(directory, 'diagrams.lock.json');
 const check = process.argv.includes('--check');
+const hash = (text) => createHash('sha256').update(text).digest('hex');
+const names = readdirSync(directory).filter((name) => name.endsWith('.json') && name !== 'diagrams.lock.json' && !name.includes('.delivery')).sort();
+const previous = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, 'utf8')) : {};
+const lock = {};
+const errors = [];
 
-const sha256 = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
-const rel = (path) => path.slice(repoRoot.length + 1);
-
-const names = readdirSync(diagramDir)
-  .filter((f) => f.endsWith('.json') && f !== 'diagrams.lock.json' && !f.includes('.delivery'))
-  .map((f) => f.slice(0, -'.json'.length))
-  .sort();
-
-function render(name) {
-  const archify = process.env.ARCHIFY_BIN ?? join(homedir(), '.claude/skills/archify/bin/archify.mjs');
-  if (!existsSync(archify)) throw new Error(`archify not found (${archify}), set ARCHIFY_BIN`);
-  const type = JSON.parse(readFileSync(join(diagramDir, `${name}.json`), 'utf8')).diagram_type;
-  const evidence = join('.archify', `${name}-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-  console.log(`archify finalize ${name} (${type}), evidence in ${evidence}`);
-  execFileSync(
-    process.execPath,
-    [archify, 'finalize', type, `docs/diagrams/${name}.json`, `docs/diagrams/${name}.html`,
-      '--repo-root', '.', '--quality', 'showcase', '--out-dir', evidence, '--receipt', join(evidence, 'finalize.json')],
-    { cwd: repoRoot, stdio: ['ignore', 'ignore', 'inherit'] },
-  );
-}
-
-async function exportSvgs(browser, name, outDir) {
-  const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1600, height: 1000 } });
-  await page.goto(pathToFileURL(join(diagramDir, `${name}.html`)).href);
-  const files = {};
-  for (const variant of variants) {
-    // The export menu of the viewer opens with the E key
-    await page.keyboard.press('e');
-    const button = page.locator(`[data-format="svg-${variant}"]`).first();
-    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), button.click()]);
-    files[variant] = join(outDir, `${name}.${variant}.svg`);
-    await download.saveAs(files[variant]);
-  }
-  await page.close();
-  return files;
-}
-
-const problems = [];
-const lock = check && existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, 'utf8')) : {};
-const tmp = mkdtempSync(join(tmpdir(), 'diagrams-'));
-const browser = await chromium.launch({ channel: 'chrome' });
-try {
-  for (const name of names) {
-    const json = join(diagramDir, `${name}.json`);
-    const html = join(diagramDir, `${name}.html`);
-    if (!check) render(name);
-    if (!existsSync(html)) {
-      problems.push(`${rel(html)} is missing`);
-      continue;
-    }
-    const entry = lock[name];
+for (const file of names) {
+  const name = file.slice(0, -5);
+  const source = readFileSync(join(directory, file), 'utf8');
+  const rendered = renderDiagram(JSON.parse(source));
+  const outputs = { html: rendered.html, 'light.svg': rendered.light, 'dark.svg': rendered.dark };
+  lock[name] = { json: hash(source), html: rendered.hashes.html, light: rendered.hashes.light, dark: rendered.hashes.dark };
+  for (const [extension, content] of Object.entries(outputs)) {
+    const path = join(directory, name + '.' + extension);
     if (check) {
-      if (!entry) problems.push(`${name}: missing in ${rel(lockPath)}`);
-      else {
-        if (entry.json !== sha256(json)) problems.push(`${rel(json)} changed, but was not rebuilt`);
-        if (entry.html !== sha256(html)) problems.push(`${rel(html)} does not agree with the source (edited by hand?)`);
-      }
-    }
-    const exported = await exportSvgs(browser, name, check ? tmp : diagramDir);
-    if (check) {
-      for (const variant of variants) {
-        const committed = join(diagramDir, `${name}.${variant}.svg`);
-        if (!existsSync(committed) || sha256(committed) !== sha256(exported[variant])) {
-          problems.push(`${rel(committed)} does not agree with ${rel(html)}`);
-        }
-      }
+      if (!existsSync(path) || readFileSync(path, 'utf8') !== content) errors.push(name + '.' + extension + ' differs from generated output.');
     } else {
-      lock[name] = { json: sha256(json), html: sha256(html) };
-      for (const variant of variants) lock[name][variant] = sha256(exported[variant]);
-      console.log(`${name}: ${variants.map((v) => `${name}.${v}.svg`).join(', ')}`);
+      writeFileSync(path, content, 'utf8');
     }
   }
-} finally {
-  await browser.close();
-  rmSync(tmp, { recursive: true, force: true });
+  if (check && JSON.stringify(previous[name]) !== JSON.stringify(lock[name])) errors.push(name + ': source/output lock differs.');
 }
-
-if (!check) {
-  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-} else if (problems.length) {
-  console.error(problems.map((p) => `✗ ${p}`).join('\n'));
-  console.error('→ run "npm run build --prefix tools/diagrams" locally, then commit all files in docs/diagrams');
-  process.exit(1);
+if (check && Object.keys(previous).some((key) => !(key in lock))) errors.push('Lock contains a removed diagram.');
+if (errors.length) {
+  console.error(errors.join('\n') + '\nRun npm run build --prefix tools/diagrams and commit all diagram artifacts.');
+  process.exitCode = 1;
+} else if (check) {
+  console.log(names.length + ' diagram(s) match the versioned source and renderer.');
 } else {
-  console.log(`✓ ${names.length} diagrams up to date (${names.join(', ')})`);
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
+  console.log(names.length + ' diagram(s) generated from JSON.');
 }

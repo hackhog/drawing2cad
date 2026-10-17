@@ -1,5 +1,9 @@
 # Constant-radius fillets and thread designations
 
+> Legacy AP242 adapter reference. M1 implements tap-drill thread data in JSON, not these STEP construction or semantic-PMI claims.
+> Keep the recorded adapter scope separate from current production capabilities.
+
+
 This extension applies to models with actual fillet operations. It also applies to a thread designation without fully specified thread geometry. The basic requirements in `validation.md` still apply. Use dimensions only from the authorized model contract.
 
 ## Fillets in the constructive STEP graph

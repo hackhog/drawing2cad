@@ -7,18 +7,26 @@ The connection path is:
 
 ```text
 Agent or LiteLLM -> HTTP /mcp -> drawing2cad-mcp -> PDF tools
-                                            -> stdio FreeCAD MCP -> FreeCAD runtime
+                                            -> isolated build123d worker
+                                            -> part revisions and STEP candidates
 ```
 
-The HTTP server uses one process and one shared FreeCAD proxy.
-The current FreeCAD upstream still requires its configured runtime.
-The HTTP MCP service does not supply a headless FreeCAD worker, packaged Docker image, or artifact download endpoint.
-The [demo application](../app/README.md) has its own UI and Docker setup. It does not host this MCP endpoint.
+The M1 image includes PDF tools and a build123d worker.
+The supplied `compose.mcp.yaml` profile uses stdio with network disabled.
+It does not expose an HTTP port.
+An HTTP deployment needs a configured listener and network access for the application.
+The CAD child retains its own network and filesystem restrictions.
+
+The HTTP transport does not yet supply persistent uploads or artifact downloads.
+These belong to the M2 unified service.
+The [existing demo](../app/README.md) has a separate UI and API; it does not host this MCP endpoint.
+The optional FreeCAD proxy is deprecated for new production runs.
 
 ## 1. Prepare the installation
 
 Install Python 3.11 or later and Poppler with `pdftoppm`.
-For CAD operations, install the selected FreeCAD MCP and its required FreeCAD runtime.
+For CAD operations, use the supported Linux sandbox and install the package with its `cad` extra.
+Prefer the maintained Docker image. Host installation must not bypass worker restrictions.
 Use a client that supports MCP Streamable HTTP.
 
 Run the commands from the repository root.
@@ -47,10 +55,10 @@ cp drawing2cad-mcp.example.toml drawing2cad-mcp.local.toml
 The remaining commands use the `drawing2cad-mcp` directory.
 Installation includes the vector analysis module and its pinned PyMuPDF dependency. No separate extractor package is necessary.
 Use `drawing_extract` for the supported profile described in [Vector analysis](README.md#vector-analysis).
-The operation reads page 1. It creates no persistent JSON export or colored overlay.
+The operation reads the selected one-based page (default 1). It creates no persistent JSON export or colored overlay.
 
-The recorded runtime tests used Windows and Python 3.12.
-The Linux and macOS commands are installation instructions, not evidence of platform validation.
+The original transport test used Windows and Python 3.12.
+Use current run evidence for Docker and CAD results. Installation commands alone do not prove platform validation.
 
 ## 2. Configure server paths and tools
 
@@ -63,7 +71,9 @@ Keep this deployment file outside version control.
 | `pdf.output_root` | Set a writable output directory. Keep generated files in an ignored directory. |
 | `pdf.pdftoppm` | Set the Poppler executable path, or omit this setting to use `PATH`. |
 | `pdf.timeout_seconds` | Set the time limit for each Poppler or vector-analysis process. |
-| `freecad.enabled` | Use `false` for PDF tools alone. Use `true` when the upstream is configured. |
+| `cad.enabled` | Enable only the maintained worker with its required sandbox. |
+| `cad.allow_build_code` | Keep `false` unless verified in-memory execution is required. |
+| `freecad.enabled` | Keep `false` for M1 production. Legacy development use requires explicit upstream configuration. |
 | `freecad.command` and `freecad.args` | Set the existing FreeCAD MCP launcher and its arguments. |
 | `freecad.cwd` and `freecad.env` | Set these optional fields only when the upstream requires them. |
 | `freecad.timeout_seconds` | Set the permitted duration of an upstream operation. |
@@ -175,8 +185,8 @@ Raw proxy calls bypass managed evidence gates. They are hidden by default.
 The upstream determines their number and schemas.
 
 `freecad.connected` confirms the upstream MCP connection.
-It does not prove that the FreeCAD addon can execute operations.
-Use a suitable read-only FreeCAD tool from the discovered catalog to verify runtime access.
+It does not prove that CAD execution is available.
+Call `cad_capabilities` and `cad_worker_probe`, then inspect their actual results.
 The `drawing_analysis` field reports the built-in engine, profile, schema version, and process timeout.
 A browser page or ordinary GET request is not an MCP readiness test.
 
@@ -279,7 +289,8 @@ Use your agent host's skill installation mechanism, or supply the same instructi
 MCP registration supplies tools; it does not install or load the skill.
 
 Keep authorized inputs and validation evidence separate from the skill package.
-Follow the required sequence: dimensioned drawing, drawing review, editable 3D model, then STEP export.
+Follow the current skill sequence for source evidence, part construction, validation, and STEP export.
+The complete service also requires a dimensioned technical drawing. Its creation can precede or follow the model.
 HTTP transport does not change the evidence or review requirements.
 
 ## 10. Diagnose connection problems
@@ -296,7 +307,7 @@ HTTP transport does not change the evidence or review requirements.
 | HTTP 404 | Use `/mcp`; the service has no `/sse`, download, or health route. |
 | HTTP 413 | Reduce the request body below the 4 MiB limit. |
 | No `freecad_*` tools | For the optional development profile, verify `server.expose_freecad_proxy`, `freecad.enabled`, the launcher, its arguments, and refreshed status. |
-| Vector analysis rejects the page layout | Use the normal PDF image tools. The vector profile requires an unrotated, uncropped page with unit UserUnit. |
+| Vector analysis rejects the page layout | Use the normal PDF image tools. The vector profile accepts orthogonal page rotation, but still requires the supported full-page boxes and UserUnit 1. |
 | `catalog_stale=true` | Restore the upstream connection, then refresh status and list the tools again. |
 | FreeCAD tool fails after discovery | Verify addon access separately; upstream MCP discovery does not prove CAD execution. |
 | PDF path rejected | Use an existing absolute server path inside a permitted input directory. |
@@ -309,9 +320,9 @@ Use the [stdio registration example](litellm-stdio.example.json) for LiteLLM's s
 
 ## Operating limits
 
-- One server process serializes individual upstream calls. Coordinate complete model workflows between agents that share the runtime.
-- Run one server process per shared FreeCAD upstream until a worker coordinator exists.
-- Stateless HTTP supplies no MCP session ID, result store, or stream resumption. CAD document state remains shared.
+- Part mutations use explicit stored revisions. Coordinate changes to the same part.
+- A configured legacy FreeCAD proxy has shared document state; its individual upstream calls are serialized.
+- Stateless HTTP supplies no MCP session ID or stream resumption. The part store is separate from transport state.
 - Returned artifact paths refer to server files. MCP image blocks remain available to remote clients.
 - Bearer authentication does not provide user-specific file isolation or restrict the upstream's Python execution permissions.
 - The server does not automatically retry interrupted CAD calls.
@@ -319,7 +330,8 @@ Use the [stdio registration example](litellm-stdio.example.json) for LiteLLM's s
 ## Validate the deployment
 
 Verify the connection through each client that will use this deployment.
-Test HTTP initialization, tool discovery, status, PDF rendering, and access to the selected FreeCAD runtime.
+Test HTTP initialization, tool discovery, status, PDF rendering, and the configured worker probe.
+Test CAD construction and fresh STEP re-import separately.
 Verify token rejection and the permitted Host and Origin values.
 Record actual results separately from this guide.
 Transport tests do not prove headless CAD operation, editable STEP reconstruction, or semantic PMI.

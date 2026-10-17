@@ -266,7 +266,7 @@ dev = [
 
 [[package]]
 name = "drawing2cad-mcp"
-version = "0.4.0"
+version = "0.5.0"
 source = { directory = "../../drawing2cad-mcp" }
 dependencies = [
     { name = "jsonschema" },
@@ -281,6 +281,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "build123d", marker = "extra == 'cad'", specifier = "==0.13.0" },
     { name = "httpx2", marker = "extra == 'test'", specifier = ">=2.13,<3" },
     { name = "jsonschema", specifier = ">=4.20,<5" },
     { name = "mcp", specifier = "==2.3.0" },
@@ -293,7 +294,7 @@ requires-dist = [
     { name = "starlette", specifier = ">=1.8,<2" },
     { name = "uvicorn", specifier = ">=0.54,<1" },
 ]
-provides-extras = ["test"]
+provides-extras = ["cad", "test"]
 
 [[package]]
 name = "fastapi"

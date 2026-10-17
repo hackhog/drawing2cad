@@ -73,15 +73,19 @@ def _contours(items: list) -> list[list[Point]]:
     return contours
 
 
-def read_pdf(path: Path) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None]:
+def read_pdf(path: Path, page: int = 1) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None]:
     """Return strokes, glyphs, sheet size, and the embedded image bounding box.
-    Read page one with the calibrated drawing-area profile."""
+    Read a one-based page with the calibrated drawing-area profile."""
     with pymupdf.open(path) as doc:
-        return _read_page(doc[0])
+        if isinstance(page, bool) or not isinstance(page, int) or not 1 <= page <= len(doc):
+            raise ValueError("Page is outside the document.")
+        return _read_page(doc[page - 1])
 
 
 def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None]:
-    sheet = (page.rect.width * PT_TO_MM, page.rect.height * PT_TO_MM)
+    # PyMuPDF returns drawing paths in unrotated page coordinates. Apply the
+    # template there. The complete result is rotated after classification.
+    sheet = (page.cropbox.width * PT_TO_MM, page.cropbox.height * PT_TO_MM)
 
     raster = None
     for img in page.get_images():

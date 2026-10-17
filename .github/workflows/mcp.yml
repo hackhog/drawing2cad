@@ -1,0 +1,30 @@
+name: Headless MCP
+
+on:
+  pull_request:
+    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.dockerignore', '.github/workflows/mcp.yml']
+  push:
+    branches: [main]
+    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.dockerignore', '.github/workflows/mcp.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build locked test runtime
+        run: docker build --target test -t drawing2cad-mcp:test -f drawing2cad-mcp/Dockerfile .
+      - name: Run in the production restrictions
+        run: >-
+          docker run --rm --network none --read-only --cap-drop ALL
+          --security-opt no-new-privileges --memory 4g --cpus 2 --pids-limit 128
+          --tmpfs /tmp:rw,nosuid,size=768m
+          -e DRAWING2CAD_REQUIRE_SANDBOX=1 -e DRAWING2CAD_PDFTOPPM=/usr/bin/pdftoppm
+          -v "${{ github.workspace }}:/repo:ro"
+          drawing2cad-mcp:test /repo/drawing2cad-mcp/tests
+          -c /repo/drawing2cad-mcp/pyproject.toml
+          --basetemp=/tmp/pytest -p no:cacheprovider -q

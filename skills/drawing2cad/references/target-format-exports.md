@@ -8,13 +8,14 @@ The skill continues to use only drawing2cad-mcp.
 
 Use this sequence:
 
-1. Create and review the controlling technical drawing.
-2. Build and verify the parametric model.
+1. Create the technical drawing and parametric model in either order.
+2. Review the drawing and verify that its final revision agrees with the model.
 3. Export AP242 and complete the required reconstruction, change, and PMI tests.
 4. Create the requested target-format derivative from that verified master.
 5. Reopen the derivative in the specified target version and verify the requested claims.
 
-STEP remains the master. A derivative is an additional delivery artifact.
+This sequence applies to the final M3 AP242 master. The M1 prototype keeps its JSON description as the editable source.
+A derivative is an additional delivery artifact.
 Keep the master unchanged and record its hash in the derivative manifest.
 Do not make upstream modeling depend on an optional final-format adapter.
 If the derivative fails, report its failure separately from the master status.

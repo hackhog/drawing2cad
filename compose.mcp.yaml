@@ -1,0 +1,26 @@
+# M1 uses MCP stdio. Input and output directories are supplied by the operator.
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: drawing2cad-mcp/Dockerfile
+      target: production
+    image: drawing2cad-mcp:m1
+    stdin_open: true
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 4g
+    cpus: 2
+    pids_limit: 128
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
+    volumes:
+      - type: bind
+        source: ${DRAWING2CAD_INPUT_DIR:-./resources}
+        target: /inputs
+        read_only: true
+      - cad-data:/data
+volumes:
+  cad-data:

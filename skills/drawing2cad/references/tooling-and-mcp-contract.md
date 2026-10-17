@@ -1,5 +1,11 @@
 # Tool inventory, common MCP interface, and CAD service design
 
+> Deprecated development reference. Do not use this FreeCAD profile for new production runs.
+> Its code and recorded hashes are preserved as historical evidence.
+> Use [the current workflow](managed-workflow.md) for maintained MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
 This is the optional FreeCAD development profile and a historical adapter inventory. The normal skill uses the backend-neutral MCP tools in [managed-workflow.md](managed-workflow.md). Do not load this inventory for ordinary evidence or STEP inspection calls.
 
 `drawing2cad-mcp` supplies PDF preparation, maintained STEP readers, and managed evidence tools. It can expose the configured FreeCAD MCP as an explicit development option. See [drawing2cad-mcp.md](drawing2cad-mcp.md) for use instructions. The live catalog contains local PDF tools and dynamically forwarded `freecad_*` tools. The table below describes the current upstream interface. The `cad_*` tools in Sections 6–9 remain a **design proposal, not an implementation**. AP242 functions remain documented inline components. There is no general drawing parser or universal parametric STEP service.

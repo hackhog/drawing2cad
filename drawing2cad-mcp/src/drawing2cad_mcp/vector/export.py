@@ -6,8 +6,9 @@ from collections import Counter
 from typing import Any
 
 from .model import Arc, Drawing, Stroke
+from .candidates import circles, dimensions, normalized_box
 
-SCHEMA_VERSION = 2  # Version 2 adds recognized text and reading direction.
+SCHEMA_VERSION = 3  # Add displayed coordinates, candidate evidence, and confidence.
 
 
 def _r(v: float) -> float:
@@ -36,6 +37,10 @@ def to_dict(d: Drawing) -> dict[str, Any]:
         "source": d.source,
         "units": "mm, sheet coordinates, origin at top left, positive y down",
         "sheet_size_mm": [_r(v) for v in d.sheet_size_mm],
+        "rotation_degrees": d.rotation_degrees,
+        "coordinate_system": "displayed_sheet_mm_top_left_y_down",
+        "circle_candidates": circles(d),
+        "dimension_candidates": dimensions(d),
         "raster_image_bbox": [_r(v) for v in d.raster_bbox] if d.raster_bbox else None,
         "summary": {
             "strokes": len(d.strokes),
@@ -44,12 +49,14 @@ def to_dict(d: Drawing) -> dict[str, Any]:
             "text_blocks": len(d.texts),
         },
         "views": [
-            {"id": v.id, "bbox": [_r(x) for x in v.bbox], "is_iso": v.is_iso, "stroke_ids": v.stroke_ids}
+            {"id": v.id, "bbox": [_r(x) for x in v.bbox], "is_iso": v.is_iso, "stroke_ids": v.stroke_ids,
+             "bbox_normalized": normalized_box(v.bbox, d.sheet_size_mm)}
             for v in d.views
         ],
         "text_blocks": [
             {"id": t.id, "text": t.text, "angle_deg": t.angle_deg, "bbox": [_r(x) for x in t.bbox],
-             "glyph_count": t.glyph_count}
+             "glyph_count": t.glyph_count, "confidence": t.confidence, "method": t.method,
+             "bbox_normalized": normalized_box(t.bbox, d.sheet_size_mm)}
             for t in d.texts
         ],
         "strokes": [_stroke(s) for s in d.strokes],

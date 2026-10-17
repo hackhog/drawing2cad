@@ -1,5 +1,11 @@
 # Inline container for adapter and review data
 
+> Deprecated development reference. Do not use this FreeCAD profile for new production runs.
+> Its code and recorded hashes are preserved as historical evidence.
+> Use [the current workflow](managed-workflow.md) for maintained MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
 This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
 
 

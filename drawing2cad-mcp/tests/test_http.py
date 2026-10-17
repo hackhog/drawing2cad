@@ -21,7 +21,7 @@ import uvicorn
 from drawing2cad_mcp.config import HTTPSettings, PdfSettings, ServerSettings, Settings
 from drawing2cad_mcp.http import create_http_app
 from drawing2cad_mcp.proxy import FreeCADProxy
-from drawing2cad_mcp.server import LOCAL_TOOLS, Application
+from drawing2cad_mcp.server import LEGACY_TOOLS, LOCAL_TOOLS, Application
 from test_pdf import make_pdf
 from test_proxy import UPSTREAM
 
@@ -114,11 +114,12 @@ async def mcp_session(url, *, token=None):
 
 
 async def test_http_status_and_pdf_text_use_real_mcp(http_application, tmp_path):
+    http_application.settings.server.expose_legacy_workflow = True
     source = make_pdf(tmp_path / "synthetic.pdf")
     async with running_server(http_application) as url:
         async with mcp_session(url) as session:
             tools = (await session.list_tools()).tools
-            assert len(tools) == len(LOCAL_TOOLS)
+            assert len(tools) == len(LOCAL_TOOLS) + len(LEGACY_TOOLS)
             assert "drawing_extract" in {tool.name for tool in tools}
             status = await session.call_tool("drawing2cad_status", {})
             assert status.structured_content["freecad"]["configured"] is False

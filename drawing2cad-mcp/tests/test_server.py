@@ -162,7 +162,8 @@ async def test_full_stdio_facade_preserves_proxy_and_pdf(tmp_path):
             catalog = (await session.list_tools()).tools
             assert len(catalog) == len(LOCAL_TOOLS) + 5
             capabilities = await session.call_tool("cad_capabilities", {})
-            assert capabilities.structured_content["workflow"]["available"]
+            assert not capabilities.structured_content["workflow"]["available"]
+            assert capabilities.structured_content["cad"]["backend"] == "build123d"
             echo = next(tool for tool in catalog if tool.name == "freecad_echo")
             assert echo.output_schema["required"] == ["value"]
             result = await session.call_tool("freecad_echo", {"value": "facade round trip"})

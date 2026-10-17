@@ -6,11 +6,14 @@ Expected view counts are manually reviewed reference values.
 """
 
 from pathlib import Path
+from hashlib import sha256
 
 import pytest
+from pypdf import PdfWriter
 
 from drawing2cad_mcp.vector import Kind, extract
 from drawing2cad_mcp.vector.model import Line
+from drawing2cad_mcp.pdf import PdfService
 
 # Original regression drawings remain separate from the runtime package.
 _ROOT = Path(__file__).resolve().parents[3]
@@ -65,3 +68,48 @@ def test_maschinenteil_split_arrowhead_is_arrow():
     assert len(head) == 22 and len({s.path_id for s in head}) == 2
     assert all(s.kind is Kind.ARROW for s in head)
     assert not any(s.kind is Kind.UNCLEAR for s in drawing.strokes)
+
+
+@pytest.mark.parametrize("name,filename", [
+    ("Flansch", "Flansch_dwg.pdf"), ("3-Loch-Hebel", "3-Loch-Hebel.pdf"),
+    ("Grundplatte", "Grundplatte.pdf"),
+])
+def test_evaluation_pdf_extraction_keeps_source_and_candidate_evidence(tmp_path, name, filename):
+    source = SAMPLES / name / filename
+    if not source.exists():
+        pytest.skip(f"Evaluation drawing is absent: {source}")
+    before = sha256(source.read_bytes()).hexdigest()
+    service = PdfService((SAMPLES,), tmp_path / "out", None)
+    result = service.extract_drawing(source)
+    assert result["source"]["sha256"] == before == sha256(source.read_bytes()).hexdigest()
+    assert result["summary"]["strokes"] > 0
+    assert result["dimension_candidates"]
+    assert all(candidate["semantic_status"] == "unverified" for candidate in result["circle_candidates"])
+    assert result["provenance"]["scale_applied"] is False
+
+
+def test_rotated_flansch_retains_printed_values_and_calibrates_two_diameters(tmp_path):
+    source = _pdf("Flansch")
+    before = sha256(source.read_bytes()).hexdigest()
+    writer = PdfWriter(source)
+    writer.pages[0].rotate(90)
+    rotated = tmp_path / "flansch-rotated.pdf"
+    writer.write(rotated)
+    service = PdfService((tmp_path,), tmp_path / "out", None)
+    result = service.extract_drawing(rotated)
+    references = []
+    # These two independently printed diameters are the existing reviewed
+    # regression values. Their circles are measured from vector geometry.
+    for diameter in (20, 30):
+        dimension = next(d for d in result["dimension_candidates"]
+                         if d["kind"] == "diameter" and d["value"] == diameter)
+        circle = next(c for c in result["circle_candidates"]
+                      if abs(c["diameter_sheet_mm"] - diameter * 2) < 0.02)
+        x, y = circle["center_sheet_mm"]
+        radius = circle["diameter_sheet_mm"] / 2
+        references.append({"dimension_id": dimension["id"], "printed_value_mm": diameter,
+                           "p0": [x - radius, y], "p1": [x + radius, y],
+                           "source_region": dimension["bbox_normalized"], "evidence": "printed_dimension"})
+    cal = service.calibrate(rotated, 1, references)["calibration"]
+    assert cal["mm_per_coordinate_unit"] == pytest.approx(0.5, abs=0.0002)
+    assert sha256(source.read_bytes()).hexdigest() == before

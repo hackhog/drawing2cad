@@ -27,6 +27,7 @@ from pypdf import PdfReader
 
 from .vector.export import SCHEMA_VERSION
 from .vector.model import Kind
+from . import measurements
 
 
 class PdfError(ValueError):
@@ -338,7 +339,8 @@ class PdfService:
             image.close()
 
     def extract_drawing(
-        self, path: str | Path, include_strokes: bool = False, stroke_kinds: list[str] | None = None
+        self, path: str | Path, include_strokes: bool = False, stroke_kinds: list[str] | None = None,
+        page: int = 1,
     ) -> dict[str, Any]:
         if not isinstance(include_strokes, bool):
             raise PdfError("include_strokes must be a boolean.")
@@ -348,11 +350,12 @@ class PdfService:
                     or len(set(stroke_kinds)) != len(stroke_kinds)):
                 raise PdfError("stroke_kinds requires include_strokes=true and a nonempty list of distinct supported classes.")
         source = self._load(path)
-        geometry = self._geometry(source, 1)
-        if (geometry["rotation_degrees"] != 0 or geometry["user_unit"] != 1
+        self._page_number(source, page)
+        geometry = self._geometry(source, page)
+        if (geometry["user_unit"] != 1
                 or geometry["cropbox_points"] != geometry["mediabox_points"]
                 or geometry["mediabox_points"][:2] != [0.0, 0.0]):
-            raise PdfError("Vector analysis requires an unrotated page with UserUnit=1 and a full, zero-origin MediaBox. Use PDF rendering for other page layouts.")
+            raise PdfError("Vector analysis requires UserUnit=1 and a full, zero-origin MediaBox. Use PDF rendering for other page layouts.")
         # PyMuPDF does not support multithreaded execution. Each analysis uses
         # a separate process, the permitted snapshot, and the configured timeout.
         with tempfile.TemporaryDirectory(prefix=".pdf-extract-", dir=self._output_directory()) as temp:
@@ -361,7 +364,7 @@ class PdfService:
             snapshot.write_bytes(source.data)
             try:
                 completed = subprocess.run(
-                    [sys.executable, "-X", "utf8", "-m", "drawing2cad_mcp.vector_worker", str(snapshot), str(result_path)],
+                    [sys.executable, "-X", "utf8", "-m", "drawing2cad_mcp.vector_worker", str(page), str(snapshot), str(result_path)],
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                     timeout=self.timeout_seconds, check=False,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
@@ -394,12 +397,66 @@ class PdfService:
         return {
             **data, "source": source.metadata,
             "provenance": {
-                **geometry, "profile": "bct_nx_a3", "coordinate_system": "sheet_mm_top_left_y_down",
+                **geometry, "profile": "bct_nx_a3", "coordinate_system": "displayed_sheet_mm_top_left_y_down",
                 "scale_applied": False, "ocr_performed": False, "engine": "drawing2cad_mcp.vector",
                 "limitations": [
-                    "Only page 1 is analyzed; the drawing-area profile is calibrated for BCT/NX A3 sheets.",
+                    "The selected page is analyzed with the BCT/NX A3 drawing-area profile before display rotation.",
                     "Glyph recognition can return '?' or an incorrect known character; verify dimensions in source images.",
+                    "Confidence scores are rule scores, not calibrated probabilities. Circles do not prove holes.",
                     "Sheet coordinates and stroke classes do not define part dimensions or CAD operations.",
                 ],
             },
         }
+
+    def calibrate(
+        self, path: str | Path, page: int, references: list[dict], coordinate_space: str = "sheet_mm",
+        relative_tolerance: float = 0.02, crop_context: dict | None = None, view_id: str = "view-1",
+    ) -> dict[str, Any]:
+        """Calibrate one view from two explicit printed dimension observations."""
+        source = self._load(path)
+        self._page_number(source, page)
+        try:
+            calibration = measurements.calibrate(source.metadata["sha256"], page, references,
+                                                 coordinate_space, relative_tolerance, crop_context, view_id)
+            self._measurement_bounds(source, page, calibration,
+                                     [point for ref in references for point in (ref["p0"], ref["p1"])])
+        except measurements.MeasurementError as exc:
+            raise PdfError(str(exc)) from exc
+        return {"source": source.metadata, "calibration": calibration}
+
+    def _measurement_bounds(self, source: _Source, page: int, calibration: dict, points: list) -> None:
+        if calibration["coordinate_space"] == "sheet_mm":
+            geometry = self._geometry(source, page)
+            width, height = (geometry[key] * 25.4 / 72 for key in ("width_points", "height_points"))
+            references = [point for ref in calibration["references"] for point in (ref["p0"], ref["p1"])]
+            if any(not (0 <= point[0] <= width and 0 <= point[1] <= height) for point in points + references):
+                raise measurements.MeasurementError("Vector observations must be inside the displayed sheet.")
+
+    def measure_distance(
+        self, path: str | Path, page: int, p0: list, p1: list, calibration: dict, evidence: dict,
+    ) -> dict[str, Any]:
+        """Measure supplied points with a source-bound, view-specific scale."""
+        source = self._load(path)
+        self._page_number(source, page)
+        try:
+            verified = measurements.validate_calibration(calibration, source.metadata["sha256"], page)
+            result = measurements.distance(verified, p0, p1, evidence)
+            self._measurement_bounds(source, page, verified, [result["p0"], result["p1"]])
+        except measurements.MeasurementError as exc:
+            raise PdfError(str(exc)) from exc
+        return {"source": source.metadata, **result}
+
+    def measure_circle(
+        self, path: str | Path, page: int, points: list, calibration: dict, evidence: dict,
+        relative_tolerance: float = 0.02,
+    ) -> dict[str, Any]:
+        """Fit supplied circle points and retain their source evidence."""
+        source = self._load(path)
+        self._page_number(source, page)
+        try:
+            verified = measurements.validate_calibration(calibration, source.metadata["sha256"], page)
+            result = measurements.circle(verified, points, evidence, relative_tolerance)
+            self._measurement_bounds(source, page, verified, result["points"])
+        except measurements.MeasurementError as exc:
+            raise PdfError(str(exc)) from exc
+        return {"source": source.metadata, **result}

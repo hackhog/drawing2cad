@@ -11,6 +11,7 @@ from pypdf.generic import DecodedStreamObject, NameObject, NumberObject
 import pytest
 
 from drawing2cad_mcp.pdf import PdfError, PdfService
+from drawing2cad_mcp.vector.export import SCHEMA_VERSION
 from test_pdf import make_pdf
 
 
@@ -45,11 +46,55 @@ def test_compact_and_filtered_results_share_source_and_leave_no_exports(service,
     assert not list(service.output_root.iterdir())
 
 
-@pytest.mark.parametrize("options", [{"rotation": 90}, {"cropbox": True}])
-def test_transformed_pages_fail_explicitly(service, tmp_path, options):
-    source = make_pdf(tmp_path / "transformed.pdf", **options)
-    with pytest.raises(PdfError, match="unrotated page"):
+def test_cropped_pages_fail_explicitly(service, tmp_path):
+    source = make_pdf(tmp_path / "transformed.pdf", cropbox=True)
+    with pytest.raises(PdfError, match="full, zero-origin MediaBox"):
         service.extract_drawing(source)
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+def test_rotated_page_coordinates_match_render_contract(service, tmp_path, rotation):
+    original = make_vector_pdf(tmp_path / "original.pdf")
+    baseline = service.extract_drawing(original, include_strokes=True)
+    writer = PdfWriter(original)
+    writer.pages[0].rotate(rotation)
+    source = tmp_path / "rotated.pdf"
+    writer.write(source)
+    before = sha256(source.read_bytes()).hexdigest()
+    result = service.extract_drawing(source, include_strokes=True)
+    assert result["summary"] == baseline["summary"]
+    assert result["source"]["sha256"] == before == sha256(source.read_bytes()).hexdigest()
+    assert result["rotation_degrees"] == rotation
+    width, height = baseline["sheet_size_mm"]
+    expected_size = [height, width] if rotation in (90, 270) else [width, height]
+    assert result["sheet_size_mm"] == expected_size
+    for original_stroke, stroke in zip(baseline["strokes"], result["strokes"]):
+        for key in ("p0", "p1"):
+            x, y = original_stroke[key]
+            expected = {0: (x, y), 90: (height - y, x), 180: (width - x, height - y),
+                        270: (y, width - x)}[rotation]
+            assert stroke[key] == pytest.approx(expected, abs=0.002)
+    normalized = result["views"][0]["bbox_normalized"]
+    box = result["views"][0]["bbox"]
+    assert normalized == pytest.approx([box[0] / expected_size[0], box[1] / expected_size[1],
+                                        box[2] / expected_size[0], box[3] / expected_size[1]], abs=1e-5)
+
+
+def test_selected_page_is_analyzed(service, tmp_path):
+    original = make_vector_pdf(tmp_path / "original.pdf")
+    writer = PdfWriter()
+    writer.add_blank_page(width=1190.55, height=841.89)
+    writer.append(original)
+    writer.pages[1].rotate(90)
+    source = tmp_path / "two-pages.pdf"
+    writer.write(source)
+    assert service.extract_drawing(source)["summary"]["strokes"] == 0
+    result = service.extract_drawing(source, page=2)
+    assert result["summary"]["strokes"] == 4
+    assert result["provenance"]["page"] == 2
+    assert result["rotation_degrees"] == 90
+    with pytest.raises(PdfError, match="between"):
+        service.extract_drawing(source, page=3)
 
 
 def test_user_unit_is_rejected(service, tmp_path):
@@ -85,8 +130,8 @@ def test_worker_failure_is_a_pdf_error_and_cleans_snapshot(service, tmp_path, mo
 
 
 @pytest.mark.parametrize("payload", [
-    None, "not JSON", {"schema_version": 2, "strokes": [{}], "views": []},
-    {"schema_version": 2, "strokes": [], "views": [{}]},
+    None, "not JSON", {"schema_version": SCHEMA_VERSION, "strokes": [{}], "views": []},
+    {"schema_version": SCHEMA_VERSION, "strokes": [], "views": [{}]},
     {"schema_version": 999, "strokes": [], "views": []},
 ])
 def test_invalid_worker_result_fails_at_service_boundary(service, tmp_path, monkeypatch, payload):

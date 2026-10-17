@@ -16,7 +16,7 @@
 - Create one branch for each issue. Name the branch `<type>/<issue-number>-<short-name>`, for example, `feat/12-pdf-upload`.
 - Do not commit directly to `main`.
 - Use a Git worktree when the user asks for one. Otherwise, use a branch in the main checkout.
-- Create one pull request for each issue. Add `Closes #<number>` to the pull request description.
+- Create one pull request for each issue. Add `Closes #<number>` only when the pull request completes the issue. Use `Refs #<number>` for a partial milestone and list the remaining acceptance work.
 - Keep each pull request within its issue scope. Create a separate issue for additional work.
 - Describe the tests and their actual results in the pull request description. Identify checks that did not run.
 - Do not report historical results as new tests.
@@ -26,22 +26,25 @@
 ## CAD workflow
 
 - For CAD work, use [skills/drawing2cad/SKILL.md](skills/drawing2cad/SKILL.md). The workflow must work without previous chat messages or a specific agent model.
-- **First, create a dimensioned technical drawing. Then, do the drawing review. Use that drawing to build the native parametric 3D model. Export STEP after model verification.**
-- After STEP passes its required tests, create requested target-format derivatives as the final delivery step. Keep the verified AP242 master unchanged.
-- For optional NX or SOLIDWORKS delivery, distinguish an imported body from reconstructed native features. Verify target-version editability and PMI separately.
-- Native 2D sketches alone do not meet the drawing requirement. Use [drawing-first.md](skills/drawing2cad/references/drawing-first.md) for changes and STEP import tests.
-- Include the necessary views, sections, dimensions, units, manufacturing data, and uncertainty markers in the drawing. Give evidence for these data.
-- Mark radii without dimensions and all unclear details. Keep approved assumptions identified as assumptions.
-- Keep model operations and parameters editable. A STEP end body alone does not meet the construction-history or semantic-PMI requirement.
-- Test AP242 content, reconstruction from STEP alone, and changes through import adapters separately.
-- Use only `drawing2cad-mcp` for PDF preparation and CAD execution. Keep the skill independent of the CAD backend. FreeCAD is an optional adapter behind this interface.
-- Require separate evidence for drawing creation, editable construction, STEP AP242, semantic PMI, and graphical PMI. A parameter table alone does not prove editable construction.
-- Keep backend-specific execution code in maintained MCP adapters. Inline code through the MCP remains permitted for a verified development fallback.
-- The production target is a fully headless server. All required phases must work without a CAD GUI session or GUI dispatcher.
-- Test drawing creation and rendering, editable construction, AP242, PMI, reconstruction, and validation on that server. A GUI bridge is a development path only.
+- Use only `drawing2cad-mcp` for PDF preparation and CAD execution. Keep backend-specific code in maintained server adapters.
+- Follow [ADR 0014](docs/adr/0014-headless-build123d-metric-prototype.md) for the M1 prototype, M2 complete service, and M3 AP242 boundaries.
+- The complete service must deliver a dimensioned technical drawing and a verified 3D model. Either can be created first. Compare their final revisions before delivery.
+- Native 2D sketches alone do not meet the drawing requirement. Use [drawing-first.md](skills/drawing2cad/references/drawing-first.md) for drawing delivery and STEP-only tests. Its filename is retained for compatibility.
+- Include necessary views, sections, dimensions, units, manufacturing data, and uncertainty markers. Give evidence for these data.
+- If a dimension or position is missing, infer a reasonable value from the drawing geometry. Record `assumed`, its reason, source region, units, and affected feature.
+- Mark radii without dimensions and all unclear details. Keep assumptions distinct from source dimensions and user design decisions.
+- Build a feature when a reasonable assumption supports it. Block only when no reasonable assumption is possible.
+- M1 uses a versioned JSON part description as the editable construction source. It does not prove editable construction or semantic PMI inside STEP.
+- Keep AP242 construction, parameter changes through adapters, and semantic PMI as binding M3 requirements. Test these claims separately from geometry export.
+- Export a STEP candidate from the validated build. Re-import it in a fresh worker and validate it before release.
+- Record independent STEP analysis and target-CAD opening separately. `not_tested` never means `pass`.
+- The production target is a fully headless Docker service. No required phase may depend on a CAD GUI or GUI dispatcher.
+- Use only a verified sandbox profile for CAD execution. Do not silently fall back to an unsandboxed host process.
+- The FreeCAD proxy and inline adapters are deprecated development references. Do not use them for new production runs.
 - Do not create ad hoc model scripts, macros, or executable helper files. This restriction does not prohibit authorized development of versioned MCP server code.
 - Use only permitted sources. Do not use verification resources as unreported construction inputs. Keep original resources unchanged.
-- Give suitable independent review tasks to subagents. Run CAD changes to the same document in sequence. Review their results before delivery.
+- Give suitable independent review tasks to subagents. Run changes to the same model in sequence. Review their results before delivery.
+- Create requested target-format derivatives after the required STEP tests. Distinguish an imported body from reconstructed native features.
 
 ## Files and evidence
 

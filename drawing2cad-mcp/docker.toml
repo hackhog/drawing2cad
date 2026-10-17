@@ -1,0 +1,19 @@
+[pdf]
+allowed_roots = ["/inputs"]
+output_root = "/data/output"
+timeout_seconds = 90
+
+[server]
+transport = "stdio"
+expose_freecad_proxy = false
+
+[freecad]
+enabled = false
+
+[cad]
+enabled = true
+timeout_seconds = 90
+memory_mb = 3072
+concurrency = 1
+allow_build_code = false
+max_tool_calls = 45

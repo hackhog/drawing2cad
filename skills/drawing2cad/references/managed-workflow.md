@@ -1,115 +1,134 @@
-# Managed evidence tools
+# Maintained part workflow
 
-Read the live schemas before a call. This reference applies to MCP package 0.4.
-All paths are absolute. Sources must be in configured allowed roots.
-The configured output root is also permitted for generated evidence and STEP candidates.
-The server verifies actual bytes against supplied SHA-256 values.
+This reference describes the M1 part service.
+Use the live schemas for exact argument types, limits, and required fields.
+The installed server can differ from the skill version.
 
-## Scope
+## Discovery and validation
 
-The workflow service stores revisioned evidence under the configured output root.
-It enforces evidence order, schemas, hashes, and dependencies.
-It does not create drawings, inspect sheet content, execute CAD, or certify geometry.
-A review is an identified attestation. The server cannot prove that a person or agent inspected the image.
-The structural model contract does not implement expressions, sketch constraints, or backend operations.
+Call `drawing2cad_status`, `cad_capabilities`, and `cad_worker_probe`.
+If the sandbox probe fails, stop the CAD workflow.
+The service requires a passing probe before free-code execution; declarative builds also require the supported sandbox.
+Do not replace it with a raw backend call.
 
-Use `cad_capabilities({})` to identify these limits.
-The build, model comparison, and export readiness checks return `CAD_VALIDATION_UNAVAILABLE`.
-Keep that result. Do not replace it with a supplied success flag.
+Call `part_schema` to read the closed versioned schema.
+Call `part_validate` with `description`.
+The description contains units, coordinates, stable parameters and features, source evidence, review records, and independent measurements.
+Use only operations and parameter references accepted by the schema.
+Unknown fields, unsupported operations, invalid references, and nonfinite values require correction.
 
-## Call sequence
+A parameter must have evidence.
+An assumed value needs a reason and a source region.
+Keep `explicit`, `derived`, `inferred`, `assumed`, and `unresolved` distinct.
+Use a supported closed review status.
+A reasonable geometric assumption can support construction without a new user question.
+An unresolved value that prevents a reasonable build remains a blocker.
 
-1. Call `workflow_create_run` with a unique `run_id`, mode, units, and source entries.
-   Each source has `path`, `sha256`, and `role`.
-   Roles are `construction_source`, `verification_only`, or `tool_reference`.
-   Creation does not inspect CAD content or isolate worker inputs.
-2. Call `workflow_observe` with observations and uncertainties.
-   An observation has `id`, `source_sha256`, `location`, and `text`.
-   Observations must use construction sources.
-   An uncertainty has an ID, status, mandatory flag, description, target, marker ID, and evidence IDs.
-   An approved assumption needs a decision reference. It remains an assumption.
-   This call replaces the inventory and invalidates dependent drawing, review, and contract data.
-3. After a verified authoring tool creates the sheet, call `workflow_register_drawing`.
-   Supply drawing ID, revision, editable artifact, render artifact, units, and dimension IDs.
-   Each artifact has `path` and `sha256`.
-   File registration does not prove dimensions or marker visibility.
-4. Inspect the sheet and call `workflow_review_drawing`.
-   Supply drawing revision, reviewer identity, inspected render hash, findings, and notes.
-   A finding has code, severity, target, message, and required action.
-   Severity is `blocking` or `warning`. No caller-supplied `passed` field is accepted.
-5. Call `workflow_fix_contract` with a unique contract revision and typed contract.
-   The contract contains units, drawing revision, parameters, and operations.
-   A parameter contains `id`, numeric `value`, and `dimension_id`.
-   An operation contains `id`, `type`, `depends_on`, and `parameter_ids`.
-   The server checks references and the dependency graph. An operation type is not a capability claim.
-   The stored contract hash also binds the exact reviewed drawing artifacts.
-6. Call `workflow_check_readiness` for the next phase.
-   Inspect `ready`, every defect, and `next_action`.
-   CAD-dependent readiness cannot pass in the current service.
+## Construction and revisions
 
-Every mutation after creation requires `expected_state_revision`.
-Take this number from the last returned run. Readiness checks do not change it.
-Use `workflow_read_run` after a lost response or restart.
-Do not retry an old mutation with a guessed revision.
-Creation rejects an existing run ID. Mutations with stale revisions fail without a second event.
+| Tool | Use |
+|---|---|
+| `part_create` | Supply `run_id`, `description`, and `sources`. Each source has `path`, `sha256`, and `role` (`construction` or `verification`). |
+| `part_read` | Supply `run_id`; read the description, revision, results, and budget. This call is recorded. Audit access remains available after the execution budget is reached. |
+| `part_update` | Supply `run_id`, `expected_revision`, and the changed `description`. Prior builds and releases become stale. |
+| `create_base_body` | Add a supported box, cylinder, polygon extrusion, or closed line-and-arc profile extrusion. |
+| `add_hole` | Add a through or blind hole, with supported countersink, counterbore, or thread data. |
+| `add_pocket`, `add_cut` | Add a supported material-removal feature. |
+| `add_chamfer`, `add_fillet` | Apply edge treatment with a bounded selector and expected selection count. |
+| `build_from_description` | Build the stored description, export a candidate, and re-import in a separate worker. It does not release the candidate. |
+| `build_code` | Optional in-memory execution within the separately verified sandbox scope. |
 
-Example readiness request:
+Read the current revision before a mutation.
+Model edits increment the revision and invalidate prior builds and releases.
+Supply `run_id` and `expected_revision` for each mutation.
+Granular calls also take a typed `feature`.
+`build_code` takes an in-memory `code` string and must assign the resulting build123d shape to `result`.
+The namespace supplies `build123d` and a separate copy of the current `description`.
+Read named parameters from that description. Do not keep a second set of unlinked model values in code.
+Changes to this copy cannot change the trusted validation description.
+Free-code output has separate geometry validation; feature replay remains unverified.
+Retain the exact inline payload in the event trace.
+To test a parameter change, update the description and rerun that payload.
+JSON alone cannot replay construction that exists only in the inline payload.
+Do not substitute `build_from_description` and claim equivalent replay without a separate comparison.
+After a lost response, read state before another call.
+Do not repeat an old mutation with a guessed revision.
+Keep mutations to the same part in sequence.
+The server counts part-service calls against its run budget.
+After the budget is reached, `part_read` and `part_export_review` remain available for audit.
+These calls cannot enable more construction or release operations.
+Reserve calls for candidate release and report export.
+The agent separately tracks the overall budget, including PDF preparation, discovery, and retries.
 
-```json
-{"run_id":"example-run","phase":"build"}
-```
+The description is the editable source for the declarative M1 path.
+Changing a stored number alone does not prove editability.
+Rebuild the changed description and measure the intended geometric effects.
+Scalar references update their direct uses. The prototype does not have an algebraic constraint solver.
+Derived profile points and edge selectors can require coordinated edits after a dimension change.
 
-The example supplies no part dimensions or evidence.
-It returns a missing-run error unless that run exists.
-Do not create evidence to make an unavailable CAD gate pass.
+Closed profiles can contain straight lines and three-point circular arcs.
+Extrusions support a bounded draft angle. Blind holes can include an explicit drill-tip angle.
+The blind depth is the cylindrical depth; the conical tip extends beyond it.
 
-## Review and revision handling
+Geometry checks include cylindrical diameters and lengths, circular edges, cone angle and width,
+axis spacing, parallel-plane spacing, planar draft angles, and straight-edge angles.
+`section_distance` measures two trimmed planar faces along one line. It can measure a drafted rib at a selected height.
+Both anchors must lie on that line. `surface_radius` measures a cylindrical face near its surface anchor, including a trimmed fillet.
+Do not use an axis-center anchor for `surface_radius`.
 
-Required unresolved data block the drawing review and contract.
-Record the source and location of each uncertainty before requesting a decision.
-Do not use an existing verification STEP as an undeclared construction source.
-For a changed sheet, register a new revision and repeat review.
-For changed observations, replace the inventory and repeat all dependent phases.
-Preserve old files if the historical review must remain reproducible.
+For a hole opening check, supply source-derived `entry_position` and an axis that points into the part.
+The entry must lie on the measured hole axis.
+The entry check supports connected full concave cylinders, cones, and planar shoulders at a planar circular opening.
+Toroidal lips and partial or noncircular transitions are outside this check.
+If `entry_position` is omitted, `entry_side` remains `not_tested`.
+A cylindrical diameter/depth pass alone does not prove the correct entry side.
 
-The state store uses atomic replacement and a lock for each run.
-Separate service instances share that lock.
-The store is bounded and validates records when it loads them.
-It is not an audit service with authenticated reviewer identities or external tamper protection.
-The existing source file hashes remain fixed; a changed source requires a new run.
+Thread data in M1 describe a tap-drill representation and thread attributes.
+They do not prove modeled helical flanks or semantic thread PMI in STEP.
 
-`import_step` does not have a managed reconstruction path in this service.
-Do not use a drawing from outside STEP to fill missing construction data.
-See [drawing-first.md](drawing-first.md) for the intended isolated reconstruction tests.
+## Validation, export, and reports
 
-## STEP tools
+Inspect the returned build status and each measurement.
+Feature creation is not proof that the intended source feature was interpreted correctly.
+Compare actual geometry with independent drawing expectations.
+Use [validation.md](validation.md) for separate claims.
 
-Each call requires `path` and `expected_sha256`. Use the exact-byte hash, including line endings.
-The default file limit is 32 MiB. The server can configure it.
+The build creates a candidate and runs fresh-worker re-import before release.
+`export_step` requires `run_id`, `expected_revision`, and `coverage`.
+Coverage identifies the reviewer, source hashes, view/feature/printed-dimension totals and reviewed counts, and critical measurement IDs.
+Include the reason for the review conclusion.
+The service verifies the evidence structure; the attestation does not prove that the reviewer interpreted every source correctly.
+Keep a separate inventory that links each printed callout to its geometry check.
+The reviewer must also check features that do not have dimensions, such as a visible web or a drill tip.
+Do not replace a failed local check with a bounding-box check that does not measure the same feature.
 
-| Tool | Additional inputs | Interpretation |
-|---|---|---|
-| `step_inspect` | None | Bounded P21 syntax, references, entity inventory, and source identity. Not EXPRESS or geometric validation. |
-| `step_read_procedural` | None | Declared construction subset: millimeters, rectangles along +Z, full circles along +Z/+X, refined Booleans, and anchored constant-radius fillets. Returns data; does not build shapes. |
-| `step_read_pmi` | Optional `expected_count` | Nominal sizes, distances, angles, supported thread/radius properties, associations, and tessellated polylines. Tolerance and datum systems are unsupported. |
-| `step_read_review_properties` | `expected_schemas` | Checks the declared application envelope identifiers. Does not validate all payload semantics or geometry anchors. |
-| `step_append_review_properties` | `output_name`, `properties` | Appends application metadata to a new candidate. Refuses an existing output or property. Preserves source records. |
+Release requires trusted re-import, passing source-dimension checks, and complete source-review coverage.
+Record the actual AP214 schema, units, product identity, and geometry.
+A passed re-import does not prove STEP-only feature reconstruction.
 
-The two envelope names and schema IDs are:
+Call `part_export_review` for review records, coverage, manifest, and event evidence.
+Keep unexecuted NX, independent conformance, model comparison, and PMI tests as `not_tested`.
+A successful server operation is not a complete metric pass when required external checks are missing.
 
-- `drawing2cad.editable_ui.v1`: `drawing2cad.editable-ui/1`.
-- `drawing2cad.review_annotations.v1`: `drawing2cad.review-annotations/1`.
+## Legacy evidence and STEP tools
 
-These are application metadata, separate from standard semantic PMI.
-Appending them does not create a construction graph, validate their targets, or pass an export gate.
-Read back the new candidate and repeat all affected release checks.
+The `workflow_*` tools retain a separate legacy evidence profile.
+They are hidden by default; `server.expose_legacy_workflow=true` explicitly enables that development profile.
+They register structural evidence, revisions, and review attestations.
+They do not execute CAD or replace the part service's build/export validation.
+Do not use a caller-supplied attestation as measured geometry.
 
-## Optional development proxy
+The bounded STEP readers remain useful for inspection:
 
-Raw backend tools are hidden by default.
-A deployment can explicitly set `server.expose_freecad_proxy=true` for the existing FreeCAD profile.
-This also requires a configured upstream.
-The same MCP then advertises `freecad_*` tools with their upstream schemas.
-They bypass managed evidence gates and can execute arbitrary upstream Python.
-This is an explicit development mode, not global workflow enforcement.
-Do not enable it to conceal a missing domain capability.
+- `step_inspect`: syntax, references, and entity inventory.
+- `step_read_procedural`: the declared construction subset.
+- `step_read_pmi`: supported nominal dimensions and associations.
+- `step_read_review_properties`: application metadata envelopes.
+- `step_append_review_properties`: metadata in a separate candidate.
+
+These tools use an authorized path and its exact-byte `expected_sha256`.
+Their parsing success does not prove geometry, full EXPRESS conformity, or general PMI support.
+A metadata append is not CAD export or semantic-PMI authoring.
+
+Legacy FreeCAD inline adapters are deprecated.
+Do not load them for the normal M1 tool sequence.

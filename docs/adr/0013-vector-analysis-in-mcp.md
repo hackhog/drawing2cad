@@ -10,6 +10,9 @@ Updates the module location in [ADR 0004](0004-text-by-glyph-templates.md) and t
 Amends the backend dependency in [ADR 0012](0012-demo-app-as-frontend-and-backend-container.md). The two-container design remains unchanged.
 Their original observations remain historical evidence. They are not new test results.
 
+The later [ADR 0014](0014-headless-build123d-metric-prototype.md) replaces the drawing-first order and selects the M1 CAD backend.
+The extraction observations below remain historical evidence.
+
 ## Context
 
 The MCP already exposed the former extractor through `drawing_extract`.
