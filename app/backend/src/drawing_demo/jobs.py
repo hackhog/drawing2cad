@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import shutil
 import threading
 from typing import Any
 from uuid import uuid4
@@ -78,6 +79,12 @@ class JobStore:
         if source_id is not None:
             records = [r for r in records if r["source_id"] == source_id]
         return sorted(records, key=lambda r: r["job"]["started_at"])
+
+    def remove(self, source_id: str) -> None:
+        """Delete the records and traces of all runs of a source."""
+        with self._lock:
+            for run in self.list(source_id):
+                shutil.rmtree(self.root / checked_id(run["run_id"], "run"))
 
     def files(self, run_id: str) -> dict[str, Path]:
         """The record and the agent trace of a run, by path relative to its directory."""

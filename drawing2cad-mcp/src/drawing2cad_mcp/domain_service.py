@@ -72,6 +72,11 @@ class DomainService:
     def close(self):
         self.jobs.close()
 
+    def source_delete(self, ctx: AccessContext, source_id: str) -> dict:
+        """Delete an uploaded source for a trusted adapter. Not an MCP tool, so an agent cannot remove its input."""
+        self.store.namespace_root(ctx)
+        return self._public(self.store.source_delete(ctx, source_id))
+
     def _backend(self, ctx):
         namespace = self.store.namespace_root(ctx)
         with self._services_lock:

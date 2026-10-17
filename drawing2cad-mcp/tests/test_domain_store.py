@@ -117,6 +117,17 @@ def test_source_access_is_scoped(store, pdf_bytes):
     assert store.source_list(ALICE)["items"] == [source]
 
 
+def test_source_delete_removes_bytes_and_is_scoped(store, pdf_bytes):
+    source = complete(store, pdf_bytes)
+    path = store.source_path(ALICE, source["source_id"])
+    expect_code("NOT_FOUND", store.source_delete, BOB, source["source_id"])
+    assert store.source_delete(ALICE, source["source_id"]) == source
+    assert not path.exists()
+    assert store.source_list(ALICE)["items"] == []
+    expect_code("NOT_FOUND", store.source_get, ALICE, source["source_id"])
+    expect_code("NOT_FOUND", store.source_delete, ALICE, source["source_id"])
+
+
 def test_hash_and_size_checked_before_source_publication(store, pdf_bytes):
     upload_id = store.upload_begin(ALICE, "source.pdf", len(pdf_bytes), "0" * 64)["upload_id"]
     send(store, upload_id, pdf_bytes)

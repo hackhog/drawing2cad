@@ -1,8 +1,9 @@
 // Overview page: tiles for all drawings and one table row per source or upload (ADR 0008).
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Gauge, Hash, X } from "lucide-react";
+import { Gauge, Hash, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/Status";
 import { UploadButton } from "@/components/UploadButton";
@@ -14,8 +15,9 @@ import { useApi } from "@/lib/apiContext";
 import type { Source } from "@/lib/contract";
 import type { ExtractResult } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
+import { recoveryFor } from "@/lib/errors";
 import { bytes, explainedShare, fmt, partName, pct } from "@/lib/format";
-import { analysisQuery, sourcesQuery } from "@/lib/queries";
+import { analysisQuery, keys, sourcesQuery } from "@/lib/queries";
 import { analysisStatus, uploadStatus } from "@/lib/status";
 import { isPdf, useUploads, type Upload } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
@@ -160,8 +162,46 @@ function SourceRow({ source, analysis, failed }: { source: Source; analysis: Ext
       <TableCell className={NUM}>{d ? fmt(d.text_blocks.length) : "–"}</TableCell>
       <TableCell className={NUM}>{analysis ? fmt(analysis.review.length) : "–"}</TableCell>
       <TableCell className={NUM}>{bytes(source.byte_count)}</TableCell>
-      <TableCell className="w-8" />
+      <TableCell className="w-8"><DeleteButton source={source} /></TableCell>
     </TableRow>
+  );
+}
+
+/** Deletes a drawing after a second click, so that one stray click removes nothing. */
+function DeleteButton({ source }: { source: Source }) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  const [armed, setArmed] = useState(false);
+  const name = partName(source.filename);
+  const remove = useMutation({
+    mutationFn: () => api.deleteSource(source.source_id),
+    onSuccess: async () => {
+      // Refresh the list first: its rows observe the analysis, which would otherwise be read again and fail.
+      await queryClient.invalidateQueries({ queryKey: keys.sources, exact: true });
+      for (const key of [keys.source(source.source_id), keys.analysis(source.source_id), keys.runs(source.source_id)]) {
+        queryClient.removeQueries({ queryKey: key });
+      }
+      toast.success(`${name} gelöscht`);
+    },
+    onError: (err) => toast.error(`${name} nicht gelöscht`, { description: `${err.message} ${recoveryFor(err)}` }),
+    onSettled: () => setArmed(false),
+  });
+  // The row opens the drawing on click and Enter; the button handles its own events.
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  return (
+    <span onClick={stop} onKeyDown={stop}>
+      {armed ? (
+        <Button variant="destructive" size="xs" autoFocus disabled={remove.isPending} onBlur={() => !remove.isPending && setArmed(false)}
+          onClick={() => remove.mutate()}>
+          Löschen
+        </Button>
+      ) : (
+        <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label={`${name} löschen`} title="Zeichnung löschen"
+          onClick={() => setArmed(true)}>
+          <Trash2 className="size-3.5" />
+        </Button>
+      )}
+    </span>
   );
 }
 
