@@ -1,0 +1,75 @@
+# Generated CAD/PDF outputs, local validation runs and scratch data at any depth
+output/
+outputs/
+out/
+artifacts/
+tmp/
+/skills/*-validation.json
+
+# Historical generated reports/snapshots stored beside the sources
+/drawing2cad-mcp/VALIDATION.md
+/skills/freecad-ap242/references/tooling/*.json
+
+# Machine-specific configuration and environment variables
+*.local.toml
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+!.env.template
+
+# Python environments, bytecode and packaging
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Test, lint, type-check and coverage caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+
+# Frontend dependencies and generated caches; keep package lockfiles
+node_modules/
+.vite/
+.tanstack/
+*.tsbuildinfo
+
+# Runtime logs and database sidecars (not database fixtures)
+*.log
+*.sqlite-wal
+*.sqlite-shm
+*.db-wal
+*.db-shm
+
+# FreeCAD backup/autosave files; actual CAD sources remain versionable
+*.FCBak
+*.fcbak
+*.FCStd[0-9]*
+*.fcstd[0-9]*
+*.autosave
+
+# Local editor and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Intentionally keep resources/, skills/, example configs and dependency locks.
+# Do not ignore PDF, STEP, PRT, FCStd or image formats globally.

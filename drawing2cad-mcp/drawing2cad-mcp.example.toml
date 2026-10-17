@@ -1,0 +1,22 @@
+[pdf]
+# Relative paths resolve against this configuration file, not the caller's cwd.
+allowed_roots = ["../resources"]
+output_root = "../output/pdf"
+# Omit to discover pdftoppm on PATH. Otherwise use its actual absolute path.
+# pdftoppm = 'C:\path\to\poppler\bin\pdftoppm.exe'
+timeout_seconds = 60
+max_pdf_bytes = 104857600
+max_pixels = 40000000
+
+[freecad]
+# Enable after filling in the existing FreeCAD MCP's command and arguments.
+enabled = false
+# command = 'C:\path\to\freecad-mcp.exe'
+# args = ["--host", "127.0.0.1"]
+startup_timeout_seconds = 10
+timeout_seconds = 120
+
+[server]
+preview_max_pixels = 4000000
+preview_max_bytes = 6000000
+pdf_concurrency = 2

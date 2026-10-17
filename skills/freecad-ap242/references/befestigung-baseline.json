@@ -1,0 +1,1294 @@
+{
+  "fixture_version": 1,
+  "artifact_kind": "regression_fixture_not_general_geometry_defaults",
+  "name": "Befestigung",
+  "source": {
+    "filename": "Befestigung_dwg.pdf",
+    "sha256": "7f0897655a7efdbf1be9aca1bca436c81daa64eead30b5e7be3d28f195034db3",
+    "page": 1,
+    "source_policy": "This exact PDF is the sole drawing source. Supply its path separately; no copied PDF is bundled."
+  },
+  "baseline_status": "reconstructed_with_declared_assumption",
+  "toolchain": {
+    "freecad": "1.1.4",
+    "occt": "7.8.1",
+    "python": "3.11.14",
+    "pythonocc": "7.8.1.1",
+    "mcp_addon": "0.1.27"
+  },
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "frame": {
+    "origin": "sleeve axis at base bottom",
+    "x": "from sleeve axis toward right mounting hole",
+    "z": "up from base",
+    "y": "right-handed complement"
+  },
+  "assumptions": [
+    {
+      "id": "rib_upper_attachment",
+      "value": -55,
+      "unit": "mm",
+      "status": "inferred_not_explicitly_dimensioned",
+      "user_approval": "not_recorded",
+      "note": "Upper rib attachment x coordinate inferred from drawing. Not an original dimension or generic default."
+    }
+  ],
+  "relations_preserved": false,
+  "source_construction_nodes": [
+    {
+      "name": "Grundplatte_R39",
+      "label": "Grundplatte_R39",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 39,
+      "height": 20,
+      "angle": 360
+    },
+    {
+      "name": "Wire",
+      "label": "Grundplatte_Tangenten",
+      "type": "Part::FeaturePython",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "points": [
+        [
+          23.4,
+          -31.2,
+          0
+        ],
+        [
+          49,
+          -12,
+          0
+        ],
+        [
+          49,
+          12,
+          0
+        ],
+        [
+          23.4,
+          31.2,
+          0
+        ]
+      ],
+      "closed": true
+    },
+    {
+      "name": "Grundplatte_Steg",
+      "label": "Grundplatte_Steg",
+      "type": "Part::Extrusion",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Wire",
+      "dir": [
+        0,
+        0,
+        1
+      ],
+      "length": 20,
+      "reversed": false,
+      "solid": true
+    },
+    {
+      "name": "Grundplatte_R39_Steg",
+      "label": "Grundplatte_R39_Steg",
+      "type": "Part::Fuse",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Grundplatte_R39",
+      "tool": "Grundplatte_Steg",
+      "refine": true
+    },
+    {
+      "name": "Grundplatte_R15",
+      "label": "Grundplatte_R15",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        40,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 15,
+      "height": 20,
+      "angle": 360
+    },
+    {
+      "name": "Grundplatte",
+      "label": "Grundplatte",
+      "type": "Part::Fuse",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Grundplatte_R39_Steg",
+      "tool": "Grundplatte_R15",
+      "refine": true
+    },
+    {
+      "name": "Saeule_D30",
+      "label": "Saeule_D30",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        20,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 15,
+      "height": 65,
+      "angle": 360
+    },
+    {
+      "name": "Grundplatte_mit_Saeule",
+      "label": "Grundplatte_mit_Saeule",
+      "type": "Part::Fuse",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Grundplatte",
+      "tool": "Saeule_D30",
+      "refine": true
+    },
+    {
+      "name": "Wire001",
+      "label": "Ausleger_Tangenten",
+      "type": "Part::FeaturePython",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "points": [
+        [
+          -78.88888888888889,
+          -38.42581436842352,
+          65
+        ],
+        [
+          4.166666666666667,
+          -14.409680388158819,
+          65
+        ],
+        [
+          4.166666666666667,
+          14.409680388158819,
+          65
+        ],
+        [
+          -78.88888888888889,
+          38.42581436842352,
+          65
+        ]
+      ],
+      "closed": true
+    },
+    {
+      "name": "Ausleger_10mm",
+      "label": "Ausleger_10mm",
+      "type": "Part::Extrusion",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Wire001",
+      "dir": [
+        0,
+        0,
+        1
+      ],
+      "length": 10,
+      "reversed": false,
+      "solid": true
+    },
+    {
+      "name": "Mit_Ausleger",
+      "label": "Mit_Ausleger",
+      "type": "Part::Fuse",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Grundplatte_mit_Saeule",
+      "tool": "Ausleger_10mm",
+      "refine": true
+    },
+    {
+      "name": "Aufnahme_R40",
+      "label": "Aufnahme_R40",
+      "type": "Part::Cylinder",
+      "placement": [
+        -2.220446049250313e-16,
+        1,
+        0,
+        -90,
+        -1,
+        -2.220446049250313e-16,
+        0,
+        0,
+        0,
+        0,
+        1,
+        65,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 40,
+      "height": 30,
+      "angle": 180
+    },
+    {
+      "name": "Mit_Aufnahme",
+      "label": "Mit_Aufnahme",
+      "type": "Part::Fuse",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Mit_Ausleger",
+      "tool": "Aufnahme_R40",
+      "refine": true
+    },
+    {
+      "name": "Aufnahme_R30_Werkzeug",
+      "label": "Aufnahme_R30_Werkzeug",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        -90,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        65,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 30,
+      "height": 31,
+      "angle": 360
+    },
+    {
+      "name": "Aufnahme_ausgehoehlt",
+      "label": "Aufnahme_ausgehoehlt",
+      "type": "Part::Cut",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Mit_Aufnahme",
+      "tool": "Aufnahme_R30_Werkzeug",
+      "refine": true
+    },
+    {
+      "name": "Wire002",
+      "label": "Rippe_Profil_oberer_Ansatz_abgeleitet",
+      "type": "Part::FeaturePython",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "points": [
+        [
+          -34,
+          -5,
+          20
+        ],
+        [
+          0,
+          -5,
+          20
+        ],
+        [
+          0,
+          -5,
+          65
+        ],
+        [
+          -55,
+          -5,
+          65
+        ]
+      ],
+      "closed": true
+    },
+    {
+      "name": "Rippe_10mm",
+      "label": "Rippe_10mm",
+      "type": "Part::Extrusion",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Wire002",
+      "dir": [
+        0,
+        1,
+        0
+      ],
+      "length": 10,
+      "reversed": false,
+      "solid": true
+    },
+    {
+      "name": "Mit_Rippe",
+      "label": "Mit_Rippe",
+      "type": "Part::Fuse",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Aufnahme_ausgehoehlt",
+      "tool": "Rippe_10mm",
+      "refine": true
+    },
+    {
+      "name": "Durchgang_D20_Werkzeug",
+      "label": "Durchgang_D20_Werkzeug",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        -1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 10,
+      "height": 87,
+      "angle": 360
+    },
+    {
+      "name": "Durchgang_D20",
+      "label": "Durchgang_D20",
+      "type": "Part::Cut",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Mit_Rippe",
+      "tool": "Durchgang_D20_Werkzeug",
+      "refine": true
+    },
+    {
+      "name": "Befestigungsloch_1_Werkzeug",
+      "label": "Befestigungsloch_1_Werkzeug",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        40,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        -1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 6,
+      "height": 22,
+      "angle": 360
+    },
+    {
+      "name": "Befestigungsloch_1",
+      "label": "Befestigungsloch_1",
+      "type": "Part::Cut",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Durchgang_D20",
+      "tool": "Befestigungsloch_1_Werkzeug",
+      "refine": true
+    },
+    {
+      "name": "Befestigungsloch_2_Werkzeug",
+      "label": "Befestigungsloch_2_Werkzeug",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        19.79898987322333,
+        0,
+        1,
+        0,
+        19.79898987322333,
+        0,
+        0,
+        1,
+        -1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 6,
+      "height": 22,
+      "angle": 360
+    },
+    {
+      "name": "Befestigungsloch_2",
+      "label": "Befestigungsloch_2",
+      "type": "Part::Cut",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Befestigungsloch_1",
+      "tool": "Befestigungsloch_2_Werkzeug",
+      "refine": true
+    },
+    {
+      "name": "Befestigungsloch_3_Werkzeug",
+      "label": "Befestigungsloch_3_Werkzeug",
+      "type": "Part::Cylinder",
+      "placement": [
+        1,
+        0,
+        0,
+        19.79898987322333,
+        0,
+        1,
+        0,
+        -19.79898987322333,
+        0,
+        0,
+        1,
+        -1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "radius": 6,
+      "height": 22,
+      "angle": 360
+    },
+    {
+      "name": "Befestigungsloch_3",
+      "label": "Befestigungsloch_3",
+      "type": "Part::Cut",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Befestigungsloch_2",
+      "tool": "Befestigungsloch_3_Werkzeug",
+      "refine": true
+    },
+    {
+      "name": "Fenster_12x18_Werkzeug",
+      "label": "Fenster_12x18_Werkzeug",
+      "type": "Part::Box",
+      "placement": [
+        1,
+        0,
+        0,
+        -6,
+        0,
+        1,
+        0,
+        -20,
+        0,
+        0,
+        1,
+        37,
+        0,
+        0,
+        0,
+        1
+      ],
+      "length": 12,
+      "width": 40,
+      "height": 18
+    },
+    {
+      "name": "Fenster_beidseitig",
+      "label": "Fenster_beidseitig",
+      "type": "Part::Cut",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Befestigungsloch_3",
+      "tool": "Fenster_12x18_Werkzeug",
+      "refine": true
+    },
+    {
+      "name": "Aufnahmenut_16x6_Werkzeug",
+      "label": "Aufnahmenut_16x6_Werkzeug",
+      "type": "Part::Box",
+      "placement": [
+        1,
+        0,
+        0,
+        -91,
+        0,
+        1,
+        0,
+        -8,
+        0,
+        0,
+        1,
+        89,
+        0,
+        0,
+        0,
+        1
+      ],
+      "length": 42,
+      "width": 16,
+      "height": 7
+    },
+    {
+      "name": "Befestigung_Fertig",
+      "label": "Befestigung - direkt ueber MCP",
+      "type": "Part::Cut",
+      "placement": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "base": "Fenster_beidseitig",
+      "tool": "Aufnahmenut_16x6_Werkzeug",
+      "refine": true
+    }
+  ],
+  "root": "Befestigung_Fertig",
+  "pmi": [
+    {
+      "id": "PMI01",
+      "name": "Grundplatte Dicke",
+      "nominal": 20,
+      "unit": "mm",
+      "semantic_type": "Size_Thickness",
+      "first_anchor_hints": [
+        "base bottom plane z=0",
+        "base top plane z=20"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI02",
+      "name": "Grundplatte Durchmesser",
+      "nominal": 78,
+      "unit": "mm",
+      "semantic_type": "Size_Diameter",
+      "first_anchor_hints": [
+        "base outer cylinder R39 axis (0,0)"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI03",
+      "name": "Endkontur Radius",
+      "nominal": 15,
+      "unit": "mm",
+      "semantic_type": "Size_Radius",
+      "first_anchor_hints": [
+        "base end cylinder R15 axis (40,0)"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI04",
+      "name": "Abstand rechtes Loch zur Saeulenachse",
+      "nominal": 40,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "sleeve outer cylinder R15 axis (0,0)"
+      ],
+      "second_anchor_hints": [
+        "right hole R6 axis (40,0)"
+      ],
+      "derived_measurement_points": [
+        [
+          0,
+          0,
+          20
+        ],
+        [
+          40,
+          0,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "PMI05",
+      "name": "3x Befestigungsbohrung Durchmesser",
+      "nominal": 12,
+      "unit": "mm",
+      "semantic_type": "Size_Diameter",
+      "first_anchor_hints": [
+        "lower hole R6 axis (28/sqrt(2),-28/sqrt(2))",
+        "right hole R6 axis (40,0)",
+        "upper hole R6 axis (28/sqrt(2),28/sqrt(2))"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI06",
+      "name": "Radialer Abstand unteres Loch",
+      "nominal": 28,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "sleeve outer cylinder R15 axis (0,0)"
+      ],
+      "second_anchor_hints": [
+        "lower hole R6 axis (28/sqrt(2),-28/sqrt(2))"
+      ],
+      "derived_measurement_points": [
+        [
+          0,
+          0,
+          20
+        ],
+        [
+          19.79898987322333,
+          -19.79898987322333,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "PMI07",
+      "name": "Winkellage unteres Loch",
+      "nominal": 45,
+      "unit": "deg",
+      "semantic_type": "Location_Angular",
+      "first_anchor_hints": [
+        "sleeve outer cylinder R15 axis (0,0)",
+        "right hole R6 axis (40,0)"
+      ],
+      "second_anchor_hints": [
+        "sleeve outer cylinder R15 axis (0,0)",
+        "lower hole R6 axis (28/sqrt(2),-28/sqrt(2))"
+      ]
+    },
+    {
+      "id": "PMI08",
+      "name": "Saeule Aussendurchmesser",
+      "nominal": 30,
+      "unit": "mm",
+      "semantic_type": "Size_Diameter",
+      "first_anchor_hints": [
+        "sleeve outer cylinder R15 axis (0,0)"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI09",
+      "name": "Axiale Durchgangsbohrung",
+      "nominal": 20,
+      "unit": "mm",
+      "semantic_type": "Size_Diameter",
+      "first_anchor_hints": [
+        "through bore R10 axis (0,0)"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI10",
+      "name": "Saeulenhoehe ueber Grundplatte",
+      "nominal": 65,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "base top plane z=20"
+      ],
+      "second_anchor_hints": [
+        "sleeve top plane z=85"
+      ]
+    },
+    {
+      "id": "PMI11",
+      "name": "Fensteroberkante unter Saeulenoberkante",
+      "nominal": 30,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "sleeve top plane z=85"
+      ],
+      "second_anchor_hints": [
+        "front window top z=55"
+      ]
+    },
+    {
+      "id": "PMI12",
+      "name": "Saeulenfenster Breite",
+      "nominal": 12,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "front window side x=-6"
+      ],
+      "second_anchor_hints": [
+        "front window side x=6"
+      ]
+    },
+    {
+      "id": "PMI13",
+      "name": "Saeulenfenster Hoehe",
+      "nominal": 18,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "front window bottom z=37"
+      ],
+      "second_anchor_hints": [
+        "front window top z=55"
+      ]
+    },
+    {
+      "id": "PMI14",
+      "name": "Achsenabstand Aufnahme und Saeule",
+      "nominal": 90,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "saddle inner cylinder R30 axis (-90,0)"
+      ],
+      "second_anchor_hints": [
+        "through bore R10 axis (0,0)"
+      ],
+      "derived_measurement_points": [
+        [
+          -90,
+          0,
+          75
+        ],
+        [
+          0,
+          0,
+          75
+        ]
+      ]
+    },
+    {
+      "id": "PMI15",
+      "name": "Aufnahme Innenradius",
+      "nominal": 30,
+      "unit": "mm",
+      "semantic_type": "Size_Radius",
+      "first_anchor_hints": [
+        "saddle inner cylinder R30 axis (-90,0)"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI16",
+      "name": "Aufnahme Aussenradius",
+      "nominal": 40,
+      "unit": "mm",
+      "semantic_type": "Size_Radius",
+      "first_anchor_hints": [
+        "saddle outer cylinder R40 axis (-90,0)"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI17",
+      "name": "Ausleger Dicke",
+      "nominal": 10,
+      "unit": "mm",
+      "semantic_type": "Size_Thickness",
+      "first_anchor_hints": [
+        "arm bottom plane z=65",
+        "arm top plane z=75"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI18",
+      "name": "Aufnahme Gesamthoehe",
+      "nominal": 30,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "arm bottom plane z=65"
+      ],
+      "second_anchor_hints": [
+        "saddle top plane z=95 on negative-y side"
+      ]
+    },
+    {
+      "id": "PMI19",
+      "name": "Aufnahme ueber Saeulenoberkante",
+      "nominal": 10,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "sleeve top plane z=85"
+      ],
+      "second_anchor_hints": [
+        "saddle top plane z=95 on negative-y side"
+      ]
+    },
+    {
+      "id": "PMI20",
+      "name": "Aufnahmenut Breite",
+      "nominal": 16,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "notch side y=-8"
+      ],
+      "second_anchor_hints": [
+        "notch side y=8"
+      ]
+    },
+    {
+      "id": "PMI21",
+      "name": "Aufnahmenut Tiefe",
+      "nominal": 6,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "saddle top plane z=95 on negative-y side"
+      ],
+      "second_anchor_hints": [
+        "notch floor z=89"
+      ]
+    },
+    {
+      "id": "PMI22",
+      "name": "Stuezrippe Dicke",
+      "nominal": 10,
+      "unit": "mm",
+      "semantic_type": "Size_Thickness",
+      "first_anchor_hints": [
+        "rib side y=-5",
+        "rib side y=5"
+      ],
+      "second_anchor_hints": []
+    },
+    {
+      "id": "PMI23",
+      "name": "Rippenfuss Abstand zum Plattenrand",
+      "nominal": 5,
+      "unit": "mm",
+      "semantic_type": "Location_LinearDistance",
+      "first_anchor_hints": [
+        "base outer cylinder R39 axis (0,0)"
+      ],
+      "second_anchor_hints": [
+        "sloped outer rib face"
+      ],
+      "derived_measurement_points": [
+        [
+          -39,
+          0,
+          20
+        ],
+        [
+          -34,
+          0,
+          20
+        ]
+      ]
+    }
+  ],
+  "expected": {
+    "solids": 1,
+    "valid_shape": true,
+    "bbox_mm": [
+      145,
+      80,
+      95
+    ],
+    "volume_mm3": 184465.385629993,
+    "semantic_pmi_count": 23,
+    "graphical_pmi_count": 23,
+    "pmi_front": 10,
+    "pmi_top": 13,
+    "csg_body_nodes": 29,
+    "csg_boolean_nodes": 14,
+    "csg_extrusions": 15,
+    "native_constructive_objects": 32,
+    "native_profile_objects": 3,
+    "symmetric_difference_volume_mm3": 0
+  },
+  "validation_thresholds": {
+    "nominal_abs": 1e-7,
+    "volume_abs_mm3": 0.00001
+  },
+  "edit_test": {
+    "object": "Befestigungsloch_1_Werkzeug",
+    "parameter": "Radius",
+    "old_mm": 6,
+    "new_mm": 5.5,
+    "material_thickness_mm": 20,
+    "expected_volume_delta_mm3": 361.2831551628262,
+    "restore": true
+  },
+  "claims": {
+    "step_import": "pass",
+    "geometry_match": "pass",
+    "native_parameter_edit": "pass",
+    "semantic_pmi": "pass",
+    "graphical_semantic_links": "pass",
+    "second_fresh_construction_replay": "not_tested",
+    "edited_native_to_ap242_roundtrip": "not_tested",
+    "universal_cad_compatibility": "not_claimed"
+  },
+  "drawing_not_specified": [
+    "dimensional tolerances",
+    "GD&T",
+    "datums",
+    "material",
+    "surface roughness",
+    "heat treatment"
+  ],
+  "standard_representation_note": "One original 180-degree cylinder becomes circular extrusion INTERSECTION rectangular extrusion; native object count increases by two. Remaining primitive solids are EXTRUDED_FACE_SOLID; booleans have CSG_SOLID wrappers.",
+  "master_reference": {
+    "filename": "Befestigung_AP242_Master.step",
+    "sha256": "7ca3d74fdd5adc41b742ff3ed8d37988977a7f94da564363af3f1565a53dcba8",
+    "note": "Snapshot file hash is an audit reference, not a required byte-identical regenerated output."
+  }
+}

@@ -1,0 +1,24 @@
+# Consistent line endings for source code and documentation.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Source drawings and CAD inputs are hashed by the validation workflow.
+# Preserve their exact bytes across platforms; STEP remains diffable text.
+# Imported reference files retain their original formatting, including whitespace.
+resources/** -text -whitespace
+*.step -text
+*.stp -text
+
+# Binary documents and native CAD formats must not be merged as text.
+*.pdf binary
+*.prt binary
+*.FCStd binary
+*.fcstd binary
+*.dwg binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.zip binary

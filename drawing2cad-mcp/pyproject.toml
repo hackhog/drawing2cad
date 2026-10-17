@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drawing2cad-mcp"
+version = "0.1.0"
+description = "One local MCP interface for PDF preparation and the existing FreeCAD MCP"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp==2.3.0",
+  "pypdf==6.10.0",
+  "Pillow==12.3.0",
+  "jsonschema>=4.20,<5",
+  "pydantic>=2.12,<3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2"]
+
+[project.scripts]
+drawing2cad-mcp = "drawing2cad_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
