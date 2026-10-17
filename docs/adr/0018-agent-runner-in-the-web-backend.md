@@ -37,8 +37,8 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
   `upload_chunk`, and `upload_complete`. Downloads use `artifact_get` and `artifact_read` and verify the SHA-256.
   The analysis uses `drawing_extract` and `pdf_render_page`. A domain error becomes an HTTP status with its code.
   The domain service has no source deletion, so the web API has none.
-- **Agent loop:** a background worker runs `drive()` with a model call for OpenAI-compatible Chat Completions endpoints
-  (Azure AI Foundry, OpenRouter, OpenAI, Ollama). It connects to the mounted `/mcp` endpoint over loopback with the
+- **Agent loop:** a background worker runs `drive()` with a model call for OpenAI-compatible Chat Completions or
+  Responses API endpoints (Azure AI Foundry, OpenRouter, OpenAI, Ollama). It connects to the mounted `/mcp` endpoint over loopback with the
   Streamable HTTP client. There is no subprocess and no second dispatcher. The MCP endpoint accepts loopback hosts only;
   the frontend proxy forwards only `/api/`.
 - **Source scope:** `drive()` accepts an uploaded source ID and its SHA-256 instead of a local path. `authorize_call`
@@ -53,8 +53,11 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
 - **Configuration:** `DRAWING2CAD_AGENT_BASE_URL`, `DRAWING2CAD_AGENT_MODEL`, and `DRAWING2CAD_AGENT_API_KEY` at runtime
   (for example, from a `.env` file that is not in Git). Optional: `DRAWING2CAD_AGENT_API_KEY_HEADER` (`api-key` for Azure AI Foundry)
   and `DRAWING2CAD_AGENT_REASONING_EFFORT`. Without the three required values, the image builds and starts, and the UI reports runs as unavailable.
-- **Model selection:** the model must support function tools on Chat Completions. On Azure AI Foundry on 2026-10-17,
-  `gpt-5.6-sol` and `gpt-5-4` did; `gpt-6.1-sol` and `gpt-6-luna` accepted function tools only through the Responses API.
+- **Model selection:** the model must support function tools on the selected API (`DRAWING2CAD_AGENT_API`, `chat` by default,
+  or `responses`). On Azure AI Foundry on 2026-10-17, `gpt-5.6-sol` and `gpt-5-4` did on Chat Completions;
+  `gpt-6.1-sol` and `gpt-6-luna` accepted function tools with reasoning only through the Responses API.
+  The Responses requests are stateless (`store: false`) and do not send reasoning items of earlier turns again.
+  Function tools use `strict: false`, because the MCP schemas are not written for strict validation.
 
 ## Consequences
 
