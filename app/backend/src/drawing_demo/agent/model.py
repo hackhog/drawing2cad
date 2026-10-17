@@ -29,6 +29,13 @@ ATTEMPT_TIMEOUT_SECONDS = 120.0
 # Each image costs many tokens in every later turn. Older images are replaced by a note; the trace keeps them.
 KEPT_IMAGE_MESSAGES = 2
 OMITTED_IMAGE_NOTE = "[Earlier image evidence omitted to limit tokens. Request the region again with pdf_crop_region if needed.]"
+# Each turn sends the complete conversation. In a web run on Fuss, turn 17 exceeded 100k prompt tokens, which is the
+# complete token rate limit of the deployment for one minute, so no retry could succeed. Older large tool results are
+# shortened; the most recent results and the schemas stay complete. The trace keeps every complete result.
+KEPT_TOOL_RESULTS = 6
+SHORTENED_TOOL_CHARS = 2000
+COMPLETE_TOOL_RESULTS = {"part_schema", "drawing_schema"}
+SHORTENED_TOOL_NOTE = "[Earlier tool result shortened to limit tokens. Call the tool again if you need the complete result.]"
 
 
 @dataclass(frozen=True)
@@ -68,6 +75,8 @@ def to_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     open_ids: list[str] = []
     image_positions = [i for i, m in enumerate(messages) if m.get("images")]
     kept = set(image_positions[-KEPT_IMAGE_MESSAGES:])
+    tool_positions = [i for i, m in enumerate(messages) if m["role"] == "tool"]
+    complete_tools = set(tool_positions[-KEPT_TOOL_RESULTS:])
     for position, message in enumerate(messages):
         role = message["role"]
         if role == "assistant":
@@ -83,7 +92,11 @@ def to_openai(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif role == "tool":
             if not open_ids:
                 raise ValueError("A tool result has no open tool call.")
-            result.append({"role": "tool", "tool_call_id": open_ids.pop(0), "content": message.get("content", "")})
+            content = message.get("content", "")
+            if (position not in complete_tools and message.get("tool_name") not in COMPLETE_TOOL_RESULTS
+                    and len(content) > SHORTENED_TOOL_CHARS):
+                content = f"{content[:SHORTENED_TOOL_CHARS]} {SHORTENED_TOOL_NOTE}"
+            result.append({"role": "tool", "tool_call_id": open_ids.pop(0), "content": content})
         elif message.get("images") and position not in kept:
             result.append({"role": role, "content": f"{message.get('content', '')} {OMITTED_IMAGE_NOTE}"})
         elif message.get("images"):
