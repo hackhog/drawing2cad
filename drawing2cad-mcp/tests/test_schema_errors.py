@@ -28,8 +28,10 @@ def test_type_error_shows_the_expected_type_but_not_the_value():
 
 def test_required_and_additional_properties_do_not_repeat_input_names():
     schema = {"type": "object", "required": ["run_id"], "additionalProperties": False, "properties": {"run_id": {}}}
-    _, missing = describe(_error({**schema, "additionalProperties": True}, {}))
-    assert "run_id" in missing
+    target, missing = describe(_error({**schema, "additionalProperties": True}, {}))
+    assert target == "/run_id" and "run_id" in missing
+    nested, _ = describe(_error({**schema, "additionalProperties": True}, {}), "/arguments")
+    assert nested == "/arguments/run_id"
     assert "'required'" in missing
     _, extra = describe(_error(schema, {"run_id": "a", PRIVATE: 1}))
     assert "secret" not in extra and "'additionalProperties'" in extra
