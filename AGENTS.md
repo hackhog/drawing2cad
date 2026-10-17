@@ -10,6 +10,19 @@
 - Keep original source text, identifiers, code with recorded hashes, and historical evidence unchanged. Write explanations of these items in English.
 - Do not state full STE conformity without a review against the applicable rules and dictionary.
 
+## Issues and pull requests
+
+- Start each work item from a GitHub issue. If no issue exists, create one with `gh issue create`.
+- Create one branch for each issue. Name the branch `<type>/<issue-number>-<short-name>`, for example, `feat/12-pdf-upload`.
+- Do not commit directly to `main`.
+- Use a Git worktree when the user asks for one. Otherwise, use a branch in the main checkout.
+- Create one pull request for each issue. Add `Closes #<number>` to the pull request description.
+- Keep each pull request within its issue scope. Create a separate issue for additional work.
+- Describe the tests and their actual results in the pull request description. Identify checks that did not run.
+- Do not report historical results as new tests.
+- Merge a pull request only after CI passes and review is complete.
+- Before removal, preserve uncommitted changes and needed ignored files. Remove the issue worktree after merge.
+
 ## CAD workflow
 
 - For CAD work, use [skills/drawing2cad/SKILL.md](skills/drawing2cad/SKILL.md). The workflow must work without previous chat messages or a specific agent model.
