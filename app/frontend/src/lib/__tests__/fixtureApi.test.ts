@@ -106,7 +106,7 @@ describe("run lifecycle", () => {
   it("does not report a failed check for a valid build without release", async () => {
     const { run } = await finishedRun("fail-case.pdf");
     const unreleased = { ...run, review: { ...run.review!, validation: run.review!.validation.filter((v) => v.status !== "fail") } };
-    expect(delivery(unreleased).reasons).toEqual(["Modell gebaut, aber nicht freigegeben: Geprüfte Zeichnung und STEP-Freigabe fehlen."]);
+    expect(delivery(unreleased).reasons).toEqual(["Modell gebaut, aber nicht freigegeben: Die STEP-Freigabe fehlt."]);
   });
 });
 

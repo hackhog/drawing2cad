@@ -52,6 +52,8 @@ export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" 
 export interface ReleaseDrawing {
   status: "accepted" | "unreviewed" | "rejected" | "failed" | "missing";
   reason: string | null;
+  /** False when the drawing changed after the release. Call export_step again to record the new status. */
+  current: boolean;
 }
 
 /** An output file. Content is read by `artifact_id` only. */

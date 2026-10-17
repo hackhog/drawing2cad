@@ -129,7 +129,7 @@ Use the live catalog and capability results before construction.
 
 Upload the authorized PDF, inspect its images, record dimensions and assumptions, build through the MCP, and validate measured geometry.
 Create the technical drawing, inspect its PDF, and record a review of its exact revision and source hashes.
-Either drawing or model can be created first. STEP release requires their current revisions to agree.
+Either drawing or model can be created first. The validated model gates the STEP release. The release records the drawing status.
 Export a temporary STEP candidate and re-import it in a fresh worker.
 Keep original resources unchanged.
 Do not use a verification STEP as an unreported construction input.

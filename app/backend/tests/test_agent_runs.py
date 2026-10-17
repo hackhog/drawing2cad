@@ -74,7 +74,9 @@ def test_release_reports_its_drawing_status_and_released_files():
              "release": {"drawing": {"status": "failed", "reason": "The latest drawing render did not pass its checks."}}}
     review = review_view(state, part_validate(state["description"])["review_items"], (200, 100), released=True)
     assert review["release_state"] == "released"
-    assert review["drawing"] == {"status": "failed", "reason": "The latest drawing render did not pass its checks."}
+    assert review["drawing"] == {"status": "failed", "reason": "The latest drawing render did not pass its checks.", "current": True}
+    state["release"]["drawing_current"] = False
+    assert review_view(state, [], (200, 100), released=True)["drawing"]["current"] is False
     assert review_view(state, [], (200, 100), released=False)["drawing"] is None
     artifact = {"artifact_id": "art_" + "2" * 32, "role": "drawing_diagnostic_preview", "media_type": "application/pdf",
                 "filename": "d.pdf", "sha256": SHA, "size_bytes": 3, "revision": 1}

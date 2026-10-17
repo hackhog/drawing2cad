@@ -7,7 +7,7 @@ metadata:
 
 # drawing2cad
 
-**Domain profile:** Use supplied uploaded `source_id` values and hashes; the STEP release records the drawing status, and a drawing review is not required for release.
+**Domain profile:** Use supplied uploaded `source_id` values and hashes. The drawing does not gate the STEP release; the release records its status.
 **Local-path profile:** Use authorized server PDF paths and hashes; this profile supports the metric but does not supply technical drawings.
 
 ## Minimum path for the hackathon metric

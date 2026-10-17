@@ -60,7 +60,7 @@ export function ArtifactsPanel({ run }: { run: Run }) {
           <AlertTitle>Freigegeben: Modell der Revision {revision}</AlertTitle>
           {run.review?.drawing && (
             <AlertDescription>
-              <p>{DRAWING_STATUS[run.review.drawing.status]}</p>
+              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " Dieser Stand ist veraltet: Die Zeichnung wurde nach der Freigabe geändert."}</p>
               {run.review.drawing.reason && <p>{run.review.drawing.reason}</p>}
             </AlertDescription>
           )}
