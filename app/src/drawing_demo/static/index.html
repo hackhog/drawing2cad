@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drawing2CAD Demo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-step="1" data-view="overview">
+  <div class="window">
+    <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+
+    <div class="app">
+      <aside class="nav">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">
+            <svg viewBox="0 0 16 16"><path d="M4 11V8M8 11V5M12 11V7"/></svg>
+          </span>
+          Drawing2CAD
+        </div>
+
+        <button type="button" class="nav-item" id="nav-overview">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z"/></svg>Übersicht
+        </button>
+
+        <p class="nav-label">Zeichnungen</p>
+        <ul class="batch" id="batch" aria-label="Hochgeladene Zeichnungen"></ul>
+      </aside>
+
+      <main class="main">
+        <header class="head">
+          <div>
+            <h1 id="title"></h1>
+            <p class="updated" id="updated"></p>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn ghost" id="fit">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>Ganzes Blatt
+            </button>
+            <label class="btn dark upload" id="upload">
+              <input type="file" id="file" accept="application/pdf,.pdf" multiple>
+              <span id="upload-label">+ PDFs hochladen</span>
+            </label>
+          </div>
+        </header>
+
+        <!-- Seite „Übersicht“: Kennzahlen über den ganzen Stapel, eine Zeile je Zeichnung -->
+        <section class="overview" aria-label="Übersicht">
+          <section class="tiles" aria-label="Kennzahlen">
+            <article class="tile">
+              <header><h3>Zeichnungen</h3></header>
+              <div class="value"><strong id="jobs-value">–</strong></div>
+              <p id="jobs-sub">gelesen, lokal und ohne KI</p>
+            </article>
+            <article class="tile" id="tile-explained">
+              <header>
+                <h3>Erklärt</h3>
+                <div class="tile-mode" role="radiogroup" aria-label="Darstellung">
+                  <button type="button" role="radio" data-mode="number" aria-checked="true" title="Zahl">#</button>
+                  <button type="button" role="radio" data-mode="gauge" aria-checked="false" title="Tacho">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 11a5 5 0 0 1 10 0"/></svg>
+                  </button>
+                </div>
+              </header>
+              <div class="value">
+                <svg class="gauge" viewBox="0 0 100 56" aria-hidden="true">
+                  <path class="track" d="M8 50a42 42 0 0 1 84 0"/>
+                  <path class="fill" id="gauge-fill" d="M8 50a42 42 0 0 1 84 0" pathLength="100"/>
+                </svg>
+                <strong id="explained-value">–</strong>
+              </div>
+              <p id="explained-sub">Anteil der Striche mit sicherer Bedeutung</p>
+            </article>
+            <article class="tile">
+              <header><h3>Texte gelesen</h3></header>
+              <div class="value"><strong id="texts-value">–</strong></div>
+              <p id="texts-sub">Maße, Schnitte, Hinweise</p>
+            </article>
+            <article class="tile" id="tile-review">
+              <header><h3>Zu prüfen</h3></header>
+              <div class="value"><strong id="review-value">–</strong></div>
+              <p id="review-sub">Markiert statt geraten</p>
+            </article>
+          </section>
+
+          <article class="card table-card" id="dropzone">
+            <header class="card-head">
+              <h2>Zeichnungen</h2>
+              <span class="pill">Tabelle</span>
+            </header>
+            <p class="empty-drop">Alte Zeichnungen als PDF hierher ziehen, gern mehrere auf einmal</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Zeichnung</th><th>Status</th><th class="num">Erklärt</th><th class="num">Ansichten</th>
+                    <th class="num">Texte</th><th class="num">Zu prüfen</th><th class="num">Dauer</th>
+                  </tr>
+                </thead>
+                <tbody id="job-rows"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <!-- Seite „Zeichnung“: das Blatt mit geführtem Ablauf, daneben die Prüfliste -->
+        <section class="board" aria-label="Zeichnung">
+          <article class="card sheet-card">
+            <header class="card-head">
+              <nav class="steps" aria-label="Ablauf">
+                <button type="button" data-step="1"><b>1</b>Zeichnung</button>
+                <button type="button" data-step="2"><b>2</b>Erkannt</button>
+                <button type="button" data-step="3"><b>3</b>Prüfen</button>
+                <button type="button" disabled title="Folgt mit dem MCP-Server"><b>4</b>3D-Modell<em>bald</em></button>
+              </nav>
+            </header>
+            <div class="kinds" id="kinds" aria-label="Strichklassen"></div>
+            <div class="viewer" id="viewer">
+              <svg id="sheet" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+            <footer class="story">
+              <p id="story-text"></p>
+              <button type="button" class="btn dark" id="next">Weiter</button>
+            </footer>
+          </article>
+
+          <article class="card flags-card">
+            <header class="card-head">
+              <h2>Prüfen <span class="count" id="flag-count"></span></h2>
+              <span class="pill">Liste</span>
+            </header>
+            <ul class="list" id="flags"></ul>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
