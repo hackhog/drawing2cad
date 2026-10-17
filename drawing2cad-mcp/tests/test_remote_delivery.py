@@ -136,7 +136,7 @@ def assert_fresh_validation(result, expected_length):
     assert build["validation"]["measured"]["bbox_size"] == pytest.approx([expected_length, 30, 10])
     checks = {row["check"]: row["status"] for row in build["validation"]["checks"]}
     assert checks["step_reimport"] == checks["drawing_measurements"] == checks["overall"] == "pass"
-    assert checks["semantic_pmi"] == checks["nx_open"] == "not_tested"
+    assert checks["semantic_pmi"] == checks["target_cad_open"] == "not_tested"
 
 
 async def check_drawing_downloads(session, drawing, expected_length):

@@ -231,7 +231,7 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
               "Do not write or execute model code. Inspect the actual source image before construction. "
               "Do not claim independent review, source completeness, or measured checks without evidence. "
               "The M1 target is a validated STEP geometry artifact and editable JSON description. "
-              "AP242, drawings, semantic PMI, independent conformance and NX opening remain untested unless a tool proves them. "
+              "AP242, drawings, semantic PMI, independent conformance and target-CAD opening remain untested unless a tool proves them. "
               "Record reasonable assumptions and continue. Use request_user_input only for a required question with no reasonable assumption. "
               f"Use only the authorized PDF {source}. Use run IDs that start with {plan['run_prefix']}-. "
               + ("Release needs a reviewed, dimensioned drawing of the current part revision: use drawing_schema, drawing_validate, "
@@ -331,7 +331,7 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
         summary.update(status="failed", error={"type": type(error).__name__, "message": str(error)})
     finally:
         summary["duration_seconds"] = time.monotonic() - started
-        summary["scope"] = "One local-model trial. A release result does not prove full metric acceptance, AP242, independent conformance, NX opening, or model ranking."
+        summary["scope"] = "One local-model trial. A release result does not prove full metric acceptance, AP242, independent conformance, target-CAD opening, or model ranking."
         trace.write("conversation", {"messages": messages})
         trace.write("summary", summary)
     return summary

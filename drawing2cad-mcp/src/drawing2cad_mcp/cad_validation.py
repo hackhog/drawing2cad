@@ -50,7 +50,7 @@ def step_metadata(path: Path, name: str) -> dict[str, Any]:
         check("step_units_mm", millimetres, actual=length_units),
         check("step_schema_present", bool(schemas), actual=schemas),
         {"check": "independent_step_conformance", "status": "not_tested", "reason": "Geometry import does not run independent schema checks. Read the separate independent analysis report."},
-        {"check": "nx_open", "status": "not_tested", "reason": "No target CAD opening test was run."},
+        {"check": "target_cad_open", "status": "not_tested", "reason": "No target CAD opening test was run."},
         {"check": "semantic_pmi", "status": "not_tested", "reason": "Geometry import does not test PMI semantics or associations. Read the separate PMI report."},
         {"check": "step_editable_construction", "status": "not_tested", "reason": "Geometry import does not reconstruct features. Read the separate construction adapter report."},
     ]

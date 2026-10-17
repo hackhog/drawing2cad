@@ -53,7 +53,7 @@ class FakeRunner:
         if self.wrong_import_volume:
             measured["volume_mm3"] = 123
         checks = [{"check": name, "status": "not_tested" if self.omit_measurements and name == "drawing_measurements" else "pass"} for name in REQUIRED_CHECKS]
-        checks.extend({"check": name, "status": "not_tested"} for name in ["nx_open", "semantic_pmi", "independent_step_conformance"])
+        checks.extend({"check": name, "status": "not_tested"} for name in ["target_cad_open", "semantic_pmi", "independent_step_conformance"])
         return {"status": "pass", "checks": checks, "worker": worker, "measured": measured, "step": {"sha256": hashlib.sha256(input_step.read_bytes()).hexdigest()}}
 
 
@@ -144,7 +144,7 @@ def test_end_to_end_candidate_release_and_report(setup_service):
     released = service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
     assert released["release"]["profile"] == "validated_prototype_step"
     assert released["release"]["metric_acceptance"] == "not_tested"
-    assert next(item for item in released["checks"] if item["check"] == "nx_open")["status"] == "not_tested"
+    assert next(item for item in released["checks"] if item["check"] == "target_cad_open")["status"] == "not_tested"
     report = service.part_export_review(run_id="example", expected_revision=1)
     assert {Path(item["path"]).name for item in report["artifacts"]} == {"part.json", "review.md", "review.csv", "coverage.json", "trace.jsonl", "manifest.json"}
     trace = Path(next(item["path"] for item in report["artifacts"] if item["path"].endswith("trace.jsonl")))
