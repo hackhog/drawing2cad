@@ -61,6 +61,13 @@ def execute(request: dict) -> dict:
         from .adapters.ap242 import reconstruct_step
         result = reconstruct_step(directory / "input.step", directory,
                                   parameter_changes=request.get("parameter_changes"))
+    elif operation == "analyze_ap242":
+        from .adapters.stepcode import exec_stepcode
+        exec_stepcode(directory, scope)
+        raise RuntimeError("The independent analyzer did not replace its restricted worker.")
+    elif operation == "ap242_visual":
+        from .adapters.ap242_visual import render_ap242_inspection
+        result = render_ap242_inspection(directory / "input.step", directory)
     elif operation == "drawing":
         from .drafting import render_drawing
         result = render_drawing(request["drawing_spec"], request["description"], request["revision"], directory)

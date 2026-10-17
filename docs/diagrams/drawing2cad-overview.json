@@ -6,7 +6,7 @@
     "output": "docs/diagrams/drawing2cad-overview.html",
     "quality_profile": "showcase",
     "locale": "en",
-    "subtitle": "M2 service and initial M3 construction and PMI adapters"
+    "subtitle": "Headless delivery, AP242 analysis, and stored PMI inspection"
   },
   "components": [
     {
@@ -139,7 +139,7 @@
       "id": "worker",
       "type": "backend",
       "label": "Restricted CAD / drawing",
-      "sublabel": "build123d, XDE, drafting adapters",
+      "sublabel": "build123d, XDE, PMI views, drafting",
       "pos": [
         1040,
         600
@@ -148,6 +148,14 @@
         230,
         64
       ]
+    },
+    {
+      "id": "analyzer",
+      "type": "backend",
+      "label": "Independent STEPcode reader",
+      "sublabel": "Fresh restricted AP242 analysis",
+      "pos": [1040, 780],
+      "size": [250, 64]
     },
     {
       "id": "artifacts",
@@ -230,6 +238,12 @@
       "label": "part + drawing specifications"
     },
     {
+      "id": "analysisrequest",
+      "from": "demotools",
+      "to": "analyzer",
+      "label": "candidate bytes + hash"
+    },
+    {
       "id": "store",
       "from": "demotools",
       "to": "artifacts",
@@ -279,8 +293,8 @@
       "items": [
         "AP242 with application construction and nominal PMI",
         "Fresh worker replay and parameter-change checks",
-        "External STEP upload pending; CAD exports in #33",
-        "Independent conformance and viewer acceptance pending"
+        "PDF input only; CAD exports are separate in #33",
+        "STEPcode checks and actual stored-PMI inspection views"
       ]
     }
   ]

@@ -13,7 +13,7 @@ permissions:
 jobs:
   mcp-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Build locked test runtime
@@ -23,7 +23,8 @@ jobs:
           docker run --rm --network none --read-only --cap-drop ALL
           --security-opt no-new-privileges --memory 4g --cpus 2 --pids-limit 128
           --tmpfs /tmp:rw,nosuid,size=768m
-          -e DRAWING2CAD_REQUIRE_SANDBOX=1 -e DRAWING2CAD_PDFTOPPM=/usr/bin/pdftoppm
+          -e DRAWING2CAD_REQUIRE_SANDBOX=1 -e DRAWING2CAD_REQUIRE_STEPCODE=1
+          -e DRAWING2CAD_PDFTOPPM=/usr/bin/pdftoppm
           -v "${{ github.workspace }}:/repo:ro"
           drawing2cad-mcp:test /repo/drawing2cad-mcp/tests
           -c /repo/drawing2cad-mcp/pyproject.toml

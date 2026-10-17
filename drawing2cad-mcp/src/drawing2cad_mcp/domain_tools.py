@@ -34,6 +34,10 @@ DOMAIN_DESCRIPTIONS["part_export_review"] = "Export path-free JSON part, run man
 DOMAIN_DESCRIPTIONS["export_step"] = "Release validated STEP after the current drawing passes layout checks and an identified review. Drawing and part revisions must agree. AP242 and semantic PMI remain separate M3 requirements."
 
 _EXTRA = {
+    "step_render_pmi": (_object({"artifact_id": ID, "expected_sha256": HASH}),
+        "Render imported AP242 model edges and stored PMI graphics from an authorized STEP artifact in a restricted worker. Return hash-bound inspection PDF and PNG artifacts. This does not establish visual approval, target-CAD support, or full conformance."),
+    "part_render_pmi": (_object(REVISION),
+        "Render the current validated AP242 build candidate before release. Return revision-bound inspection artifacts from actual stored PMI graphics. Keep the part, drawing review, and release state unchanged. Fixed views can show reversed or edge-on annotations; inspect the annotation-plane detail pages."),
     "step_reconstruct": (_object({"artifact_id": ID, "expected_sha256": HASH,
         "parameter_changes": {"type": "object", "maxProperties": 100,
             "propertyNames": {"pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},
