@@ -27,13 +27,20 @@ A neutral end body does not satisfy those capabilities.
 | Milestone | Scope | Acceptance boundary |
 |---|---|---|
 | [M1 metric prototype (#12)](https://github.com/hackhog/drawing2cad/issues/12) | MCP image, PDF measurement, feature description, sandboxed CAD, validation, STEP, and automatic reports. | Three sample parts pass the defined metric. No claim of complete drawing delivery or editable STEP construction. |
-| [M2 complete service (#24)](https://github.com/hackhog/drawing2cad/issues/24) | Persistent PDF upload, source/artifact IDs, unified Python MCP/API, browser interface, and technical drawing adapter. | A remote client completes the workflow without server filesystem access. Final drawing and model agree. |
+| M2: [MCP and shared services (#24)](https://github.com/hackhog/drawing2cad/issues/24), [webservice (#26)](https://github.com/hackhog/drawing2cad/issues/26) | Persistent PDF upload, source/artifact IDs, unified Python MCP/API, browser interface, and technical drawing adapter. | A remote client completes the workflow without server filesystem access. Final drawing and model agree. |
 | [M3 AP242 (#25)](https://github.com/hackhog/drawing2cad/issues/25) | Construction representation, import adapters, driving parameter edits, semantic PMI, and graphical PMI. | Reconstruct and edit from STEP alone; export and repeat in a fresh worker. |
 
 M1 is the first pull request's implementation scope.
 M2 and M3 have separate issues and do not block the M1 prototype merge.
 Issue 12 retains the open M1 metric acceptance work after the prototype merge.
 Merging the implementation does not establish complete source coverage, independent STEP conformity, or target-CAD acceptance.
+
+M2 has separate implementation owners for the MCP/domain services and the web API/frontend.
+Agree on shared schemas, service interfaces, revisions, artifact access, and error definitions before parallel implementation.
+The web owner can start with synthetic contract fixtures.
+Final M2 acceptance requires integration with the real services.
+Both interfaces use one Python backend application and the same domain services, state, and release gates.
+Do not duplicate CAD or validation logic in the web adapter.
 
 M1 can use configured server-side source paths.
 M2 must receive PDF bytes and return an opaque source ID.
