@@ -1,6 +1,7 @@
 """Synthetic drawing contracts and native DXF/PDF artifacts agree."""
 
 import hashlib
+import math
 
 import pytest
 
@@ -292,3 +293,77 @@ def test_arc_radius_dimension_leader_matches_sweep(tmp_path):
     primitive.update(start_angle=90, end_angle=180)
     result = drawing_validate(spec, description, 1)
     assert "dimension_geometry" in {d["code"] for d in result["defects"]}
+
+
+@pytest.mark.parametrize("kind", ["radius", "diameter"])
+@pytest.mark.parametrize("position", [[80, 15], [-10, 15], [30, 50], [30, -25]])
+def test_moved_round_dimension_keeps_native_leader_to_text(tmp_path, kind, position):
+    ezdxf = pytest.importorskip("ezdxf")
+    pymupdf = pytest.importorskip("pymupdf")
+    description, spec = drawing_fixture()
+    dim = spec["views"][0]["dimensions"][1]
+    dim.update(type=kind, expected=4 if kind == "radius" else 8, label_position=position)
+    result = render_drawing(spec, description, 1, tmp_path)
+    assert result["status"] == "pass", result
+    document = ezdxf.readfile(tmp_path / "drawing.dxf")
+    dimension = list(document.modelspace().query("DIMENSION"))[1]
+    assert dimension.dimtype == (4 if kind == "radius" else 3)
+    assert dimension.get_measurement() == dim["expected"]
+    assert dimension.has_xdata("DRAWING2CAD")
+    label = [45 + position[0], 120 + position[1]]
+    center = [75, 135]
+    distance = math.dist(center, label)
+    direction = [(label[i] - center[i]) / distance for i in range(2)]
+    # A rendered line must connect the circle boundary to the moved label area.
+    # An intact diameter across the circle cannot satisfy this condition.
+    def along(point):
+        return sum((point[i] - center[i]) * direction[i] for i in range(2))
+    leaders = [entity for entity in dimension.virtual_entities() if entity.dxftype() == "LINE"
+               and min(along(entity.dxf.start), along(entity.dxf.end)) <= 6
+               and max(along(entity.dxf.start), along(entity.dxf.end)) >= distance - 8]
+    assert leaders, "Moved dimension text has no line to its dimensioned circle."
+    # Verify that the PDF contains that same leader, not only the DXF block.
+    scale = result["pdf_page"]["width_points"] / 297
+    def pdf_point(point):
+        return (point[0] * scale, (210 - point[1]) * scale)
+    expected_lines = [(pdf_point(line.dxf.start), pdf_point(line.dxf.end)) for line in leaders]
+    with pymupdf.open(tmp_path / "drawing.pdf") as pdf:
+        strokes = [item for path in pdf[0].get_drawings() for item in path["items"] if item[0] == "l"]
+    assert any(math.dist(start, tuple(item[1])) < 0.02 and math.dist(end, tuple(item[2])) < 0.02
+               for start, end in expected_lines for item in strokes), "The PDF omitted the native dimension leader."
+
+
+def test_hidden_and_center_lines_have_readable_metric_gaps_in_dxf_pdf_and_preview(tmp_path):
+    ezdxf = pytest.importorskip("ezdxf")
+    pymupdf = pytest.importorskip("pymupdf")
+    description, spec = drawing_fixture()
+    for index, (style, length) in enumerate((("hidden", 10), ("hidden", 60), ("center", 10), ("center", 60))):
+        y = 35 + index * 5
+        spec["views"][0]["geometry"].append({"id": f"dash_example_{index}", "type": "line", "style": style,
+            "start": [0, y], "end": [length, y], "evidence_ids": ["drawing"], "feature_ids": ["base"]})
+    result = render_drawing(spec, description, 1, tmp_path)
+    assert result["status"] == "pass", result
+    document = ezdxf.readfile(tmp_path / "drawing.dxf")
+    for name in ("HIDDEN", "CENTER"):
+        layer = document.layers.get(name)
+        pattern = [tag.value for tag in document.linetypes.get(layer.dxf.linetype).pattern_tags.tags if tag.code == 49]
+        assert min(-value for value in pattern if value < 0) >= 1.0
+        lengths = {value for value in pattern if value > 0}
+        assert len(lengths) == (1 if name == "HIDDEN" else 2)
+    with pymupdf.open(tmp_path / "drawing.pdf") as pdf:
+        paths = [path for path in pdf[0].get_drawings() if path.get("layer") in {"hidden", "center"}]
+        assert len(paths) == 4
+        raster = pdf[0].get_pixmap(matrix=pymupdf.Matrix(150 / 72, 150 / 72), colorspace=pymupdf.csGRAY)
+        mm_to_points = result["pdf_page"]["width_points"] / 297
+        for path in paths:
+            segments = sorted((min(item[1].x, item[2].x), max(item[1].x, item[2].x))
+                              for item in path["items"] if item[0] == "l")
+            assert len(segments) >= 2
+            gaps = [(first[1], second[0]) for first, second in zip(segments, segments[1:])]
+            assert min(end - start for start, end in gaps) / mm_to_points >= 0.99
+            y = round(path["rect"].y0 * 150 / 72)
+            for start, end in gaps:
+                x = round((start + end) / 2 * 150 / 72)
+                assert min(raster.pixel(x + dx, y + dy)[0] for dx in (-1, 0, 1) for dy in (-1, 0, 1)) >= 245
+            ink_x = round(sum(segments[0]) / 2 * 150 / 72)
+            assert min(raster.pixel(ink_x, y + dy)[0] for dy in (-1, 0, 1)) < 160

@@ -27,11 +27,18 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
     document = ezdxf.new("R2013", setup=True, units=units.MM)
     document.header["$MEASUREMENT"] = 1
     document.appids.add("DRAWING2CAD")
-    for name, color, linetype in (("VISIBLE", 7, "CONTINUOUS"), ("HIDDEN", 7, "DASHED"),
-                                  ("CENTER", 7, "CENTER"), ("SECTION", 7, "CONTINUOUS"),
+    # Sheet geometry uses mm. Explicit patterns retain visible gaps in the PDF;
+    # the setup DASHED gap is only 0.254 mm, close to the default stroke width.
+    document.linetypes.add("D2C_HIDDEN_MM", [3.0, 2.0, -1.0], description="Hidden edge: 2 mm dash, 1 mm gap")
+    document.linetypes.add("D2C_CENTER_MM", [8.0, 5.0, -1.0, 1.0, -1.0], description="Center line: 5/1 mm dashes, 1 mm gaps")
+    for name, color, linetype in (("VISIBLE", 7, "CONTINUOUS"), ("HIDDEN", 7, "D2C_HIDDEN_MM"),
+                                  ("CENTER", 7, "D2C_CENTER_MM"), ("SECTION", 7, "CONTINUOUS"),
                                   ("DIMENSIONS", 7, "CONTINUOUS"), ("ANNOTATIONS", 7, "CONTINUOUS"),
                                   ("UNCERTAINTY", 1, "CONTINUOUS")):
-        document.layers.new(name, dxfattribs={"color": color, "linetype": linetype})
+        attrs = {"color": color, "linetype": linetype}
+        if name in {"HIDDEN", "CENTER"}:
+            attrs["lineweight"] = 18  # DXF line weights use hundredths of a mm.
+        document.layers.new(name, dxfattribs=attrs)
     modelspace = document.modelspace()
     entity_groups = []
     native_dimensions = []
@@ -70,6 +77,9 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
                 result = modelspace.add_linear_dim(base=label, p1=point(dim["p1"]), p2=point(dim["p2"]),
                                                    location=label, angle=dim["angle"], override=overrides, dxfattribs=attrs)
             elif dim["type"] in {"radius", "diameter"}:
+                # Keep a native leader between a moved round-dimension label
+                # and its circle. DIMTMOVE=2 deliberately omits this leader.
+                overrides["dimtmove"] = 1
                 method = modelspace.add_radius_dim if dim["type"] == "radius" else modelspace.add_diameter_dim
                 center = dim["center"]
                 result = method(center=point(center), radius=dim["radius"] * scale, location=label,

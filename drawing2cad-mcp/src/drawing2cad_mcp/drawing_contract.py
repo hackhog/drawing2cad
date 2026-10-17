@@ -449,10 +449,22 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
              f"Add a visible marker for evidence {ref} at affected feature {feature}.")
     for view in views:
         dimensioned = {d["primitive"] for d in view["dimensions"] if d["type"] in {"radius", "diameter"}}
+        annotated = [p for p in view["geometry"] if p["id"] in dimensioned]
         for primitive in view["geometry"]:
-            if (primitive["type"] in {"circle", "arc"} and primitive["id"] not in dimensioned
+            if primitive["type"] not in {"circle", "arc"}:
+                continue
+            # Visibility can split one circular feature into several arcs.
+            # Share its dimension only within one view and identical provenance.
+            covered = any(
+                set(primitive["feature_ids"]) == set(other["feature_ids"])
+                and set(primitive["evidence_ids"]) == set(other["evidence_ids"])
+                and math.dist(primitive["center"], other["center"]) <= 1e-7
+                and abs(primitive["radius"] - other["radius"]) <= 1e-7
+                for other in annotated
+            )
+            if (not covered
                     and (view["id"], primitive["id"]) not in marked_primitives):
-                fail("unmarked_radius", primitive["id"], "A round primitive needs a radius or diameter dimension, or a visible uncertainty marker.")
+                fail("unmarked_radius", primitive["id"], "A round primitive needs a radius or diameter dimension for the same circular feature and evidence in this view, or a visible uncertainty marker.")
     for index, first in enumerate(labels):
         for second in labels[index + 1:]:
             if _overlap(first["bounds"], second["bounds"]):
