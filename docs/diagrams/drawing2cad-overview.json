@@ -5,7 +5,8 @@
     "title": "Drawing2CAD: shared headless service and delivery milestones",
     "output": "docs/diagrams/drawing2cad-overview.html",
     "quality_profile": "showcase",
-    "locale": "en"
+    "locale": "en",
+    "subtitle": "M2 MCP delivery, web integration, and M3 requirements"
   },
   "components": [
     {
@@ -25,8 +26,8 @@
     {
       "id": "webui",
       "type": "frontend",
-      "label": "Web UI: planned #26",
-      "sublabel": "React, shadcn, TanStack",
+      "label": "Web UI foundation",
+      "sublabel": "React, TanStack, shadcn, nginx",
       "pos": [
         320,
         140
@@ -135,26 +136,7 @@
       ]
     }
   ],
-  "boundaries": [
-    {
-      "kind": "region",
-      "label": "Future browser client: #26",
-      "wraps": [
-        "webui"
-      ]
-    },
-    {
-      "kind": "region",
-      "label": "One Python application: MCP now, web adapter planned",
-      "wraps": [
-        "mcp",
-        "demoapi",
-        "demotools",
-        "pdf",
-        "worker"
-      ]
-    }
-  ],
+  "boundaries": [],
   "connections": [
     {
       "id": "upload",
@@ -221,7 +203,7 @@
         "PDF bytes arrive through bounded resumable uploads",
         "Source, run, job, and artifact IDs keep paths internal",
         "Persistent jobs, notes, revisions, and review gates",
-        "MCP currently uses one configured principal"
+        "MCP and future web routes share one Python service"
       ]
     },
     {
@@ -238,7 +220,7 @@
       "dot": "rose",
       "title": "Web and acceptance follow-up",
       "items": [
-        "Issue #26: routes and React interface use shared services",
+        "Issue #26: connect the web UI to shared service routes",
         "No automatic arbitrary projection or section extraction",
         "Drawing review follows the current model build",
         "Resource acceptance remains deferred until milestones finish"

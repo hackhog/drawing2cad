@@ -1,4 +1,4 @@
-// Typen und Aufrufe der Demo-API (app/backend/src/drawing_demo/api.py). Koordinaten in Blatt-mm, y nach unten.
+// Drawing analysis types of the demo API (app/backend/src/drawing_demo/api.py). Coordinates in sheet mm, Y axis down.
 
 export type Box = [number, number, number, number];
 export type Point = [number, number];
@@ -35,24 +35,5 @@ export interface ExtractResult {
   page_png: string;
   page_px_per_mm: number;
   review: ReviewFlag[];
-}
-
-async function post(path: string, file: File): Promise<Response> {
-  const body = new FormData();
-  body.append("file", file);
-  const res = await fetch(path, { method: "POST", body });
-  if (!res.ok) {
-    const detail = await res.json().then((j: { detail?: string }) => j.detail, () => undefined);
-    throw new Error(detail || res.statusText);
-  }
-  return res;
-}
-
-// Relative Pfade, damit die App auch hinter einem Pfad-Präfix läuft
-export const extractDrawing = async (pdf: File): Promise<ExtractResult> => (await post("api/extract", pdf)).json();
-
-/** STEP → GLB (serverseitig vernetzt), Rückgabe als Object-URL für den Viewer. */
-export async function stepToGlbUrl(step: File): Promise<string> {
-  const glb = await (await post("api/model", step)).blob();
-  return URL.createObjectURL(glb);
+  provenance?: { source_sha256: string; source_size_bytes: number; drawing2cad_mcp_version: string };
 }

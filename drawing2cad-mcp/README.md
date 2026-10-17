@@ -7,7 +7,7 @@ CAD execution uses only the headless build123d worker. The server has no FreeCAD
 
 Use the [Streamable HTTP guide](STREAMABLE_HTTP.md) for HTTP transport and client registration.
 Use [ADR 0014](../docs/adr/0014-headless-build123d-metric-prototype.md) for the selected sandbox and milestone boundaries.
-Use [ADR 0015](../docs/adr/0015-shared-domain-service-and-drawing-delivery.md) for shared services, persistent jobs, and drawing delivery.
+Use [ADR 0016](../docs/adr/0016-shared-domain-service-and-drawing-delivery.md) for shared services, persistent jobs, and drawing delivery.
 
 ## Docker runtime
 

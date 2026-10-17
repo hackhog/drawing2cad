@@ -1,4 +1,4 @@
-import type { StrokeKind } from "./api";
+import type { StrokeKind } from "./drawing";
 
 // Keep the established drawing-class colors for the existing UI.
 export const KINDS: [StrokeKind, string, string][] = [
