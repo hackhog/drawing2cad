@@ -20,6 +20,10 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 ATTEMPTS = 4
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 RETRY_DELAY_SECONDS = 2.0
+# A token rate limit (web run: 100k tokens per minute, about 45k per turn) clears within a minute. Retry it until the
+# turn deadline, with longer waits after each further rate-limit answer. Other failures keep the ATTEMPTS limit.
+RATE_LIMIT_STEP_SECONDS = 15.0
+RATE_LIMIT_MAX_WAIT_SECONDS = 60.0
 # Normal answers took 2-45 s; a stalled connection must not use the whole call budget in one attempt.
 ATTEMPT_TIMEOUT_SECONDS = 120.0
 # Each image costs many tokens in every later turn. Older images are replaced by a note; the trace keeps them.
@@ -138,7 +142,9 @@ def make_model_call(settings: ModelSettings):
             body["reasoning_effort"] = settings.reasoning_effort
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         deadline = time.monotonic() + timeout
-        for attempt in range(1, ATTEMPTS + 1):
+        attempt = rate_limits = 0
+        while True:
+            attempt += 1
             remaining = deadline - time.monotonic()
             try:
                 with urlopen(Request(settings.base_url + "/chat/completions", data, settings.headers()),
@@ -147,13 +153,17 @@ def make_model_call(settings: ModelSettings):
                 break
             except HTTPError as error:
                 detail = error.read(4096).decode("utf-8", errors="replace")
-                wait = _retry_after(error) if error.code == 429 else RETRY_DELAY_SECONDS
-                if error.code not in RETRY_STATUS or attempt == ATTEMPTS or deadline - time.monotonic() <= wait:
+                wait = RETRY_DELAY_SECONDS
+                if error.code == 429:
+                    wait = max(_retry_after(error), min(RATE_LIMIT_MAX_WAIT_SECONDS, RATE_LIMIT_STEP_SECONDS * rate_limits))
+                    rate_limits += 1
+                exhausted = attempt >= ATTEMPTS and error.code != 429
+                if error.code not in RETRY_STATUS or exhausted or deadline - time.monotonic() <= wait:
                     raise RuntimeError(f"Model endpoint returned HTTP {error.code}: {detail}") from None
                 time.sleep(wait)
                 continue
             except (TimeoutError, URLError) as error:
-                if attempt == ATTEMPTS or deadline - time.monotonic() <= RETRY_DELAY_SECONDS:
+                if attempt >= ATTEMPTS or deadline - time.monotonic() <= RETRY_DELAY_SECONDS:
                     raise RuntimeError(f"Model endpoint did not answer: {error}") from None
             time.sleep(RETRY_DELAY_SECONDS)
         if len(raw) > MAX_RESPONSE_BYTES:

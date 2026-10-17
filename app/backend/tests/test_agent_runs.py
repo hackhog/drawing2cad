@@ -206,6 +206,19 @@ def test_polling_a_run_does_not_use_the_step_budget_of_its_part_run(environment)
         assert calls.count("part_read") == 1
 
 
+def test_a_conversation_error_fails_the_run_even_with_a_built_part(environment):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
+        summary = {"status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}}
+        services.runner.finish(run["run_id"], summary)  # No part_read: the error decides before the part state.
+        result = services.jobs.get(run["run_id"])
+        assert result["error"]["code"] == "AGENT_FAILED" and "HTTP 429" in result["error"]["message"]
+        assert result["failed_phase"] == "drawing"
+
+
 class Server(uvicorn.Server):
     def install_signal_handlers(self):
         pass  # Keep the signal handlers of the test runner.
