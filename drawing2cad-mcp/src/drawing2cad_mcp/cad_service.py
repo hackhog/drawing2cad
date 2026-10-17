@@ -399,21 +399,35 @@ class CadService:
             imported = self.runner.run("validate", description=state["description"], input_step=candidate)
             if _sha(candidate.read_bytes()) != candidate_hash:
                 raise CadError("CANDIDATE_CHANGED", "The candidate changed during validation.")
+            build_worker = result.get("worker", {}).get("worker_id")
+            import_worker = imported.get("worker", {}).get("worker_id")
+            fresh = bool(build_worker and import_worker and build_worker != import_worker)
+            import_checks = imported.get("checks", [])
+            reimport = next((item for item in import_checks if item.get("check") == "step_reimport"), None)
+            imported_hash = imported.get("step", {}).get("sha256")
+            reimport_passed = bool(reimport and reimport.get("status") == "pass" and fresh and imported_hash == candidate_hash)
+            fresh_check = {"check": "fresh_worker_reimport", "status": "pass" if reimport_passed else "fail"}
+            if not reimport_passed:
+                if not reimport or reimport.get("status") != "pass":
+                    fresh_check["reason"] = reimport.get("reason", "The validation worker did not report a successful STEP import.") if reimport else "The validation worker did not report a STEP import result."
+                elif not fresh:
+                    fresh_check["reason"] = "The build and validation workers are not distinct."
+                elif imported_hash != candidate_hash:
+                    fresh_check["reason"] = "The validation worker did not confirm the candidate STEP hash."
+            result["checks"] = [item for item in result.get("checks", []) if item.get("check") != "fresh_worker_reimport"] + [deepcopy(fresh_check)]
+            imported["checks"] = [item for item in import_checks if item.get("check") != "fresh_worker_reimport"] + [deepcopy(fresh_check)]
             if imported.get("status") != "pass":
                 state["build"] = {"status": "fail", "description_revision": state["revision"], "description_sha256": state["description_sha256"], "candidate_path": str(candidate), "candidate_sha256": candidate_hash, "build": result, "validation": imported, "feature_replay": "pass" if name == "build_from_description" else "not_tested"}
                 return {"status": "fail", "build": deepcopy(state["build"]), "released": False}
             if imported.get("step", {}).get("sha256") != candidate_hash:
                 raise CadError("VALIDATION_HASH_MISMATCH", "The imported STEP bytes do not match the candidate.")
-            build_worker = result.get("worker", {}).get("worker_id")
-            import_worker = imported.get("worker", {}).get("worker_id")
-            fresh = bool(build_worker and import_worker and build_worker != import_worker)
             if not fresh:
                 raise CadError("FRESH_WORKER_REQUIRED", "Build and import must use different worker processes.")
             agreement = self._compare(result.get("measured", {}), imported.get("measured", {}))
             # Client code can forge its worker result. Only trusted import checks authorize release.
             if name == "build_code":
                 agreement = {"check": "build_import_agreement", "status": "not_tested", "reason": "The code-worker report is not independent evidence."}
-            status = "pass" if imported.get("status") == "pass" and agreement["status"] != "fail" else "fail"
+            status = "pass" if reimport_passed and imported.get("status") == "pass" and agreement["status"] != "fail" else "fail"
             record = {"status": status, "description_revision": state["revision"], "description_sha256": state["description_sha256"], "candidate_path": str(candidate), "candidate_sha256": candidate_hash, "build": result, "validation": imported, "agreement": agreement, "feature_replay": "pass" if name == "build_from_description" else "not_tested"}
             record["export_profile"] = options.get("export_profile", "ap214")
             if record["export_profile"] == "ap242":

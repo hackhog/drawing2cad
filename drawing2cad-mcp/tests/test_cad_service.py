@@ -26,6 +26,7 @@ class FakeRunner:
         self.fail_operation = None
         self.omit_measurements = False
         self.wrong_import_volume = False
+        self.fail_import_measurement = False
         self.same_worker = False
         self.path_override = None
         self.probe_status = "pass"
@@ -48,13 +49,16 @@ class FakeRunner:
         if operation in {"build", "build_code"}:
             candidate = directory / "candidate.step"
             candidate.write_bytes(b"ISO-10303-21; synthetic unit-test placeholder")
-            return {"status": "pass", "candidate_step": str(self.path_override or candidate), "worker": worker, "measured": measured}
+            return {"status": "pass", "candidate_step": str(self.path_override or candidate), "worker": worker, "measured": measured,
+                    "checks": [{"check": "fresh_worker_reimport", "status": "not_tested"}]}
         assert operation == "validate"
         if self.wrong_import_volume:
             measured["volume_mm3"] = 123
         checks = [{"check": name, "status": "not_tested" if self.omit_measurements and name == "drawing_measurements" else "pass"} for name in REQUIRED_CHECKS]
+        if self.fail_import_measurement:
+            next(item for item in checks if item["check"] == "drawing_measurements")["status"] = "fail"
         checks.extend({"check": name, "status": "not_tested"} for name in ["target_cad_open", "semantic_pmi", "independent_step_conformance"])
-        return {"status": "pass", "checks": checks, "worker": worker, "measured": measured, "step": {"sha256": hashlib.sha256(input_step.read_bytes()).hexdigest()}}
+        return {"status": "fail" if self.fail_import_measurement else "pass", "checks": checks, "worker": worker, "measured": measured, "step": {"sha256": hashlib.sha256(input_step.read_bytes()).hexdigest()}}
 
 
 @pytest.fixture
@@ -141,6 +145,11 @@ def test_end_to_end_candidate_release_and_report(setup_service):
     built = service.build_from_description(run_id="example", expected_revision=1)
     assert runner.calls == ["build", "validate"]
     assert built["status"] == "pass" and not built["released"]
+    for checks in (built["build"]["build"]["checks"], built["build"]["validation"]["checks"]):
+        assert [item["status"] for item in checks if item["check"] == "fresh_worker_reimport"] == ["pass"]
+    stored = json.loads((service.storage / "runs" / "example" / "state.json").read_text(encoding="utf-8"))["build"]
+    assert stored["build"]["checks"] == built["build"]["build"]["checks"]
+    assert stored["validation"]["checks"] == built["build"]["validation"]["checks"]
     released = service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
     assert released["release"]["profile"] == "validated_prototype_step"
     assert released["release"]["metric_acceptance"] == "not_tested"
@@ -193,7 +202,14 @@ def test_worker_failure_never_releases(setup_service, operation):
     service, runner, description, source = setup_service
     create(setup_service)
     runner.fail_operation = operation
-    assert service.build_from_description(run_id="example", expected_revision=1)["status"] == "fail"
+    failed = service.build_from_description(run_id="example", expected_revision=1)
+    assert failed["status"] == "fail"
+    if operation == "validate":
+        checks = failed["build"]["build"]["checks"]
+        assert [item["status"] for item in checks if item["check"] == "fresh_worker_reimport"] == ["fail"]
+        assert [item["status"] for item in failed["build"]["validation"]["checks"] if item["check"] == "fresh_worker_reimport"] == ["fail"]
+    else:
+        assert failed["validation"]["status"] == "not_tested"
     with pytest.raises(CadError) as error:
         service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
     assert error.value.code == "VALIDATED_BUILD_REQUIRED"
@@ -216,6 +232,17 @@ def test_import_geometry_mismatch_fails(setup_service):
     result = service.build_from_description(run_id="example", expected_revision=1)
     assert result["status"] == "fail"
     assert result["build"]["agreement"]["status"] == "fail"
+
+
+def test_failed_import_measurement_preserves_successful_fresh_reimport(setup_service):
+    service, runner, description, source = setup_service
+    create(setup_service)
+    runner.fail_import_measurement = True
+    result = service.build_from_description(run_id="example", expected_revision=1)
+    assert result["status"] == "fail"
+    assert [item["status"] for item in result["build"]["validation"]["checks"] if item["check"] == "step_reimport"] == ["pass"]
+    for checks in (result["build"]["build"]["checks"], result["build"]["validation"]["checks"]):
+        assert [item["status"] for item in checks if item["check"] == "fresh_worker_reimport"] == ["pass"]
 
 
 def test_absent_measurements_and_incomplete_coverage_block_release(setup_service):
