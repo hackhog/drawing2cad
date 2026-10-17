@@ -103,5 +103,3 @@ If APIs or versions change, examine the applicable sources below. They are not a
 - [Boolean result](https://steptools.com/docs/stp_aim/html/t_boolean_result.html)
 - [Extruded face solid](https://steptools.com/docs/stp_aim/html/t_extruded_face_solid.html)
 - [OCCT STEP translator](https://dev.opencascade.org/doc/overview/html/occt_user_guides__step.html)
-- [FreeCAD AP242 support tracking](https://github.com/FreeCAD/FreeCAD/issues/19795)
-- [FreeCAD GDT import discussion](https://github.com/FreeCAD/FreeCAD/issues/29796)

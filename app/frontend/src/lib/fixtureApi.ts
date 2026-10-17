@@ -1,4 +1,4 @@
-// Simulated service for UI work before the #24 services exist. Every run is marked `simulated`.
+// Simulated service for UI work before the shared services exist. Every run is marked `simulated`.
 // It imitates the contract behavior that the UI must handle: job phases, revisions, stale artifacts,
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
 import type { Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";

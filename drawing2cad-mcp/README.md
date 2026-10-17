@@ -41,7 +41,7 @@ The current profile is not a claim of hostile multi-tenant isolation.
 
 The domain profile uses source, run, job, and artifact IDs. It does not accept client-supplied server paths.
 `DomainService` owns the shared operations and storage for MCP and the future web adapter.
-The web routes and React interface belong to #26 and are not implemented here.
+The web routes and React interface belong to the M2 web part and are not implemented here.
 MCP uses one configured principal. A bearer token does not establish separate identities for each client.
 The service accepts a trusted `AccessContext` from an adapter; no tool argument can select that identity.
 The existing demo is separate from this service.
@@ -215,8 +215,8 @@ They prevent a complete metric pass where required.
 
 Drawing delivery and model validation are separate checks. Their final revisions must agree.
 M3 must prove construction and parameter changes from STEP alone, plus separate semantic and graphical PMI results.
-The web interface remains #26. AP242 and PMI remain #25.
-Issue #12 is closed; resource acceptance trials are deferred until the milestones are complete. Issues #7 and #11 remain deferred.
+The web interface belongs to the M2 web part. AP242 and PMI belong to M3.
+Resource acceptance trials follow after the delivery milestones.
 
 See the [skill workflow](../skills/drawing2cad/references/managed-workflow.md)
 and [validation contract](../skills/drawing2cad/references/validation.md).
