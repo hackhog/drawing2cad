@@ -1,4 +1,4 @@
-// Overview page: tiles for all drawings and one table row per source or upload (ADR 0008).
+// Overview page: tiles for all drawings, tiles for what the CAD runs delivered, and one table row per source or upload (ADR 0008).
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Gauge, Hash, Trash2, X } from "lucide-react";
@@ -7,17 +7,19 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/Status";
 import { UploadButton } from "@/components/UploadButton";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApi } from "@/lib/apiContext";
+import { benefit } from "@/lib/benefit";
 import type { Source } from "@/lib/contract";
 import type { ExtractResult } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { errorCode, recoveryFor } from "@/lib/errors";
-import { bytes, explainedShare, fmt, partName, pct } from "@/lib/format";
-import { analysisQuery, keys, sourcesQuery } from "@/lib/queries";
+import { bytes, duration, explainedShare, fmt, partName, pct } from "@/lib/format";
+import { analysisQuery, keys, runsQuery, sourcesQuery } from "@/lib/queries";
 import { analysisStatus, uploadStatus } from "@/lib/status";
 import { isPdf, useUploads, type Upload } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
@@ -47,6 +49,7 @@ export function OverviewPage() {
   const { uploads, addFiles } = useUploads();
   const { data: sources = [] } = useQuery(sourcesQuery(api));
   const analyses = useQueries({ queries: sources.map((s) => analysisQuery(api, s.source_id)) });
+  const runs = useQueries({ queries: sources.map((s) => runsQuery(api, s.source_id)) });
   const [gauge, setGauge] = useState(false);
   const [over, setOver] = useState(false);
   const drop = dropTarget((files) => addFiles(files.filter(isPdf)), setOver);
@@ -62,6 +65,8 @@ export function OverviewPage() {
   const unsure = texts.filter((t) => t.text.includes("?")).length;
   const flags = done.reduce((a, r) => a + r.review.length, 0);
   const empty = !sources.length && !uploads.length;
+  const b = benefit(runs.map((q) => q.data ?? []));
+  const built = b.models > 0;
 
   const [jobsSub, jobsTone]: [string, Tone] = busy ? [`${busy} in Arbeit`, ""]
     : failed ? [`${failed} nicht lesbar`, "bad"]
@@ -111,6 +116,32 @@ export function OverviewPage() {
           sub={!done.length ? "Markiert statt geraten" : flags === 1 ? "Stelle markiert statt geraten" : flags ? "Stellen markiert statt geraten" : "nichts offen"}
           tone={!done.length ? "" : flags ? "bad" : "good"}
         />
+      </section>
+
+      <section aria-labelledby="benefit-title" className="grid gap-1.5">
+        <h2 id="benefit-title" className="flex items-center gap-2 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">
+          Nutzen{b.simulated && <Badge variant="secondary" className="bg-warn-bg text-bad normal-case tracking-normal">Simuliert</Badge>}
+        </h2>
+        <div className="grid grid-cols-4 gap-3 max-[1000px]:grid-cols-2">
+          <Tile
+            title="3D-Modelle" value={<Big>{built || b.active ? fmt(b.models) : "–"}</Big>}
+            sub={b.active ? `${b.active} im Bau` : built ? `aus ${fmt(done.length)} gelesenen Zeichnungen` : "STEP aus der Zeichnung gebaut"}
+          />
+          <Tile
+            title="Freigegeben" value={<Big>{built ? fmt(b.released) : "–"}</Big>}
+            sub={!built ? "nur geprüfte Modelle" : b.released ? "geprüft und lieferbar" : "Entwürfe warten auf Prüfung"}
+            tone={built && b.released ? "good" : ""}
+          />
+          <Tile
+            title="Maße aus Zeichnung" value={<Big>{b.parameters ? pct(b.fromDrawing / b.parameters) : "–"}</Big>}
+            sub={!b.parameters ? "belegt statt abgetippt"
+              : `${fmt(b.fromDrawing)} von ${fmt(b.parameters)} belegt${b.assumed ? `, ${fmt(b.assumed)} angenommen` : ""}`}
+          />
+          <Tile
+            title="Zeit je Modell" value={<Big>{b.medianSeconds === null ? "–" : duration(b.medianSeconds)}</Big>}
+            sub={b.medianSeconds === null ? "Zeichnung bis STEP" : "Median, Zeichnung bis STEP"}
+          />
+        </div>
       </section>
 
       <Card {...drop} className={cn("min-h-0 flex-1 gap-2.5 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none", over && "ring-4 ring-primary/10")}>
