@@ -15,3 +15,7 @@ export const bytes = (n: number) =>
     : `${(n / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
 export const time = (iso: string) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
 export const shortHash = (sha: string) => (sha ? sha.slice(0, 12) : "–");
+export const duration = (seconds: number) => {
+  const s = Math.round(seconds);
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ""}`;
+};
