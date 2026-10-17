@@ -93,6 +93,9 @@ Do not use an axis-center anchor for `surface_radius`.
 For a hole opening check, supply source-derived `entry_position` and an axis that points into the part.
 The entry must lie on the measured hole axis.
 The entry check supports connected full concave cylinders, cones, and planar shoulders at a planar circular opening.
+A stepped bore (counterbore, countersink, or a smaller bore below a larger bore) is one connected cavity.
+Use the outer opening as `entry_position` for each of its bores. An internal shoulder is not an entry.
+If a check reports `entry_side: fail`, compare `actual_entry_positions` with this rule before you change the geometry.
 Toroidal lips and partial or noncircular transitions are outside this check.
 If `entry_position` is omitted, `entry_side` remains `not_tested`.
 A cylindrical diameter/depth pass alone does not prove the correct entry side.

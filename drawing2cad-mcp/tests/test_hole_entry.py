@@ -123,3 +123,20 @@ def test_entry_schema_rejects_other_measurements_and_off_axis_anchors():
     assert part_validate(part)["status"] == "fail"
     part = measure(description(), entry=[6, 5, 10])
     assert part_validate(part)["status"] == "fail"
+
+
+def test_stepped_bore_from_two_holes_has_its_entry_at_the_outer_opening(tmp_path):
+    # A blind counterbore above a smaller through bore is one connected cavity, as in a boss with a stepped bore.
+    part = description(extent="through")
+    bore = part["features"].pop()
+    bore["position"] = [5, 5, 7]  # The smaller bore starts at the shoulder, as an agent declares it.
+    part["features"] += [{"id": "counter", "type": "hole", "position": [5, 5, 10], "axis": "-Z", "diameter": 6,
+                          "extent": "blind", "depth": 3, "evidence_ids": ["drawing"]}, bore]
+    part = measure(part, entry=[5, 5, 10])
+    built = build(part, tmp_path)
+    assert built["status"] == "pass", built
+    assert hole_check(validate_step(built["candidate_step"], part))["entry_side"] == "pass"
+    part["measurements"][-1]["entry_position"] = [5, 5, 7]
+    check = hole_check(validate_step(built["candidate_step"], part))
+    assert check["entry_side"] == "fail" and check["actual_entry_positions"] == [[5, 5, 10]]
+    assert "internal shoulder is not an entry" in check["entry_scope"]
