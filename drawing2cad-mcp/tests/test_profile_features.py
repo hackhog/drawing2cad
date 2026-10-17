@@ -119,6 +119,73 @@ def test_outer_diameter_uses_convex_faces(tmp_path):
     assert validate_step(result["candidate_step"], description)["status"] == "pass"
 
 
+def test_outer_diameter_uses_requested_station_after_step_import(tmp_path):
+    build, validate_step = kernel()
+    description = sample_description()
+    description["features"] = [
+        {"id": "shaft", "type": "cylinder", "operation": "base", "diameter": 10,
+         "height": 10, "evidence_ids": ["drawing"]},
+        {"id": "shoulder", "type": "cylinder", "operation": "add", "diameter": 20,
+         "height": 5, "origin": [0, 0, 5], "evidence_ids": ["drawing"]},
+    ]
+    description["measurements"] = []
+    result = build(description, tmp_path)
+    assert result["status"] == "pass"
+
+    def at(station, diameter, axis="Z"):
+        measured_part = deepcopy(description)
+        measured_part["measurements"] = [
+            {"id": "outside", "kind": "outer_diameter", "position": [0, 0, station],
+             "axis": axis, "expected": [diameter], "basis": "printed_dimension",
+             "evidence_ids": ["drawing"]},
+        ]
+        return next(item for item in validate_step(result["candidate_step"], measured_part)["checks"]
+                    if item["check"] == "outside")
+
+    lower = at(2, 10)
+    assert lower["status"] == "pass" and lower["actual"] == pytest.approx([10])
+    upper = at(7, 20)
+    assert upper["status"] == "pass" and upper["actual"] == pytest.approx([20])
+    assert upper["station"] == 7
+    assert upper["actual_station_intervals"][0]["start"] == pytest.approx(5)
+    assert upper["actual_station_intervals"][0]["end"] == pytest.approx(10)
+    wrong = at(7, 10)
+    assert wrong["status"] == "fail" and wrong["actual"] == pytest.approx([20])
+    absent = at(11, 20)
+    assert absent["status"] == "fail" and absent["actual"] == []
+    assert "No coaxial outer cylinder" in absent["reason"]
+    assert at(0, 10)["status"] == "pass"
+    assert at(10, 20)["status"] == "pass"
+    shared = at(5, 20)
+    assert shared["status"] == "fail"
+    assert sorted(shared["actual"]) == pytest.approx([10, 20])
+    assert "Different outer diameters" in shared["reason"]
+    reversed_axis = at(7, 20, "-Z")
+    assert reversed_axis["status"] == "pass" and reversed_axis["station"] == -7
+    assert reversed_axis["actual_station_intervals"][0]["start"] == pytest.approx(-10)
+
+
+def test_outer_diameter_station_on_translated_x_axis(tmp_path):
+    build, validate_step = kernel()
+    description = sample_description()
+    description["features"] = [
+        {"id": "shaft", "type": "cylinder", "operation": "base", "diameter": 10,
+         "height": 10, "origin": [2, 3, 4], "axis": "X", "evidence_ids": ["drawing"]},
+        {"id": "shoulder", "type": "cylinder", "operation": "add", "diameter": 20,
+         "height": 5, "origin": [7, 3, 4], "axis": "X", "evidence_ids": ["drawing"]},
+    ]
+    description["measurements"] = [{"id": "diameter", "kind": "outer_diameter",
+                                    "position": [9, 3, 4], "axis": "X", "expected": [20],
+                                    "basis": "printed_dimension", "evidence_ids": ["drawing"]}]
+    result = build(description, tmp_path)
+    assert result["status"] == "pass"
+    check = next(item for item in validate_step(result["candidate_step"], description)["checks"]
+                 if item["check"] == "diameter")
+    assert check["status"] == "pass" and check["actual"] == pytest.approx([20])
+    assert check["actual_station_intervals"][0]["start"] == pytest.approx(7)
+    assert check["actual_station_intervals"][0]["end"] == pytest.approx(12)
+
+
 @pytest.mark.parametrize("component,expected", [("distance", math.sqrt(116)), ("X", 10), ("Y", 4)])
 def test_axis_spacing_is_measured_from_imported_holes(tmp_path, component, expected):
     build, validate_step = kernel()

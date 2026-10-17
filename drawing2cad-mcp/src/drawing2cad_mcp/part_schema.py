@@ -289,7 +289,7 @@ class Measurement(ClosedModel):
     tolerance: Positive = 0.01
     expected: Annotated[list[Annotated[float, Field(gt=0, le=1e15, allow_inf_nan=False, strict=True)]], Field(min_length=1, max_length=3)]
     position: tuple[Number, Number, Number] | None = Field(
-        default=None, description="Source measurement anchor. For hole and outer_diameter, this identifies the cylinder axis, not an entry surface.")
+        default=None, description="Source measurement anchor. For hole, this identifies the cylinder axis, not an entry surface. For outer_diameter, this identifies both the cylinder axis and the axial station. At a shoulder with different outer diameters, select a station within one cylindrical face.")
     axis: AxisName | None = Field(
         default=None, description="Measurement axis. For a hole with entry_position, this must point from the opening into the part.")
     axial_length: Positive | None = None
