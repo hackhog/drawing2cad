@@ -97,14 +97,15 @@ The PDF upload limit is 20 MiB. The STEP upload limit is 50 MiB.
 ## API and agent runs
 
 See [backend/README.md](backend/README.md) for the endpoints and configuration.
-The browser uploads PDFs to `/api/sources`. The backend stores each source with its analysis.
-"Lauf starten" queues an agent run ([ADR 0016](../docs/adr/0016-agent-runner-in-the-web-backend.md)):
-the agent builds the model only through the MCP server, and step 4 shows the result as a released or diagnostic model.
+The browser uploads PDFs to `/api/sources`. The backend transfers each source to the shared domain service.
+"Lauf starten" queues an agent run ([ADR 0017](../docs/adr/0017-agent-runner-in-the-web-backend.md)):
+the agent builds the model only through the MCP endpoint of the same service, and step 4 shows the released model.
 Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values; without `.env`, runs show as unavailable.
 
 ## Structure and validation
 
-- `backend/src/drawing_demo/api.py`: upload limits, shared PDF service calls, and STEP display conversion.
+- `backend/src/drawing_demo/api.py`: web routes on the shared domain service, and STEP display conversion.
+- `backend/src/drawing_demo/service.py`: the one domain service of the backend and its mounted MCP endpoint.
 - `backend/src/drawing_demo/review.py`: review flags derived from drawing data.
 - `backend/Dockerfile`: Python runtime with the MCP package and Poppler.
 - `frontend/`: React and TypeScript UI, nginx configuration, and frontend Dockerfile.
@@ -112,7 +113,7 @@ Runs need a model endpoint. Copy `.env.example` in the repository root to `.env`
 
 Run `uv run pytest` in `backend/` for API and review tests.
 Sample-based tests are skipped when their inputs are absent.
-Synthetic tests verify the shared service boundary, hash agreement, and temporary-file cleanup.
+Synthetic tests verify the shared service boundary, path-free records, and one agent run through the mounted MCP endpoint.
 Run `npm test` and `npm run build` in `frontend/` for the unit tests, the type check, and the build.
 Run `docker compose build` at the repository root for both container builds.
 These commands describe the test procedure. They do not assert a completed test run.

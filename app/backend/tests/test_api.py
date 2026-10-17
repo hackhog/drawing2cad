@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
 from drawing_demo import api
-from drawing_demo.api import app
 
 ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_DIR = next(
@@ -21,21 +20,18 @@ SAMPLES = sorted(SAMPLE_DIR.glob("*/*_dwg.pdf"))
 STEPS = sorted(SAMPLE_DIR.glob("*/*.stp"))
 POPPLER = shutil.which(os.environ.get("DRAWING2CAD_PDFTOPPM", "pdftoppm"))
 
-client = TestClient(app)
-
 
 @pytest.fixture(autouse=True)
-def data_dir(tmp_path, monkeypatch):
+def client(tmp_path, monkeypatch):
     """Each test uses its own data directory and no model endpoint."""
     monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
     for name in ("DRAWING2CAD_AGENT_BASE_URL", "DRAWING2CAD_AGENT_MODEL", "DRAWING2CAD_AGENT_API_KEY"):
         monkeypatch.delenv(name, raising=False)
-    api.services.cache_clear()
-    yield tmp_path / "data"
-    api.services.cache_clear()
+    with TestClient(api.create_app()) as test_client:
+        yield test_client
 
 
-def upload(name, content):
+def upload(client, name, content):
     """Store a PDF and return the response and, on success, its analysis."""
     res = client.post("/api/sources", files={"file": (name, content, "application/pdf")})
     if res.status_code != 200:
@@ -43,124 +39,51 @@ def upload(name, content):
     return res, client.get(f"/api/sources/{res.json()['source_id']}/analysis").json()
 
 
-def test_health():
+def test_health(client):
     data = client.get("/api/health").json()
     assert data["status"] == "ok"
     assert data["drawing2cad_mcp_version"] == api.mcp_version
 
 
-def test_api_does_not_serve_ui():
+def test_api_does_not_serve_ui(client):
     # The frontend container serves the UI (ADR 0012).
     assert client.get("/").status_code == 404
 
 
-def test_rejects_non_pdf():
-    res, _ = upload("x.pdf", b"hello")
+def test_rejects_non_pdf(client):
+    res, _ = upload(client, "x.pdf", b"hello")
     assert res.status_code == 415
 
 
-def test_rejects_broken_pdf():
-    res, _ = upload("x.pdf", b"%PDF-1.7 broken")
+def test_rejects_broken_pdf(client):
+    res, _ = upload(client, "x.pdf", b"%PDF-1.7 broken")
     assert res.status_code == 422
-
-
-@pytest.fixture
-def service_probe(monkeypatch):
-    observed = {"paths": [], "mismatch": False, "render_error": False}
-
-    class ProbeService:
-        def __init__(self, allowed_roots, output_root, pdftoppm, max_pdf_bytes):
-            observed["roots"] = allowed_roots
-            observed["output_root"] = output_root
-            observed["max_pdf_bytes"] = max_pdf_bytes
-
-        def extract_drawing(self, path, include_strokes=False):
-            assert include_strokes is True
-            assert path.parent in observed["roots"]
-            observed["paths"].append(path)
-            observed["source"] = {"path": str(path), "sha256": sha256(path.read_bytes()).hexdigest(), "size_bytes": path.stat().st_size}
-            return {
-                "schema_version": 2,
-                "source": dict(observed["source"]),
-                "sheet_size_mm": [100, 80],
-                "summary": {"strokes": 1, "by_kind": {"unclear": 1}, "views": 0, "text_blocks": 0},
-                "views": [],
-                "text_blocks": [],
-                "strokes": [{"id": 7, "kind": "unclear", "type": "circle", "center": [10, 20], "radius": 2}],
-            }
-
-        def render_page(self, path, page=1, dpi=150):
-            assert path == observed["paths"][0]
-            assert page == 1
-            assert dpi == api.PAGE_DPI
-            output = observed["output_root"] / "page.png"
-            output.parent.mkdir(parents=True)
-            output.write_bytes(b"test image")
-            observed["paths"].append(output)
-            if observed["render_error"]:
-                raise api.PdfError("render failed")
-            source = dict(observed["source"])
-            if observed["mismatch"]:
-                source["sha256"] = "0" * 64
-            return {
-                "source": source,
-                "artifact": {"path": str(output), "sha256": sha256(output.read_bytes()).hexdigest(), "width_pixels": 402, "height_pixels": 322},
-                "provenance": {"renderer": "poppler.pdftoppm", "dpi": dpi, "page": page},
-            }
-
-    monkeypatch.setattr(api, "PdfService", ProbeService)
-    return observed
-
-
-def test_upload_uses_shared_service_and_removes_temporary_files(service_probe):
-    content = b"%PDF-test-service-boundary"
-    res, body = upload("sample.pdf", content)
-    assert res.status_code == 200
-    assert res.json()["sha256"] == sha256(content).hexdigest()
-    assert body["drawing"]["source"] == "sample.pdf"
-    assert body["drawing"]["strokes"][0]["id"] == 7
-    assert {flag["kind"] for flag in body["review"]} == {"no_views", "unclear_strokes"}
-    assert body["provenance"]["source_sha256"] == sha256(content).hexdigest()
-    assert body["page_px_per_mm"] == api.PAGE_DPI / 25.4
-    assert base64.b64decode(body["page_png"].split(",")[1]) == b"test image"
-    assert service_probe["max_pdf_bytes"] == api.MAX_PDF_BYTES
-    for path in service_probe["paths"]:
-        assert not path.exists()
-        assert str(path) not in res.text
-        assert str(path) not in str(body)
-
-
-@pytest.mark.parametrize("failure", ["mismatch", "render_error"])
-def test_upload_rejects_invalid_render_and_removes_temporary_files(service_probe, failure):
-    service_probe[failure] = True
-    res, _ = upload("sample.pdf", b"%PDF-test")
-    assert res.status_code == 422
-    assert client.get("/api/sources").json() == []
-    for path in service_probe["paths"]:
-        assert not path.exists()
 
 
 @pytest.mark.skipif(not POPPLER, reason="Poppler pdftoppm is not available.")
-def test_synthetic_pdf_uses_real_service():
+def test_synthetic_pdf_uses_real_service(client, tmp_path):
     writer = PdfWriter()
     writer.add_blank_page(width=300, height=200)
     stream = BytesIO()
     writer.write(stream)
     content = stream.getvalue()
-    res, body = upload("blank.pdf", content)
+    res, body = upload(client, "blank.pdf", content)
     assert res.status_code == 200, res.text
     assert body["drawing"]["source"] == "blank.pdf"
     assert body["provenance"]["source_sha256"] == sha256(content).hexdigest()
     assert body["provenance"]["render"]["renderer"] == "poppler.pdftoppm"
     assert base64.b64decode(body["page_png"].split(",")[1]).startswith(b"\x89PNG\r\n\x1a\n")
     assert any(flag["kind"] == "no_views" for flag in body["review"])
+    # Records carry IDs and hashes, never a private server path.
+    assert str(tmp_path) not in res.text and str(tmp_path) not in str(body)
+    assert client.get("/api/sources").json() == [res.json()]
 
 
 @pytest.mark.skipif(not SAMPLES or not POPPLER, reason="Sample drawings or Poppler are not available.")
 @pytest.mark.parametrize("pdf", SAMPLES, ids=lambda p: p.parent.name)
-def test_sample_analysis_and_render_agree(pdf):
+def test_sample_analysis_and_render_agree(client, pdf):
     content = pdf.read_bytes()
-    res, body = upload(pdf.name, content)
+    res, body = upload(client, pdf.name, content)
     assert res.status_code == 200, res.text
     drawing = body["drawing"]
     assert drawing["source"] == pdf.name
@@ -171,19 +94,19 @@ def test_sample_analysis_and_render_agree(pdf):
     assert body["page_png"].startswith("data:image/png;base64,")
 
 
-def test_model_rejects_non_step():
+def test_model_rejects_non_step(client):
     res = client.post("/api/model", files={"file": ("x.stp", b"hello", "application/step")})
     assert res.status_code == 415
 
 
-def test_model_rejects_broken_step():
+def test_model_rejects_broken_step(client):
     res = client.post("/api/model", files={"file": ("x.stp", b"ISO-10303-21;\nbroken", "application/step")})
     assert res.status_code == 422
 
 
 # STEP samples are viewer conversion fixtures, not inputs to CAD construction.
 @pytest.mark.skipif(not STEPS, reason="Sample STEP files are not available.")
-def test_model_converts_step_to_glb():
+def test_model_converts_step_to_glb(client):
     step = STEPS[0]
     res = client.post("/api/model", files={"file": (step.name, step.read_bytes(), "application/step")})
     assert res.status_code == 200

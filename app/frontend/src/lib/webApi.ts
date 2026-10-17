@@ -11,7 +11,6 @@ export interface WebApi {
   getSource(sourceId: string): Promise<Source>;
   /** Upload PDF bytes. The service returns the source identity; the browser assumes no local path. */
   uploadSource(file: File, onProgress: (fraction: number) => void): Promise<Source>;
-  deleteSource(sourceId: string): Promise<void>;
   /** Drawing analysis of a source: strokes, views, texts, and review flags. */
   getAnalysis(sourceId: string): Promise<ExtractResult>;
   listRuns(sourceId: string): Promise<Run[]>;

@@ -1,9 +1,8 @@
 // Overview page: tiles for all drawings and one table row per source or upload (ADR 0008).
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Gauge, Hash, Trash2, X } from "lucide-react";
+import { Gauge, Hash, X } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/Status";
 import { UploadButton } from "@/components/UploadButton";
@@ -15,11 +14,9 @@ import { useApi } from "@/lib/apiContext";
 import type { Source } from "@/lib/contract";
 import type { ExtractResult } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
-import { recoveryFor } from "@/lib/errors";
 import { bytes, explainedShare, fmt, partName, pct } from "@/lib/format";
-import { analysisQuery, keys, sourcesQuery } from "@/lib/queries";
+import { analysisQuery, sourcesQuery } from "@/lib/queries";
 import { analysisStatus, uploadStatus } from "@/lib/status";
-import { clearStepPreview } from "@/lib/stepPreviews";
 import { isPdf, useUploads, type Upload } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
@@ -150,18 +147,7 @@ export function OverviewPage() {
 const NUM = "text-right tabular-nums";
 
 function SourceRow({ source, analysis, failed }: { source: Source; analysis: ExtractResult | undefined; failed: boolean }) {
-  const api = useApi();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const remove = useMutation({
-    mutationFn: () => api.deleteSource(source.source_id),
-    onSuccess: () => {
-      clearStepPreview(source.source_id);
-      queryClient.removeQueries({ queryKey: keys.analysis(source.source_id) });
-      return queryClient.invalidateQueries({ queryKey: keys.sources });
-    },
-    onError: (err) => toast.error("Entfernen fehlgeschlagen", { description: `${err.message} ${recoveryFor(err)}` }),
-  });
   const [tone, label] = analysisStatus(analysis, failed);
   const open = () => void navigate({ to: "/sources/$sourceId", params: { sourceId: source.source_id } });
   const d = analysis?.drawing;
@@ -174,12 +160,7 @@ function SourceRow({ source, analysis, failed }: { source: Source; analysis: Ext
       <TableCell className={NUM}>{d ? fmt(d.text_blocks.length) : "–"}</TableCell>
       <TableCell className={NUM}>{analysis ? fmt(analysis.review.length) : "–"}</TableCell>
       <TableCell className={NUM}>{bytes(source.byte_count)}</TableCell>
-      <TableCell className="w-8">
-        <Button variant="ghost" size="icon" className="size-7" aria-label={`${partName(source.filename)} entfernen`} disabled={remove.isPending}
-          onClick={(e) => { e.stopPropagation(); remove.mutate(); }}>
-          <Trash2 className="size-3.5" />
-        </Button>
-      </TableCell>
+      <TableCell className="w-8" />
     </TableRow>
   );
 }

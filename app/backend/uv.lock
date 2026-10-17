@@ -506,6 +506,7 @@ dependencies = [
     { name = "cascadio" },
     { name = "drawing2cad-mcp", extra = ["cad"] },
     { name = "fastapi" },
+    { name = "httpx2" },
     { name = "numpy" },
     { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
@@ -513,7 +514,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx2" },
     { name = "pytest" },
 ]
 
@@ -522,16 +522,14 @@ requires-dist = [
     { name = "cascadio", specifier = ">=0.1.1" },
     { name = "drawing2cad-mcp", extras = ["cad"], directory = "../../drawing2cad-mcp" },
     { name = "fastapi", specifier = ">=0.143.3" },
+    { name = "httpx2", specifier = ">=2.13.1" },
     { name = "numpy", specifier = ">=2" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "httpx2", specifier = ">=2.13.1" },
-    { name = "pytest", specifier = ">=9.1.1" },
-]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
 name = "drawing2cad-mcp"
@@ -551,6 +549,7 @@ dependencies = [
 [package.optional-dependencies]
 cad = [
     { name = "build123d" },
+    { name = "ezdxf" },
 ]
 
 [package.metadata]

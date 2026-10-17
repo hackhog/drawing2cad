@@ -141,7 +141,7 @@ function StepModel({ sourceId }: { sourceId: string }) {
       </div>
     );
   }
-  const preview = latest?.artifacts.find((a) => a.role === "model_preview" && a.model_revision === latest.part?.revision);
+  const preview = latest?.artifacts.find((a) => a.role === "step" && a.model_revision === latest.part?.revision);
   if (latest && preview) return <RunModel run={latest} artifact={preview} />;
   if (caps?.step_preview_upload) return upload;
   return (
@@ -153,7 +153,7 @@ function StepModel({ sourceId }: { sourceId: string }) {
 
 /** The model of a finished run, marked as released or diagnostic. */
 function RunModel({ run, artifact }: { run: Run; artifact: Artifact }) {
-  const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id);
+  const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id, "glb");
   const released = delivery(run).released;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">

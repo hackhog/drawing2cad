@@ -1,5 +1,5 @@
 // STEP previews that the user supplies, one per source. The store owns the GLB object URLs
-// and frees each one when a preview is replaced or its source is removed.
+// and frees each one when a preview is replaced.
 import { useSyncExternalStore } from "react";
 
 export type ModelState =
@@ -20,12 +20,6 @@ function release(sourceId: string) {
 export function setStepPreview(sourceId: string, next: ModelState) {
   if (previews.get(sourceId) !== next) release(sourceId);
   previews.set(sourceId, next);
-  listeners.forEach((l) => l());
-}
-
-export function clearStepPreview(sourceId: string) {
-  release(sourceId);
-  previews.delete(sourceId);
   listeners.forEach((l) => l());
 }
 

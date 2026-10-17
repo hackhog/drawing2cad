@@ -46,7 +46,7 @@ export interface Part {
   capabilities: { parameter_edit: boolean };
 }
 
-export type ArtifactRole = "drawing_pdf" | "drawing_dxf" | "step" | "model_preview" | "manifest";
+export type ArtifactRole = "drawing_pdf" | "drawing_dxf" | "step" | "manifest";
 
 /** An output file. Content is read by `artifact_id` only. */
 export interface Artifact {
@@ -128,7 +128,7 @@ export interface Run {
   review: Review | null;
   error: ServiceError | null;
   simulated: boolean;
-  /** Final text of the agent conversation, if an agent built the part (ADR 0016). */
+  /** Final text of the agent conversation, stored as the note of its part run (ADR 0017). */
   agent_report?: string;
 }
 

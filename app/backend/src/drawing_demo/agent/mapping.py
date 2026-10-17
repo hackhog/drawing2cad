@@ -1,6 +1,6 @@
-"""Map MCP part state and agent trace events to the provisional contract types (ADR 0015, ADR 0016).
+"""Map domain part state, artifacts, and agent trace events to the provisional contract types (ADR 0015, ADR 0017).
 
-The MCP owns the domain data. This module only presents it; it adds no CAD, drawing, or release rule.
+The domain service owns the domain data. This module only presents it; it adds no CAD, drawing, or release rule.
 """
 
 from __future__ import annotations
@@ -14,8 +14,13 @@ PHASE_BY_TOOL = {
     # part_schema and part_read only read; they keep the current phase like the status and probe calls.
     "part_validate": "modeling", "part_create": "modeling", "part_update": "modeling", "create_base_body": "modeling", "add_hole": "modeling", "add_pocket": "modeling",
     "add_cut": "modeling", "add_chamfer": "modeling", "add_fillet": "modeling", "build_from_description": "modeling",
+    "drawing_schema": "drawing", "drawing_validate": "drawing", "drawing_render": "drawing", "drawing_review": "drawing",
+    "artifact_preview": "drawing",
     "export_step": "validating", "part_export_review": "validating",
 }
+# Domain artifact roles that the web UI delivers. Previews of sources and artifacts are inspection aids only.
+ROLE_BY_MEDIA_TYPE = {("released_step", "model/step"): "step", ("technical_drawing", "application/pdf"): "drawing_pdf",
+                      ("technical_drawing", "image/vnd.dxf"): "drawing_dxf"}
 
 ORIGIN_BY_EVIDENCE = {"explicit": "source", "derived": "source", "inferred": "assumed", "assumed": "assumed", "unresolved": "assumed"}
 CHECK_STATUS = {"pass": "pass", "fail": "fail"}
@@ -105,3 +110,14 @@ def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet
     else:
         release_state = "draft"
     return {"release_state": release_state, "assumptions": assumptions, "uncertainties": uncertainties, "validation": validation}
+
+
+def artifact_view(artifact: dict[str, Any], source_sha256: str) -> dict[str, Any] | None:
+    """A domain artifact as a delivered web artifact, or None for an artifact that the UI does not deliver."""
+    media_type = artifact["media_type"]
+    role = ROLE_BY_MEDIA_TYPE.get((artifact["role"], media_type)) or ("manifest" if media_type == "application/json" else None)
+    if role is None:
+        return None
+    return {"artifact_id": artifact["artifact_id"], "role": role, "media_type": media_type, "filename": artifact["filename"],
+            "sha256": artifact["sha256"], "byte_count": artifact["size_bytes"], "source_sha256": source_sha256,
+            "model_revision": artifact["revision"]}

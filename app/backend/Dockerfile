@@ -1,5 +1,5 @@
-# Web backend (ADR 0012, ADR 0016): PDF analysis through the shared MCP PDF service and agent runs
-# that build models only through the MCP server and its restricted build123d worker.
+# Web backend (ADR 0012, ADR 0017): one shared domain service for the web API and its MCP endpoint.
+# Agent runs build models only through that endpoint and its restricted build123d worker.
 # Use the repository root as the build context for the MCP path dependency.
 #   docker compose build   or   docker build -f app/backend/Dockerfile .
 FROM python:3.12-slim

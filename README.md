@@ -43,8 +43,8 @@ docker compose up --build        # builds without credentials; open http://local
 ```
 
 Upload drawing PDFs, review the analysis, and start a run.
-A run lets an agent build the model only through `drawing2cad-mcp`; step 4 shows the released or diagnostic STEP in 3D
-([ADR 0016](docs/adr/0016-agent-runner-in-the-web-backend.md)).
+A run lets an agent build the model only through the `drawing2cad-mcp` endpoint of the backend; step 4 shows the released STEP in 3D
+([ADR 0017](docs/adr/0017-agent-runner-in-the-web-backend.md)).
 Runs need an OpenAI-compatible model endpoint: copy `.env.example` to `.env`, fill in the values, and run `docker compose up -d`.
 Without `.env`, the app starts and shows runs as unavailable. See the [app guide](app/README.md).
 

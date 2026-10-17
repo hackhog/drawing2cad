@@ -1,4 +1,4 @@
-// Adapter for the web backend (app/backend, ADR 0016): stored sources, their analysis, agent runs, and artifacts.
+// Adapter for the web backend (app/backend, ADR 0017): stored sources, their analysis, agent runs, and artifacts.
 // Parameter edits and notes are not available yet; the capabilities report this, and the UI explains it.
 import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
 import type { ExtractResult } from "./drawing";
@@ -15,7 +15,6 @@ export class HttpApi implements WebApi {
   uploadSource(file: File, onProgress: (fraction: number) => void): Promise<Source> {
     return uploadFile<Source>("/api/sources", file, onProgress);
   }
-  deleteSource(sourceId: string): Promise<void> { return request(`/api/sources/${id(sourceId)}`, { method: "DELETE" }); }
   getAnalysis(sourceId: string): Promise<ExtractResult> { return request(`/api/sources/${id(sourceId)}/analysis`); }
   listRuns(sourceId: string): Promise<Run[]> { return request(`/api/sources/${id(sourceId)}/runs`); }
   createRun(sourceId: string): Promise<Run> { return request(`/api/sources/${id(sourceId)}/runs`, { method: "POST" }); }

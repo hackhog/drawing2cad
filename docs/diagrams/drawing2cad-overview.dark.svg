@@ -7,14 +7,21 @@
 <path d="M210,172 H265 V172 H320" fill="none" stroke="#8ca4be" stroke-width="2.4"  marker-end="url(#arrow)"/>
 <text x="265" y="162" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">upload / download</text>
 <path d="M540,172 H600 V172 H660" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
-<text x="600" y="162" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">HTTP API: planned</text>
+<text x="600" y="162" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">HTTP /api</text>
 <path d="M770,204 V342 H775 V480" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="772.5" y="332" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">same service instance</text>
-<path d="M220,512 H270 V512 H320" fill="none" stroke="#8ca4be" stroke-width="2.4"  marker-end="url(#arrow)"/>
-<text x="270" y="502" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">stdio / authenticated</text>
-<text x="270" y="517" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">HTTP</text>
-<path d="M520,512 H590 V512 H660" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
-<text x="590" y="502" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">versioned contracts</text>
+<path d="M770,204 V267 H595 V330" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
+<text x="682.5" y="257" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">queue run</text>
+<path d="M495,362 H437.5 V362 H380" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
+<text x="437.5" y="352" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">Chat Completions</text>
+<path d="M595,394 V457 H420 V520" fill="none" stroke="#8ca4be" stroke-width="2.4"  marker-end="url(#arrow)"/>
+<text x="507.5" y="447" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">Streamable HTTP /mcp,</text>
+<text x="507.5" y="462" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">loopback</text>
+<path d="M200,552 H260 V552 H320" fill="none" stroke="#8ca4be" stroke-width="2.4"  marker-end="url(#arrow)"/>
+<text x="260" y="542" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">stdio / authenticated</text>
+<text x="260" y="557" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">HTTP</text>
+<path d="M520,552 H590 V512 H660" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
+<text x="590" y="522" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">versioned contracts</text>
 <path d="M890,512 H965 V392 H1040" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="965" y="442" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">source ID + verified</text>
 <text x="965" y="457" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">hash</text>
@@ -35,28 +42,38 @@
 </g>
 <g id="webui"><rect x="320" y="140" width="220" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
 <rect x="320" y="150" width="4" height="44" rx="2" fill="#5ec4f3"/>
-<text x="430" y="164" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Web UI foundation</text>
+<text x="430" y="164" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Web UI</text>
 <text x="430" y="183" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">React, TanStack, shadcn, nginx</text>
 </g>
 <g id="demoapi"><rect x="660" y="140" width="220" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
 <rect x="660" y="150" width="4" height="44" rx="2" fill="#5ec4f3"/>
-<text x="770" y="164" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Web adapter: planned</text>
-<text x="770" y="183" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">Routes use shared contracts</text>
+<text x="770" y="164" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Web API</text>
+<text x="770" y="183" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">FastAPI routes, run records</text>
 </g>
 <g id="demotools"><rect x="660" y="480" width="230" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
 <rect x="660" y="490" width="4" height="44" rx="2" fill="#5ec4f3"/>
 <text x="775" y="504" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Shared DomainService</text>
 <text x="775" y="523" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">Uploads, drawings, jobs, notes</text>
 </g>
-<g id="agent"><rect x="40" y="480" width="180" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
-<rect x="40" y="490" width="4" height="44" rx="2" fill="#5ec4f3"/>
-<text x="130" y="504" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Agent or LiteLLM</text>
-<text x="130" y="523" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">drawing2cad skill</text>
+<g id="model"><rect x="180" y="330" width="200" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
+<rect x="180" y="340" width="4" height="44" rx="2" fill="#5ec4f3"/>
+<text x="280" y="354" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Model endpoint</text>
+<text x="280" y="373" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">OpenAI-compatible, optional</text>
 </g>
-<g id="mcp"><rect x="320" y="480" width="200" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
-<rect x="320" y="490" width="4" height="44" rx="2" fill="#5ec4f3"/>
-<text x="420" y="504" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">MCP adapter</text>
-<text x="420" y="523" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">IDs, schemas, trusted context</text>
+<g id="runner"><rect x="495" y="330" width="200" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
+<rect x="495" y="340" width="4" height="44" rx="2" fill="#5ec4f3"/>
+<text x="595" y="354" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Agent runner</text>
+<text x="595" y="373" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">drive(), one run at a time</text>
+</g>
+<g id="agent"><rect x="40" y="520" width="160" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
+<rect x="40" y="530" width="4" height="44" rx="2" fill="#5ec4f3"/>
+<text x="120" y="544" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Agent or LiteLLM</text>
+<text x="120" y="563" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">drawing2cad skill</text>
+</g>
+<g id="mcp"><rect x="320" y="520" width="200" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
+<rect x="320" y="530" width="4" height="44" rx="2" fill="#5ec4f3"/>
+<text x="420" y="544" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">MCP adapter</text>
+<text x="420" y="563" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">IDs, schemas, trusted context</text>
 </g>
 <g id="pdf"><rect x="1040" y="360" width="200" height="64" rx="8" fill="#142238" stroke="#37516d" stroke-width="1.5"/>
 <rect x="1040" y="370" width="4" height="44" rx="2" fill="#5ec4f3"/>
@@ -81,7 +98,7 @@
 <text x="56" y="849" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
 <text x="56" y="866" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Persistent jobs, notes, revisions, and review gates</text>
 <text x="56" y="883" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<text x="56" y="900" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">MCP and future web routes share one Python service</text>
+<text x="56" y="900" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">MCP and web routes share one Python service</text>
 <text x="56" y="917" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
 <rect x="468.5" y="744" width="404.5" height="218" rx="10" fill="#142238" stroke="#37516d"/>
 <text x="484.5" y="772" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="start">Headless worker boundary</text>
@@ -94,8 +111,8 @@
 <text x="484.5" y="900" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Supplied 2D views become native DXF dimensions and PDF</text>
 <text x="484.5" y="917" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
 <rect x="897" y="744" width="404.5" height="218" rx="10" fill="#142238" stroke="#37516d"/>
-<text x="913" y="772" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="start">Web and acceptance follow-up</text>
-<text x="913" y="798" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Issue #26: connect the web UI to shared service routes</text>
+<text x="913" y="772" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="start">Web delivery and acceptance follow-up</text>
+<text x="913" y="798" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Web routes and agent runs share one service instance</text>
 <text x="913" y="815" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
 <text x="913" y="832" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">No automatic arbitrary projection or section extraction</text>
 <text x="913" y="849" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>

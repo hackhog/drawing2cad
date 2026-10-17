@@ -68,13 +68,44 @@ def test_catalog_removes_unsafe_tools():
 
 def test_source_and_run_scope():
     config = plan()
-    with pytest.raises(ValueError, match="PDF path"):
+    with pytest.raises(ValueError, match="PDF source"):
         authorize_call("pdf_info", {"path": "/inputs/verification.pdf"}, config, {"pdf_info"})
     with pytest.raises(ValueError, match="prefix"):
         authorize_call("part_read", {"run_id": "another-run"}, config, {"part_read"})
     with pytest.raises(ValueError, match="construction PDF"):
         authorize_call("part_create", {"run_id": "localtest-a", "sources": [{"path": "/inputs/part.pdf", "role": "verification"}]}, config, {"part_create"})
     assert authorize_call("pdf_info", {"path": config["source_path"]}, config, {"pdf_info"})
+
+
+def test_uploaded_source_scope():
+    source_id, digest = "src_" + "a" * 32, "b" * 64
+    config = plan(source_id=source_id, source_sha256=digest)
+    with pytest.raises(ValueError, match="PDF source"):
+        authorize_call("drawing_extract", {"source_id": "src_" + "c" * 32}, config, {"drawing_extract"})
+    with pytest.raises(ValueError, match="PDF source"):
+        authorize_call("pdf_info", {"path": config["source_path"]}, config, {"pdf_info"})
+    with pytest.raises(ValueError, match="construction PDF"):
+        authorize_call("part_create", {"run_id": "localtest-a", "sources": [
+            {"source_id": source_id, "sha256": "c" * 64, "role": "construction"}]}, config, {"part_create"})
+    assert authorize_call("pdf_info", {"source_id": source_id}, config, {"pdf_info"})
+    assert authorize_call("part_create", {"run_id": "localtest-a", "sources": [
+        {"source_id": source_id, "sha256": digest, "role": "construction"}]}, config, {"part_create"})
+
+
+async def test_uploaded_source_prompt_requires_drawing_review(tmp_path):
+    session = Session()
+    config = plan(source_id="src_" + "a" * 32, source_sha256="b" * 64)
+    requests = []
+
+    def model(plan, payload, timeout):
+        requests.append(payload)
+        return model_response(text="Done.")
+
+    await drive(session, catalog("drawing_review"), config, "Skill", Trace(tmp_path), model_call=model)
+    system = requests[0]["messages"][0]["content"]
+    assert "src_" + "a" * 32 in system and "/inputs/part.pdf" not in system
+    assert "drawing_review before export_step" in system
+    assert [tool["function"]["name"] for tool in requests[0]["tools"]] == ["drawing_review", "request_user_input"]
 
 
 def test_images_and_truncation_are_explicit():

@@ -20,7 +20,7 @@ const OUTPUTS: [ArtifactRole, string, string][] = [
   ["manifest", "application/json", "manifest"],
 ];
 const EXTENSION: Record<ArtifactRole, string> = {
-  drawing_pdf: "pdf", drawing_dxf: "dxf", step: "step", model_preview: "glb", manifest: "json",
+  drawing_pdf: "pdf", drawing_dxf: "dxf", step: "step", manifest: "json",
 };
 
 interface RunRecord {
@@ -90,13 +90,6 @@ export class FixtureApi implements WebApi {
     };
     this.sources.set(source.source_id, source);
     return source;
-  }
-
-  async deleteSource(sourceId: string): Promise<void> {
-    await this.latency();
-    this.source(sourceId);
-    this.sources.delete(sourceId);
-    for (const [id, record] of this.runs) if (record.source.source_id === sourceId) this.runs.delete(id);
   }
 
   async getAnalysis(sourceId: string): Promise<ExtractResult> {

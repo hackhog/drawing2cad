@@ -43,6 +43,12 @@ Use a separate volume and run prefix for each trial.
 The source path must name the authorized PDF inside that server.
 The client denies other PDF paths, other run prefixes, and tools outside its allowlist, including code execution tools.
 
+The web backend calls `drive()` directly against the domain profile ([ADR 0017](adr/0017-agent-runner-in-the-web-backend.md)).
+Its plan contains `source_id` and `source_sha256` instead of `source_path`.
+In this mode, PDF tools and `part_create` sources must use that source ID and hash.
+The allowlist also contains the drawing tools, `artifact_preview`, and run notes, because release needs a reviewed drawing.
+The command-line client supports only `source_path`.
+
 If Ollama has no published host port, replace `ollama_url` with:
 
 ```json

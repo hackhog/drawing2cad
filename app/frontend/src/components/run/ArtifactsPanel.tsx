@@ -1,5 +1,5 @@
 // Deliverables of a run. Artifacts of a released run with the current revision are released.
-// A finished run without release keeps its current-revision model as a marked diagnostic artifact; stale artifacts stay locked.
+// A finished run without release keeps its current-revision outputs as marked diagnostic artifacts; stale artifacts stay locked.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
@@ -17,7 +17,7 @@ import { delivery, isActive, isReleased } from "@/lib/release";
 
 const ROLE: Record<ArtifactRole, string> = {
   drawing_pdf: "Technische Zeichnung (PDF)", drawing_dxf: "Technische Zeichnung (DXF)", step: "3D-Modell (STEP)",
-  model_preview: "3D-Vorschau", manifest: "Lauf-Manifest",
+  manifest: "Lauf-Manifest",
 };
 
 function save(blob: Blob, filename: string) {
@@ -39,7 +39,7 @@ export function ArtifactsPanel({ run }: { run: Run }) {
   const released = (a: Artifact) => isReleased(state, run, a);
   // A diagnostic artifact belongs to the current revision of a finished run that the service did not release.
   const diagnostic = (a: Artifact) => !released(a) && !isActive(run) && a.model_revision === revision;
-  const preview = run.artifacts.find((a) => a.role === "model_preview" && (released(a) || diagnostic(a)));
+  const preview = run.artifacts.find((a) => a.role === "step" && (released(a) || diagnostic(a)));
   const drawing = run.artifacts.find((a) => a.role === "drawing_pdf" && released(a));
 
   return (
@@ -107,7 +107,7 @@ const Empty = ({ text }: { text: string }) => (
 );
 
 function BlobView({ artifact, kind }: { artifact: Artifact; kind: "pdf" | "glb" }) {
-  const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id);
+  const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id, kind === "glb" ? "glb" : "content");
   if (error) return <Empty text={error} />;
   if (!url) return <Empty text="Wird geladen …" />;
   if (kind === "glb") return <ModelFrame url={url} name={artifact.filename} />;
