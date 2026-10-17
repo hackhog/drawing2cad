@@ -9,7 +9,7 @@ The rules use geometry and the calibrated drawing profile in this order:
 4. Extension lines: transverse lines with a short free end.
 5. Hatching: equally spaced parallel lines.
 6. Dashed lines and circles: classify regular dashes or alternating dash lengths.
-7. Center marks: thin lines through circle centers.
+7. Center marks: thin lines through circle centers, and thin pieces on a centerline carrier.
 8. Remaining strokes: contour candidates.
 """
 
@@ -19,6 +19,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 
+from .contacts import contacts, index_box
 from .geometry import Grid, angle_diff, expand, point_segment_distance
 from .model import Arc, Kind, Line, Point, Stroke
 
@@ -52,6 +53,7 @@ def classify(strokes: list[Stroke]) -> list[ArrowHead]:
     _find_hatching(strokes, grid)
     _find_dashed(strokes)
     _find_center_marks(strokes)
+    _extend_centerlines(strokes)
     for s in strokes:
         if s.kind is Kind.UNCLEAR:
             s.kind = Kind.CONTOUR
@@ -366,6 +368,40 @@ def _find_center_marks(strokes: list[Stroke]) -> None:
             if d < _TOUCH and 0.05 < t < 0.95:
                 s.kind = Kind.CENTERLINE
                 break
+
+
+_CENTERLINE_REACH = 30.0  # mm along the carrier to the nearest centerline piece
+_DASH_LIMIT = 1.2  # A continuation is at most this factor longer than the longest nearby centerline piece.
+_MAX_DASH = 25.0  # mm: upper limit for one centerline dash
+
+
+def _extend_centerlines(strokes: list[Stroke]) -> None:
+    """Classify a free dash on the carrier of a nearby centerline as a centerline piece.
+    The last dash of a centerline can stand alone, for example where filled dashes end the run.
+    A part edge touches or crosses other strokes, or is longer than the dashes; it stays a contour candidate."""
+    # A separate index with conservative arc boxes, so that contact checks find tangent arcs.
+    grid = Grid()
+    for s in strokes:
+        grid.insert(s.id, expand(index_box(s), _TOUCH))
+    carriers: dict[tuple, list[tuple[float, float]]] = defaultdict(list)
+    for s in _lines(strokes):
+        if s.kind is Kind.CENTERLINE:
+            ang = round(s.geom.angle * 2) / 2 % 180.0
+            span = sorted((_along(s.geom.p0, ang), _along(s.geom.p1, ang)))
+            carriers[(ang, round(_offset(s.geom, ang) * 10), round(s.width_mm, 3))].append(span)
+    if not carriers:
+        return
+    for s in _lines(strokes):
+        if not _open(s):
+            continue
+        ang = round(s.geom.angle * 2) / 2 % 180.0
+        spans = carriers.get((ang, round(_offset(s.geom, ang) * 10), round(s.width_mm, 3)), [])
+        lo, hi = sorted((_along(s.geom.p0, ang), _along(s.geom.p1, ang)))
+        # Only the nearby run defines the dash length. A distant center mark on the same carrier does not.
+        nearby = [b - a for a, b in spans if max(a - hi, lo - b, 0.0) <= _CENTERLINE_REACH]
+        if not nearby or s.geom.length > min(_DASH_LIMIT * max(nearby), _MAX_DASH) or contacts(s, strokes, grid):
+            continue
+        s.kind = Kind.CENTERLINE
 
 
 def _dominant_width(strokes: list[Stroke]) -> float:

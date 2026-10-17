@@ -38,3 +38,12 @@ def test_texts_match_drawing(name):
         pytest.skip(f"Regression drawing is absent: {pdf}")
     texts = sorted(t.text for t in extract(pdf).texts)
     assert texts == EXPECTED[name]
+
+
+def test_filled_triangle_is_an_arrowhead_not_text():
+    from drawing2cad_mcp.vector.text import is_filled_arrowhead
+
+    triangle = Glyph((0, 0, 3, 1), [[(0, 0), (3, 0.5), (0, 1), (0, 0)]])
+    square = Glyph((0, 0, 1, 1), [[(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)]])
+    assert is_filled_arrowhead(triangle)
+    assert not is_filled_arrowhead(square)

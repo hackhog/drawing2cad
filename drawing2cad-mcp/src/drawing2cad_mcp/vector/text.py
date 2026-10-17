@@ -66,9 +66,18 @@ def is_section_bar(g: Glyph) -> bool:
     return max(g.bbox[2] - g.bbox[0], g.bbox[3] - g.bbox[1]) >= 3.0
 
 
+def is_filled_arrowhead(g: Glyph) -> bool:
+    """Exclude a single filled triangle. Some exports fill dimension and leader arrowheads.
+    The stored font has no character that is one triangle."""
+    if len(g.contours) != 1:
+        return False
+    corners = {(round(x, 3), round(y, 3)) for x, y in g.contours[0]}
+    return len(corners) == 3
+
+
 def group_glyphs(glyphs: list[Glyph]) -> list[list[Glyph]]:
-    """Group nearby character boxes. Exclude section bars."""
-    glyphs = [g for g in glyphs if not is_section_bar(g)]
+    """Group nearby character boxes. Exclude section bars and filled arrowheads."""
+    glyphs = [g for g in glyphs if not is_section_bar(g) and not is_filled_arrowhead(g)]
     uf = UnionFind(len(glyphs))
     grid = Grid(cell=3.0)
     for i, g in enumerate(glyphs):

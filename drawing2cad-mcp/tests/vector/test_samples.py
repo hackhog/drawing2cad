@@ -113,3 +113,16 @@ def test_rotated_flansch_retains_printed_values_and_calibrates_two_diameters(tmp
     cal = service.calibrate(rotated, 1, references)["calibration"]
     assert cal["mm_per_coordinate_unit"] == pytest.approx(0.5, abs=0.0002)
     assert sha256(source.read_bytes()).hexdigest() == before
+
+
+def test_komplexe_zeichnung_3_annotations_are_not_review_items():
+    """Table separators, edge symbols, drawn parentheses, and filled arrowheads are explained."""
+    pdf = SAMPLES / "Komplexe Zeichnung 3" / "1 763 1487 0.pdf"
+    if not pdf.exists():
+        pytest.skip(f"Regression drawing is absent: {pdf}")
+    drawing = extract(pdf)
+    assert not [s for s in drawing.strokes if s.kind is Kind.UNCLEAR]
+    assert not [t for t in drawing.texts if "?" in t.text]
+    assert "(0,07)" in {t.text for t in drawing.texts}
+    assert sum(s.kind is Kind.ANNOTATION for s in drawing.strokes) == 15
+    assert len(drawing.views) == 10

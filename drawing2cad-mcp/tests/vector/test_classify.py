@@ -27,3 +27,36 @@ def test_arrow_is_not_assembled_from_distant_paths(paths):
     strokes = _arrow(paths)
     assert classify(strokes) == []
     assert Kind.ARROW not in {s.kind for s in strokes}
+
+
+def _centerline_run():
+    # Long and short dashes on y=0 classify as a centerline.
+    pieces = [((0, 0), (9.7, 0)), ((10.7, 0), (13.7, 0)), ((14.7, 0), (24.4, 0)), ((25.4, 0), (28.4, 0))]
+    return [Stroke(i, Line(*seg), 0.17, 10 + i) for i, seg in enumerate(pieces)]
+
+
+def test_free_piece_on_a_centerline_carrier_is_centerline():
+    strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (48.5, 0)), 0.17, 20)]
+    classify(strokes)
+    assert strokes[4].kind is Kind.CENTERLINE
+
+
+def test_piece_on_a_centerline_carrier_that_touches_an_edge_stays_contour():
+    edge = Stroke(5, Line((48.5, -5), (48.5, 5)), 0.35, 21)
+    strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (48.5, 0)), 0.17, 20), edge]
+    classify(strokes)
+    assert strokes[4].kind is Kind.CONTOUR
+
+
+def test_long_solid_edge_on_a_centerline_carrier_stays_contour():
+    """A part edge in an aligned view is longer than the dashes of the centerline."""
+    strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (85.0, 0)), 0.17, 20)]
+    classify(strokes)
+    assert strokes[4].kind is Kind.CONTOUR
+
+
+def test_distant_center_mark_does_not_extend_the_dash_limit():
+    strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (85.0, 0)), 0.17, 20),
+                                   Stroke(5, Line((300.0, 0), (400.0, 0)), 0.17, 30, Kind.CENTERLINE)]
+    classify(strokes)
+    assert strokes[4].kind is Kind.CONTOUR

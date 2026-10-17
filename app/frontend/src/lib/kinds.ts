@@ -10,6 +10,7 @@ export const KINDS: [StrokeKind, string, string][] = [
   ["arrow", "Pfeil", "#e628a0"],
   ["extension", "Maßhilfslinie", "#f08cc8"],
   ["cutting_plane", "Schnittverlauf", "#8c28dc"],
+  ["annotation", "Beschriftung", "#7a7a7a"],
   ["unclear", "unklar", "#ff0000"],
 ];
 export const OFF_BY_DEFAULT = new Set<StrokeKind>(["hatch"]);
