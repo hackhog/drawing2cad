@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Convert permitted technical drawings into a reviewed dimensioned drawing and an editable STEP AP242 candidate through drawing2cad-mcp. Record uncertainties and verify construction, parameter changes, and PMI. Use the same interface for STEP-only reconstruction and model changes.
 metadata:
-  version: "0.9.0"
+  version: "0.9.1"
 ---
 
 # drawing2cad
@@ -12,7 +12,9 @@ The skill depends on this interface and its verified capabilities.
 The server selects the CAD backend. FreeCAD is an optional backend, not a skill requirement.
 Do not call a second CAD MCP, a local CAD shell, or backend libraries directly.
 
-**Create the dimensioned technical drawing, review it, build the parametric model, and export STEP last.**
+**Create the dimensioned technical drawing, review it, build and verify the parametric model, and then export STEP.**
+After STEP passes its required tests, create any requested target-format derivatives as the final delivery step.
+Use [target-format-exports.md](references/target-format-exports.md) for NX, SOLIDWORKS, and native editability limits.
 For delivery formats and backend selection, read [delivery-and-backends.md](references/delivery-and-backends.md).
 The proposed drawing output is editable DXF plus a PDF for inspection.
 The 3D output is STEP AP242 with separately verified geometry, construction, parameters, and required PMI.
@@ -43,6 +45,7 @@ If this tool catalog is absent, report that the server needs the matching packag
 | Build and compare | Verified model adapter and independent measurements | Editable operations and relations reproduce the controlling drawing. Current managed tools cannot pass this CAD gate. |
 | Export | Verified AP242 and PMI writer | Export uses the verified build. Construction, final BREP, semantics, presentation, and review data have separate evidence. |
 | Reconstruct and change | Verified STEP-only adapter and independent checks | A fresh worker reconstructs from STEP alone. A parameter change survives export and another fresh import. |
+| Optional target export | Verified adapter for the requested CAD product and version | A derivative from the verified AP242 master passes target reopen, editability, and required PMI tests. |
 | Deliver | Actual files and verification report | All required checks pass, or the files are explicitly identified as limited candidates. |
 
 The current structural contract schema is a limited gate input. It does not implement the full model contract or its relation semantics.

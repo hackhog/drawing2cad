@@ -26,7 +26,9 @@
 ## CAD workflow
 
 - For CAD work, use [skills/drawing2cad/SKILL.md](skills/drawing2cad/SKILL.md). The workflow must work without previous chat messages or a specific agent model.
-- **First, create a dimensioned technical drawing. Then, do the drawing review. Use that drawing to build the native parametric 3D model. Export STEP last.**
+- **First, create a dimensioned technical drawing. Then, do the drawing review. Use that drawing to build the native parametric 3D model. Export STEP after model verification.**
+- After STEP passes its required tests, create requested target-format derivatives as the final delivery step. Keep the verified AP242 master unchanged.
+- For optional NX or SOLIDWORKS delivery, distinguish an imported body from reconstructed native features. Verify target-version editability and PMI separately.
 - Native 2D sketches alone do not meet the drawing requirement. Use [drawing-first.md](skills/drawing2cad/references/drawing-first.md) for changes and STEP import tests.
 - Include the necessary views, sections, dimensions, units, manufacturing data, and uncertainty markers in the drawing. Give evidence for these data.
 - Mark radii without dimensions and all unclear details. Keep approved assumptions identified as assumptions.

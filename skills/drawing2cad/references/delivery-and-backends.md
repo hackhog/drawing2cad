@@ -15,6 +15,8 @@ The tables define requirements. They do not certify an installed implementation.
 
 Use [drawing-first.md](drawing-first.md) for drawing order.
 Use [tooling-and-mcp-contract.md](tooling-and-mcp-contract.md) for current tools and proposed interfaces.
+For optional final NX or SOLIDWORKS files, use [target-format-exports.md](target-format-exports.md).
+These derivatives follow AP242 verification. They do not replace the master or its acceptance tests.
 
 ## Drawing delivery
 
