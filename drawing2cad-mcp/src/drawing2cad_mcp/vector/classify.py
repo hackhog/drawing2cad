@@ -371,7 +371,8 @@ def _find_center_marks(strokes: list[Stroke]) -> None:
 
 
 _CENTERLINE_REACH = 30.0  # mm along the carrier to the nearest centerline piece
-_DASH_LIMIT = 1.2  # A continuation is at most this factor longer than the longest centerline piece.
+_DASH_LIMIT = 1.2  # A continuation is at most this factor longer than the longest nearby centerline piece.
+_MAX_DASH = 25.0  # mm: upper limit for one centerline dash
 
 
 def _extend_centerlines(strokes: list[Stroke], grid: Grid) -> None:
@@ -390,12 +391,13 @@ def _extend_centerlines(strokes: list[Stroke], grid: Grid) -> None:
         if not _open(s):
             continue
         ang = round(s.geom.angle * 2) / 2 % 180.0
-        spans = carriers.get((ang, round(_offset(s.geom, ang) * 10), round(s.width_mm, 3)))
-        if not spans or s.geom.length > _DASH_LIMIT * max(b - a for a, b in spans) or contacts(s, strokes, grid):
-            continue
+        spans = carriers.get((ang, round(_offset(s.geom, ang) * 10), round(s.width_mm, 3)), [])
         lo, hi = sorted((_along(s.geom.p0, ang), _along(s.geom.p1, ang)))
-        if min(max(a - hi, lo - b, 0.0) for a, b in spans) <= _CENTERLINE_REACH:
-            s.kind = Kind.CENTERLINE
+        # Only the nearby run defines the dash length. A distant center mark on the same carrier does not.
+        nearby = [b - a for a, b in spans if max(a - hi, lo - b, 0.0) <= _CENTERLINE_REACH]
+        if not nearby or s.geom.length > min(_DASH_LIMIT * max(nearby), _MAX_DASH) or contacts(s, strokes, grid):
+            continue
+        s.kind = Kind.CENTERLINE
 
 
 def _dominant_width(strokes: list[Stroke]) -> float:

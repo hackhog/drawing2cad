@@ -110,3 +110,23 @@ def test_brackets_that_bulge_toward_the_text_stay_contour():
     mark_annotations(strokes, [text])
     assert {s.kind for s in strokes} == {Kind.CONTOUR}
     assert text.text == "0,07"
+
+
+def test_separator_tangent_to_a_circle_stays_contour():
+    from drawing2cad_mcp.vector.model import Arc
+
+    strokes = [_line(0, (0, 0), (0, 13), 0.34), _line(1, (20, 0), (20, 13), 0.34),
+               Stroke(2, Arc((-1, 6), 1.0, 0.0, 360.0), 0.34, 2, Kind.CONTOUR)]
+    mark_annotations(strokes, _table_texts())
+    assert strokes[0].kind is Kind.CONTOUR
+
+
+def test_brackets_on_different_axes_do_not_pair():
+    """A vertical curve before the text and a horizontal curve below it are not a pair of parentheses."""
+    left = _bracket(0, 0.4, -0.5)
+    pts = [(1.0, 3.4), (2.5, 3.9), (4.0, 4.0), (5.5, 3.9), (7.0, 3.4)]
+    below = [_line(4 + n, a, b) for n, (a, b) in enumerate(zip(pts, pts[1:]))]
+    text = _text(0, (0.9, 0.2, 7.1, 2.9), "7")
+    mark_annotations(left + below, [text])
+    assert {s.kind for s in left + below} == {Kind.CONTOUR}
+    assert text.text == "7"

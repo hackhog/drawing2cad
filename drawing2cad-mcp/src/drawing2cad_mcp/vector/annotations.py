@@ -193,21 +193,32 @@ def _mark_parentheses(lines: list[Stroke], texts: list[TextBlock], touching: dic
     brackets = [(chain, *found) for chain in _chains(lines, touching) if (found := _bracket(chain))]
     for text in texts:
         tx0, ty0, tx1, ty1 = text.bbox
-        before: list[list[Stroke]] = []
-        after: list[list[Stroke]] = []
-        for chain, (x0, y0, x1, y1), axis, bulge in brackets:
+        # Parentheses stand across the reading direction: vertical for horizontal text, horizontal for vertical text.
+        reading = text.angle_deg % 180.0
+        axis = 1 if min(reading, 180.0 - reading) <= 10.0 else 0 if abs(reading - 90.0) <= 10.0 else None
+        if axis is None:
+            continue
+        before: list[tuple[list[Stroke], tuple]] = []
+        after: list[tuple[list[Stroke], tuple]] = []
+        for chain, box, chain_axis, bulge in brackets:
+            if chain_axis != axis:
+                continue
+            x0, y0, x1, y1 = box
             lo, hi, tlo, thi = (y0, y1, ty0, ty1) if axis == 1 else (x0, x1, tx0, tx1)
             if min(hi, thi) - max(lo, tlo) < 0.5 * min(hi - lo, thi - tlo):
                 continue
             near_end, far_end, text_start, text_end = (x1, x0, tx0, tx1) if axis == 1 else (y1, y0, ty0, ty1)
             # An opening parenthesis bulges away from the text, toward the lower coordinate.
             if bulge < 0 and 0 <= text_start - near_end + TOUCH <= _BRACKET_GAP:
-                before.append(chain)
+                before.append((chain, (lo, hi)))
             elif bulge > 0 and 0 <= far_end - text_end + TOUCH <= _BRACKET_GAP:
-                after.append(chain)
-        if not before or not after:
+                after.append((chain, (lo, hi)))
+        # Both parentheses of a pair are aligned with each other along their long axis.
+        pair = next(((a, b) for a, (alo, ahi) in before for b, (blo, bhi) in after
+                     if min(ahi, bhi) - max(alo, blo) >= 0.8 * min(ahi - alo, bhi - blo)), None)
+        if pair is None:
             continue
-        for chain in (before[0], after[0]):
+        for chain in pair:
             for s in chain:
                 s.kind = Kind.ANNOTATION
         # A dimension in parentheses is an auxiliary dimension. Keep that meaning in the text.

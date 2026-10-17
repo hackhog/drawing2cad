@@ -53,3 +53,10 @@ def test_long_solid_edge_on_a_centerline_carrier_stays_contour():
     strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (85.0, 0)), 0.17, 20)]
     classify(strokes)
     assert strokes[4].kind is Kind.CONTOUR
+
+
+def test_distant_center_mark_does_not_extend_the_dash_limit():
+    strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (85.0, 0)), 0.17, 20),
+                                   Stroke(5, Line((300.0, 0), (400.0, 0)), 0.17, 30, Kind.CENTERLINE)]
+    classify(strokes)
+    assert strokes[4].kind is Kind.CONTOUR

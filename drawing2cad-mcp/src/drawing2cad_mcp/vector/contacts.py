@@ -33,10 +33,10 @@ def _line_meets(g: Line, other) -> bool:
         return True
     if any(abs(math.dist(e, arc.center) - arc.radius) < TOUCH for e in g.endpoints()):
         return True
-    # Count a crossing of the full circle as contact. This is conservative for arcs.
+    # Count a crossing or tangency of the full circle as contact. This is conservative for arcs.
     near = point_segment_distance(arc.center, g.p0, g.p1)[0]
     far = max(math.dist(arc.center, e) for e in g.endpoints())
-    return near < arc.radius < far
+    return near - TOUCH <= arc.radius <= far + TOUCH
 
 
 def contacts(s: Stroke, strokes: list[Stroke], grid: Grid) -> set[int]:
