@@ -28,4 +28,4 @@ The UI design history is in [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-
 
 The demo uses the first PDF page and the built-in BCT/NX analysis profile.
 This profile does not provide general OCR or a complete dimension interpretation.
-The demo is not a headless FreeCAD worker and does not expose the MCP protocol endpoint.
+The demo supplies PDF analysis and STEP display. It does not expose the MCP endpoint or execute the headless build123d worker.

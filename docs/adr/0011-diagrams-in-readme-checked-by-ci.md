@@ -4,7 +4,9 @@ Date: 2026-10-17
 
 ## Status
 
-Proposed. Uses the procedure of the Fleet Monitor project (its ADR 0028).
+Original decision retained as historical context.
+[ADR 0014](0014-headless-build123d-metric-prototype.md) replaces the machine-local archify build dependency with the maintained portable renderer.
+The JSON source and generated-output parity requirements remain active.
 
 ## Context
 

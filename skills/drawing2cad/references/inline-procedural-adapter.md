@@ -1,5 +1,17 @@
 # Inline AP242 procedural construction adapter
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 Calculate edge fingerprints from `e.copy(True, False).BoundBox`, without copied triangulation. Display triangulation can change bounding-box extremes. Keep the 1e-6 matching tolerance and curve-distance checks in both directions.
 
 This reference contains reusable adapter code only. It supplies no part data, historical results, or case-specific test functions. The generic representation label below replaces a former case-specific label. Revalidate the changed code before use. No live CAD test was run during this cleanup.

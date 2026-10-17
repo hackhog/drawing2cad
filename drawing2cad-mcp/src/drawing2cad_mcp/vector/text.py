@@ -215,7 +215,11 @@ def read_blocks(glyphs: list[Glyph], strokes: list[Stroke]) -> list[TextBlock]:
             text, cost = _read(members, phi, templates)
             # Prefer the standard reading direction when rounded costs are equal.
             candidates.append((round(cost, 2), not _readable(phi), text, phi))
-        _, _, text, phi = min(candidates)
+        cost, _, text, phi = min(candidates)
         bbox = union(g.bbox for g in members)
-        blocks.append(TextBlock(i + 1, bbox, len(members), text, round(-phi % 360.0, 1)))
+        confidence = max(0.0, 1.0 - cost / _MAX_DISTANCE)
+        if _UNKNOWN in text:
+            confidence = 0.0
+        blocks.append(TextBlock(i + 1, bbox, len(members), text, round(-phi % 360.0, 1),
+                                round(confidence, 3)))
     return blocks

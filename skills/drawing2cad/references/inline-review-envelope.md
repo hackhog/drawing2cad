@@ -1,5 +1,17 @@
 # Inline container for adapter and review data
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 This extension stores user interface mappings and review markers in the same STEP master model. Construction remains in the evaluable standard operation entities. Preserve all original PMI and verify their meanings separately.
 
 The additional JSON properties contain **application-specific adapter data**. They are not standardized parametric STEP constraints or additional drawing requirements. An external CAD adapter must explicitly implement these schemas.

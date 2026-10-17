@@ -8,19 +8,21 @@ timeout_seconds = 60
 max_pdf_bytes = 104857600
 max_pixels = 40000000
 
-[freecad]
-# Enable after filling in the existing FreeCAD MCP's command and arguments.
-enabled = false
-# command = 'C:\path\to\freecad-mcp.exe'
-# args = ["--host", "127.0.0.1"]
-startup_timeout_seconds = 10
-timeout_seconds = 120
-
 [server]
 transport = "stdio"
 preview_max_pixels = 4000000
 preview_max_bytes = 6000000
 pdf_concurrency = 2
+max_step_bytes = 33554432
+
+[cad]
+# CAD execution requires the verified Linux sandbox. Use docker.toml in Docker.
+enabled = false
+timeout_seconds = 90
+memory_mb = 3072
+concurrency = 1
+allow_build_code = false
+max_tool_calls = 45
 
 [http]
 # Use --transport streamable-http, or set server.transport to streamable-http.

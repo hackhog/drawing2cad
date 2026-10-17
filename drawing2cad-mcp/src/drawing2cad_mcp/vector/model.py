@@ -124,6 +124,8 @@ class TextBlock:
     glyph_count: int
     text: str = ""  # A question mark indicates an unrecognized character.
     angle_deg: float = 0.0  # Reading direction: 0 horizontal, 90 bottom to top
+    confidence: float = 0.0  # Heuristic match score, not a probability.
+    method: str = "vector_glyph_template"
 
 
 @dataclass(slots=True)
@@ -142,3 +144,4 @@ class Drawing:
     texts: list[TextBlock]
     views: list[View]
     raster_bbox: tuple[float, float, float, float] | None  # Embedded shaded image
+    rotation_degrees: int = 0

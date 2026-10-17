@@ -7,6 +7,8 @@
 **/node_modules
 **/__pycache__
 **/.pytest_cache
+**/build
+**/*.egg-info
 drawing2cad-mcp/tests
 drawing2cad-mcp/*.local.toml
 drawing2cad-mcp/output

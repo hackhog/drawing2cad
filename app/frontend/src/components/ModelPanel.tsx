@@ -1,4 +1,4 @@
-// Reiter 4: STEP aus der Pipeline laden (Server wandelt in GLB) und als 3D-Modell zeigen
+// Display uploaded STEP geometry after server conversion to GLB.
 import { lazy, Suspense, useState } from "react";
 import { dropTarget } from "../lib/drop";
 import type { ModelState } from "../lib/jobs";
@@ -24,7 +24,7 @@ export function ModelPanel({ model, onStep }: { model: ModelState; onStep: (step
         <label className={`model-drop${over ? " drag" : ""}`}>
           {model.state === "run" ? <span>{model.name} wird umgewandelt …</span> : <span>STEP-Datei des Modells hierher ziehen oder klicken</span>}
           {model.state === "error" && <span className="error">{model.name}: {model.error}</span>}
-          <small>Ergebnis der Pipeline (drawing2cad-mcp + FreeCAD). Der Server vernetzt es zu GLB, gespeichert wird nichts.</small>
+          <small>STEP-Datei zur 3D-Vorschau. Der Server wandelt sie in GLB um; die Datei wird nicht dauerhaft gespeichert.</small>
           <input
             type="file" accept=".stp,.step" hidden
             onChange={(e) => { take([...(e.target.files ?? [])]); e.target.value = ""; }}

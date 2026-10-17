@@ -1,5 +1,17 @@
 # Inline readers: adapter components
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 These code blocks document inline calls through the FreeCAD proxy of `drawing2cad-mcp`. Do not create script files from them. Define the functions in a fresh Python process. Supply the path, expected representation, and expected PMI count explicitly.
 
 The blocks read STEP and create declarative data. They do not create CAD documents. Use the skill for the native rebuild and its geometric verification.

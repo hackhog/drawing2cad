@@ -1,5 +1,17 @@
 # Inline reader: numeric PMI and semantic text properties
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 This reader extends the nominal reader. It supports `PROPERTY_DEFINITION` for a thread designation and a general positive radius specification. It preserves STEP geometry references and all presentation polylines. Also compare expected IDs, values, types, references, and note meanings with the model contract. Other semantic properties, tolerances, and datum systems are not generally supported.
 
 Execute the code only in memory through the FreeCAD proxy of `drawing2cad-mcp`. `read_step_pmi_extended(step_path, expected_count)` returns `annotations` and separate `metadata_properties`. The import requires only STEP. It does not require the original model contract or FCStd. Use the contract afterward for an independent check of expected results.

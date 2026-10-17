@@ -1,3 +1,3 @@
-"""PDF preparation and a transparent FreeCAD tool proxy."""
+"""Drawing preparation and restricted, parametric CAD construction."""
 
-__version__ = "0.3.0"
+__version__ = "0.5.0"

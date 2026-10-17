@@ -1,4 +1,4 @@
-"""Streamable HTTP transport for the shared PDF and FreeCAD application."""
+"""Streamable HTTP transport for the shared PDF and restricted CAD services."""
 
 from __future__ import annotations
 
@@ -61,10 +61,10 @@ class BearerTokenMiddleware:
 
 
 def create_http_app(application: Application) -> Starlette:
-    """Create one ASGI app with one shared upstream lifecycle and no session store.
+    """Create one ASGI app with one service lifecycle and no session store.
 
-    The SDK enters Application.lifespan once, even with multiple clients. CAD
-    documents and the proxy queue remain shared; stateless describes transport
+    The SDK enters Application.lifespan once, even with multiple clients. Part
+    storage and execution limits remain shared; stateless describes transport
     sessions only. A fresh Application is required for a new server lifecycle.
     """
     settings = application.settings.http

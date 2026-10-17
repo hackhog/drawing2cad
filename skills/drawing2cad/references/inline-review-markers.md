@@ -1,5 +1,17 @@
 # Review marker injection: generic layout inputs, Schema 1
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 The input check validates mm units, the amb3_ namespace, unique IDs, target solids, review classes, and view groups. It also examines finite display and anchor coordinates, RGB values, and the text and source-hash fields used here. It does not provide complete general JSON schema validation. All checks occur before document mutation.
 
 This code is documentation. Execute it only as inline Python through the FreeCAD proxy of `drawing2cad-mcp`. It is not a script file.

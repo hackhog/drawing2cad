@@ -1,5 +1,17 @@
 # MCP execution and AP242 representation
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 ## Process control without script files
 
 The complete production pipeline must run on a headless server. This requirement includes drawing authoring, full-sheet rendering, editable 3D construction, AP242 and semantic-PMI export, and fresh reconstruction and edit tests. No phase can require FreeCADGui, a Qt GUI dispatcher, Xvfb, or an offscreen FreeCAD GUI. These requirements do not state that the current proxy implements such a worker.

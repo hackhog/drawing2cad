@@ -1,5 +1,17 @@
 # Linear view of native operations
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 A native `App::DocumentObjectGroup` can show original operations as direct children in an explicit order. Their `Base`, `Tool`, and profile dependencies remain. When an operation is expanded, these dependencies are also accessible. Expand the group and collapse its operations to produce the default linear view. This creates no link copies or new final solids.
 
 The group is a FreeCAD user interface view. It does not add a construction operation or change the STEP DAG. Get the order from the verified operation graph. For a STEP-only repeat run, create this view from ordered logical IDs after the constructive rebuild. No additional geometry data or Python module is necessary in the saved FCStd.

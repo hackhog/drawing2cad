@@ -1,5 +1,17 @@
 # Editable user interface from AP242: inline adapter
 
+> Historical adapter reference. The current MCP has no FreeCAD proxy.
+> The calls below are unavailable and are not current instructions.
+> Code and recorded hashes are retained for provenance and maintained reader origins.
+> Use [the current workflow](managed-workflow.md) for supported MCP operations.
+> Earlier drawing-first statements below do not apply to the current workflow.
+
+
+## Historical record
+
+The following adapter procedure is retained as historical evidence. It is not a current execution path.
+
+
 First, load the parser, geometry, and import functions from `inline-procedural-adapter.md` inline. Also load `read_adapter_properties` from `inline-review-envelope.md`. Then execute the following block inline through the FreeCAD proxy of `drawing2cad-mcp`. No script file is necessary.
 
 Entry point: `hist3_rebuild_editable(step_path, fcstd_path=None, docname="AP242NativeRebuild")`. The STEP file is the only model source. The adapter reads user interface metadata from its named property.
