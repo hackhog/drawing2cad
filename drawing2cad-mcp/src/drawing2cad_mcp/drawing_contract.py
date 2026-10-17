@@ -18,7 +18,7 @@ Point = tuple[Number, Number]
 
 class DrawingRef(ClosedModel):
     parameter: Identifier
-    factor: Annotated[float, Field(allow_inf_nan=False, ge=-1000, le=1000)] = 1.0
+    factor: Annotated[float, Field(allow_inf_nan=False, strict=True, ge=-1000, le=1000)] = 1.0
     offset: Number = 0.0
 
 
@@ -100,7 +100,7 @@ class View(ClosedModel):
     origin: Point = Field(description=SHEET_POINT_DESCRIPTION + " This is the sheet position of local view point (0, 0).")
     frame: tuple[Number, Number, Number, Number] = Field(
         description="Absolute sheet bounds [xmin, ymin, xmax, ymax] in mm, from the bottom-left corner. Do not translate or scale these bounds by view.origin or view.scale. Keep geometry, dimensions, and labels inside this frame and the sheet margin. Reserve space for the view label at [xmin+2, ymax-4] and any section note at [xmin+2, ymin+3].")
-    scale: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)] = Field(default=1.0,
+    scale: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False, strict=True)] = Field(default=1.0,
         description="Positive factor from local view mm to sheet mm. Applies to geometry and dimension/marker positions, not frames, notes, or text height.")
     geometry: Annotated[list[Geometry], Field(min_length=1, max_length=300)]
     dimensions: Annotated[list[Dim], Field(max_length=100)]
@@ -123,10 +123,10 @@ class Marker(ClosedModel):
 
 
 class Sheet(ClosedModel):
-    width: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False)] = Field(default=297.0, description="Sheet width in mm along +X.")
-    height: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False)] = Field(default=210.0, description="Sheet height in mm along +Y.")
-    margin: Annotated[float, Field(ge=5, le=30, allow_inf_nan=False)] = Field(default=10.0, description="Inset in sheet mm from each sheet edge.")
-    text_height: Annotated[float, Field(ge=1.8, le=5, allow_inf_nan=False)] = Field(default=2.5, description="Text height in sheet mm. View scale does not change it.")
+    width: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False, strict=True)] = Field(default=297.0, description="Sheet width in mm along +X.")
+    height: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False, strict=True)] = Field(default=210.0, description="Sheet height in mm along +Y.")
+    margin: Annotated[float, Field(ge=5, le=30, allow_inf_nan=False, strict=True)] = Field(default=10.0, description="Inset in sheet mm from each sheet edge.")
+    text_height: Annotated[float, Field(ge=1.8, le=5, allow_inf_nan=False, strict=True)] = Field(default=2.5, description="Text height in sheet mm. View scale does not change it.")
 
 
 class DrawingSpec(ClosedModel):
@@ -244,7 +244,14 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
         drawing = DrawingSpec.model_validate(spec)
         part = parse_description(description)
     except (ValidationError, ValueError) as error:
-        return {"status": "fail", "defects": [{"code": "schema", "message": str(error)[:3000]}]}
+        # Never echo rejected values, paths, or validator context to clients.
+        errors = error.errors(include_url=False, include_context=False, include_input=False) if isinstance(error, ValidationError) else []
+        fields = [{"location": ([str(item)[:100] for item in detail["loc"][:-1][:11]] + ["[unknown_field]"]
+                                if detail["type"] == "extra_forbidden" else [str(item)[:100] for item in detail["loc"][:12]]), "type": detail["type"]}
+                  for detail in errors[:20]]
+        return {"status": "fail", "diagnostic_eligible": False,
+                "defects": [{"code": "schema", "message": "The drawing or part does not match its schema.",
+                             "fields": fields, "truncated": len(errors) > len(fields)}]}
 
     def fail(code, identifier, message):
         defects.append({"code": code, "id": identifier, "message": message})
@@ -469,7 +476,10 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
         for second in labels[index + 1:]:
             if _overlap(first["bounds"], second["bounds"]):
                 fail("label_overlap", first["id"], f"Label overlaps {second['id']}.")
+    layout_codes = {"label_overlap", "label_clipping", "geometry_clipping", "view_overlap"}
     return {"status": "fail" if defects else "pass", "defects": defects[:100], "measurements": measurements,
+            "diagnostic_eligible": bool(defects) and all(item["code"] in layout_codes for item in defects),
+            "total_defects": len(defects), "defects_truncated": len(defects) > 100,
             "description_sha256": drawing.description_sha256, "part_revision": drawing.part_revision,
             "resolved": {**drawing.model_dump(), "views": views, "labels": labels, "uncertainty_markers": markers},
             "checks": {"binding": "fail" if any(d["code"] == "stale_binding" for d in defects) else "pass",

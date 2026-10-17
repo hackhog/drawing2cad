@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record evidence, build an editable part description, deliver a dimensioned DXF/PDF drawing, and validate STEP within the live capability scope.
 metadata:
-  version: "0.13.0"
+  version: "0.14.0"
 ---
 
 # drawing2cad
@@ -22,6 +22,9 @@ Drawing and model creation can occur in either order; their final revisions must
 AP242 construction, adapter edits, and semantic PMI remain required final capabilities.
 
 ## Tool sequence
+
+Use [verification-loop.md](references/verification-loop.md) for validation, diagnostic previews, and targeted corrections during reconstruction or changes.
+The MCP validators use maintained Pydantic contracts. A schema pass does not prove geometry, source accuracy, or safe execution.
 
 1. Call `drawing2cad_status`, `cad_capabilities`, `cad_worker_probe`, and `part_schema`.
    Record versions, supported operations, sandbox results, and unavailable claims.
@@ -46,6 +49,8 @@ AP242 construction, adapter edits, and semantic PMI remain required final capabi
    Have a separate reviewer compare the declared features and measurements with every source view.
    A valid solid or a passed bounding-box check cannot establish that internal webs, ribs, or local details are present.
 7. Prepare the revision-bound drawing specification. Use `drawing_validate` and `drawing_render`.
+   If rendering reports a layout failure, inspect its diagnostics and available diagnostic preview before a targeted correction.
+   Repeat validation and rendering. A diagnostic artifact cannot satisfy drawing delivery or authorize release.
    Inspect the actual PDF, native dimension placement, required views and sections, manufacturing notes, and uncertainty markers.
    Either drawing or model can be created first. Record `drawing_review` after the model build, using the current drawing hash, revision, source hashes, reviewer, and reason.
    The review is an identified attestation. Automatic drawing-to-solid equivalence remains `not_tested`.

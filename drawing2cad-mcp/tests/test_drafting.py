@@ -1,6 +1,7 @@
 """Synthetic drawing contracts and native DXF/PDF artifacts agree."""
 
 import hashlib
+import json
 import math
 
 import pytest
@@ -237,6 +238,74 @@ def test_no_artifacts_for_invalid_drawing(tmp_path):
     spec["views"][0]["dimensions"][0]["expected"] = 100
     assert render_drawing(spec, description, 1, tmp_path)["status"] == "fail"
     assert not list(tmp_path.iterdir())
+
+
+def test_native_text_collision_has_source_ids_bounds_and_failed_preview(tmp_path):
+    pymupdf = pytest.importorskip("pymupdf")
+    pytest.importorskip("ezdxf")
+    description, spec = drawing_fixture()
+    # The native vertical text extends below its conservative declaration box.
+    spec["notes"].append({"text": "A", "position": [250, 121], "evidence_ids": ["drawing"]})
+    assert drawing_validate(spec, description, 1)["status"] == "pass"
+    result = render_drawing(spec, description, 1, tmp_path)
+    assert result["status"] == "fail"
+    assert result["diagnostic_only"] is True
+    assert result["drawing_sha256"] == description_digest(spec)
+    diagnostic = result["diagnostics"]
+    pair = next(pair for pair in diagnostic["collision_pairs"]
+                if {pair["first_source_id"], pair["second_source_id"]} == {"height", "note_1"})
+    assert all(len(pair[side + "_bounds_mm"]) == 4 for side in ("first", "second"))
+    assert next(label for label in diagnostic["labels"] if label["source_id"] == "height")["view_id"] == "front"
+    assert diagnostic["total_collision_pairs"] >= 1
+    assert diagnostic["coordinate_system"] == {"units": "mm", "origin": "bottom_left", "positive_y": "up"}
+    assert not (tmp_path / "drawing.dxf").exists()
+    assert not (tmp_path / "drawing.pdf").exists()
+    assert {artifact["role"] for artifact in result["artifacts"]} == {"drawing_diagnostic_preview", "drawing_diagnostic_report"}
+    for artifact in result["artifacts"]:
+        assert hashlib.sha256((tmp_path / artifact["name"]).read_bytes()).hexdigest() == artifact["sha256"]
+    saved = json.loads((tmp_path / "drawing-diagnostic.json").read_text(encoding="utf-8"))
+    assert saved["status"] == "fail" and saved["diagnostics"] == diagnostic
+    with pymupdf.open(tmp_path / "drawing-diagnostic.pdf") as pdf:
+        assert len(pdf) >= 2
+        assert all("NOT FOR RELEASE" in page.get_text() for page in pdf)
+        assert "height" in pdf[1].get_text() and "note_1" in pdf[1].get_text()
+        assert any(path["color"] == (1, 0, 0) for path in pdf[0].get_drawings())
+    # A layout-only repair creates ordinary deliverables without a diagnostic mark.
+    fixed = tmp_path / "fixed"
+    fixed.mkdir()
+    spec["notes"][-1]["position"][1] = 116
+    assert render_drawing(spec, description, 1, fixed)["status"] == "pass"
+    assert (fixed / "drawing.dxf").exists()
+
+
+def test_estimated_overlap_has_preview_without_bypassing_other_failures(tmp_path):
+    pytest.importorskip("ezdxf")
+    description, spec = drawing_fixture()
+    spec["views"][0]["dimensions"][1]["label_position"] = [30, -12]
+    result = render_drawing(spec, description, 1, tmp_path)
+    assert result["status"] == "fail" and result["diagnostic_only"] is True
+    assert any(item["code"] == "label_overlap" for item in result["defects"])
+    assert (tmp_path / "drawing-diagnostic.pdf").exists()
+    invalid = tmp_path / "invalid"
+    invalid.mkdir()
+    spec["views"][0]["dimensions"][0]["expected"] = 100
+    result = render_drawing(spec, description, 1, invalid)
+    assert result["status"] == "fail" and not result.get("diagnostic_only", False)
+    assert not list(invalid.iterdir())
+
+
+def test_collision_report_bounds_pair_payload_and_work():
+    from drawing2cad_mcp.drafting import _layout_diagnostics
+
+    labels = [{"id": f"text_{index}", "source_id": f"source_{index}", "bounds_mm": [0, 0, 10, 10]}
+              for index in range(800)]
+    report = _layout_diagnostics(labels)
+    assert len(report["collision_pairs"]) == 100
+    assert len(report["labels"]) <= 100
+    assert report["scanned_pair_count"] == 250000
+    assert report["detected_collision_pairs"] == 250000
+    assert report["total_collision_pairs"] is None
+    assert report["scan_complete"] is False and report["truncated"] is True
 
 
 def test_reject_existing_artifact_before_write(tmp_path):

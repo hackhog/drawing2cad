@@ -7,14 +7,94 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .drawing_contract import _inside, _overlap, drawing_validate
+from .drawing_contract import _inside, _overlap, description_digest, drawing_validate
+
+
+def _layout_diagnostics(labels: list[dict[str, Any]], affected_ids: set[str] | None = None) -> dict[str, Any]:
+    """Bound the diagnostic payload and the work needed to compare text boxes."""
+    pairs = []
+    count = 0
+    comparisons = 0
+    complete = True
+    ordered = sorted(labels, key=lambda item: item["bounds_mm"][0])
+    for index, first in enumerate(ordered):
+        for second in ordered[index + 1:]:
+            if second["bounds_mm"][0] >= first["bounds_mm"][2] - 0.05:
+                break
+            if comparisons >= 250000:
+                complete = False
+                break
+            comparisons += 1
+            if _overlap(first["bounds_mm"], second["bounds_mm"]):
+                count += 1
+                if len(pairs) < 100:
+                    pairs.append({"first_id": first["id"], "second_id": second["id"],
+                                  "first_source_id": first["source_id"], "second_source_id": second["source_id"],
+                                  "first_bounds_mm": first["bounds_mm"], "second_bounds_mm": second["bounds_mm"]})
+        if not complete:
+            break
+    involved = {pair[side + "_id"] for pair in pairs for side in ("first", "second")}
+    selected = [label for label in labels if label["id"] in involved or label["source_id"] in (affected_ids or set())]
+    return {"schema_version": "1.0", "coordinate_system": {"units": "mm", "origin": "bottom_left", "positive_y": "up"},
+            "bounds_source": "ezdxf_rendered_text", "labels": selected[:100], "total_labels": len(labels),
+            "relevant_labels": len(selected), "reported_labels": min(100, len(selected)),
+            "collision_pairs": pairs, "reported_collision_pairs": len(pairs),
+            "detected_collision_pairs": count, "total_collision_pairs": count if complete else None,
+            "scanned_pair_count": comparisons, "scan_complete": complete,
+            "truncated": len(selected) > 100 or count > len(pairs) or not complete}
+
+
+def _diagnostic_pdf(pdf: bytes, sheet: dict[str, Any], report: dict[str, Any]) -> bytes:
+    """Mark the failed sheet and add a readable source-ID legend."""
+    import pymupdf
+
+    document = pymupdf.open(stream=pdf, filetype="pdf")
+    page = document[0]
+    scale = page.rect.width / sheet["width"]
+    pairs = report["diagnostics"]["collision_pairs"]
+    labels = {item["id"]: item for item in report["diagnostics"]["labels"]}
+    marked = {}
+    for pair in pairs:
+        for side in ("first", "second"):
+            marked.setdefault(pair[side + "_id"], pair[side + "_bounds_mm"])
+    # Clipped labels and conservative-layout failures can have no rendered pair.
+    affected = {item.get("id") for item in report["defects"]}
+    for identifier, label in labels.items():
+        if label["source_id"] in affected:
+            marked.setdefault(identifier, label["bounds_mm"])
+    for number, (identifier, bounds) in enumerate(marked.items(), 1):
+        x0, y0, x1, y1 = bounds
+        rect = pymupdf.Rect(x0 * scale, (sheet["height"] - y1) * scale,
+                           x1 * scale, (sheet["height"] - y0) * scale)
+        if not rect.is_empty:
+            page.draw_rect(rect, color=(1, 0, 0), width=0.7, overlay=True)
+            page.insert_text((max(2, min(rect.x0, page.rect.width - 30)),
+                              max(12, min(rect.y0 - 2, page.rect.height - 3))),
+                             str(number), fontsize=7, color=(1, 0, 0), overlay=True)
+    banner = "DIAGNOSTIC ONLY - FAILED DRAWING - NOT FOR RELEASE"
+    for item in document:
+        item.draw_rect(pymupdf.Rect(0, 0, item.rect.width, 18), color=None, fill=(1, 0.92, 0.92), overlay=True)
+        item.insert_text((6, 12), banner, fontsize=9, color=(0.8, 0, 0), overlay=True)
+    lines = ["Coordinates: sheet mm; bottom-left origin; positive Y up.",
+             "Red boxes identify rendered text bounds. Numbers refer to source labels.",
+             "Only reported collisions are marked. Read the JSON report for counts and limits."]
+    for number, (identifier, bounds) in enumerate(marked.items(), 1):
+        lines.append(f"{number}: {identifier} | bounds: " + ", ".join(f"{value:.3f}" for value in bounds))
+    lines.extend(f"{item['code']}: {item.get('id', 'drawing')}" for item in report["defects"])
+    for offset in range(0, len(lines), 44):
+        legend = document.new_page(width=842, height=595)
+        legend.insert_text((18, 22), banner, fontsize=10, color=(0.8, 0, 0))
+        legend.insert_text((18, 42), "\n".join(lines[offset:offset + 44]), fontsize=8, lineheight=1.4)
+    data = document.tobytes(garbage=4, deflate=True)
+    document.close()
+    return data
 
 
 def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: int,
                    output_dir: Path) -> dict[str, Any]:
     """Render fixed artifact names inside the restricted worker directory."""
     report = drawing_validate(spec, description, revision)
-    if report["status"] != "pass":
+    if report["status"] != "pass" and not report.get("diagnostic_eligible", False):
         return report
     import ezdxf
     from ezdxf import bbox, disassemble, units
@@ -42,6 +122,7 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
     modelspace = document.modelspace()
     entity_groups = []
     native_dimensions = []
+    text_sources = []
 
     def evidence(entity, identifier, refs, feature_ids=()):
         values = ["drawing2cad:1.0", identifier, f"part_revision:{revision}", f"description:{report['description_sha256']}"]
@@ -93,6 +174,7 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
             evidence(result.dimension, dim["id"], dim["evidence_ids"])
             native_dimensions.append(dim["id"])
             entities.append(result.dimension)
+            text_sources.append((dim["id"], view["id"], "dimension", result.dimension))
         entity_groups.append((view["id"], entities, view["frame"]))
 
     marker_ids = {marker["id"] for marker in resolved["uncertainty_markers"]}
@@ -102,6 +184,11 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
         entity = modelspace.add_text(label["text"], dxfattribs={"height": sheet["text_height"],
                                     "layer": "UNCERTAINTY" if label["id"] in marker_ids else "ANNOTATIONS"})
         entity.set_placement(label["position"], align=TextEntityAlignment.LEFT)
+        view_id = next((view["id"] for view in resolved["views"]
+                        if label["id"] in {view["id"] + "_label", view["id"] + "_section"}), None)
+        if label["id"] in marker_ids:
+            view_id = next(marker["view_id"] for marker in resolved["uncertainty_markers"] if marker["id"] == label["id"])
+        text_sources.append((label["id"], view_id, "annotation", entity))
     for marker in resolved["uncertainty_markers"]:
         leader = modelspace.add_line(marker["position"], marker["target"], dxfattribs={"layer": "UNCERTAINTY"})
         evidence(leader, marker["id"], marker["evidence_ids"])
@@ -113,36 +200,48 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
         bounds = bbox.extents(entities, cache=cache)
         if bounds.has_data and not _inside([bounds.extmin.x, bounds.extmin.y, bounds.extmax.x, bounds.extmax.y], frame):
             defects.append({"code": "rendered_view_clipping", "id": identifier,
+                            "bounds_mm": [bounds.extmin.x, bounds.extmin.y, bounds.extmax.x, bounds.extmax.y],
+                            "allowed_bounds_mm": frame,
                             "message": "Rendered geometry or dimension lines exceed their view frame."})
     margin = sheet["margin"]
     usable = [margin, margin, sheet["width"] - margin, sheet["height"] - margin]
     bounds = bbox.extents(modelspace, cache=cache)
     if bounds.has_data and not _inside([bounds.extmin.x, bounds.extmin.y, bounds.extmax.x, bounds.extmax.y], usable):
-        defects.append({"code": "rendered_sheet_clipping", "id": "drawing", "message": "Rendered entities exceed the sheet margin."})
-    text_bounds = []
-    for entity in disassemble.recursive_decompose(modelspace):
-        if entity.dxftype() not in {"TEXT", "MTEXT"}:
-            continue
-        box = bbox.extents([entity])
-        if box.has_data:
-            text_bounds.append([box.extmin.x, box.extmin.y, box.extmax.x, box.extmax.y])
-    if any(_overlap(first, second) for index, first in enumerate(text_bounds) for second in text_bounds[index + 1:]):
-        defects.append({"code": "rendered_label_overlap", "id": "drawing", "message": "Rendered text bounds overlap."})
+        defects.append({"code": "rendered_sheet_clipping", "id": "drawing", "message": "Rendered entities exceed the sheet margin.",
+                        "bounds_mm": [bounds.extmin.x, bounds.extmin.y, bounds.extmax.x, bounds.extmax.y], "allowed_bounds_mm": usable})
+    text_labels = []
+    for identifier, view_id, kind, source in text_sources:
+        texts = [entity for entity in disassemble.recursive_decompose([source]) if entity.dxftype() in {"TEXT", "MTEXT"}]
+        for index, entity in enumerate(texts):
+            box = bbox.extents([entity])
+            if box.has_data:
+                text_labels.append({"id": identifier if len(texts) == 1 else f"{identifier}/text_{index}",
+                                    "source_id": identifier, "view_id": view_id, "kind": kind,
+                                    "text": entity.plain_text()[:180],
+                                    "bounds_mm": [box.extmin.x, box.extmin.y, box.extmax.x, box.extmax.y]})
+    diagnostics = _layout_diagnostics(text_labels, {item.get("id") for item in report["defects"] + defects})
+    if diagnostics["detected_collision_pairs"]:
+        defects.append({"code": "rendered_label_overlap", "id": "drawing", "message": "Rendered text bounds overlap. Read diagnostics.collision_pairs for the source identifiers and sheet bounds."})
+    if not diagnostics["scan_complete"]:
+        defects.append({"code": "rendered_layout_limit", "id": "drawing", "message": "The text comparison limit was reached. Separate crowded labels and retry."})
     report["checks"]["rendered_layout"] = "fail" if defects else "pass"
+    report["total_defects"] = report.get("total_defects", len(report["defects"])) + len(defects)
     report["defects"].extend(defects)
-    if defects:
+    diagnostic_only = bool(report["defects"])
+    if diagnostic_only:
         report["status"] = "fail"
-        return report
+        report.update(diagnostic_only=True, drawing_sha256=description_digest(spec), diagnostics=diagnostics)
 
     directory = Path(output_dir)
     dxf_path = directory / "drawing.dxf"
-    pdf_path = directory / "drawing.pdf"
-    report_path = directory / "drawing-report.json"
+    pdf_path = directory / ("drawing-diagnostic.pdf" if diagnostic_only else "drawing.pdf")
+    report_path = directory / ("drawing-diagnostic.json" if diagnostic_only else "drawing-report.json")
     # Artifact directories are private worker directories. Never replace an existing link.
-    for path in (dxf_path, pdf_path, report_path):
+    for path in ((pdf_path, report_path) if diagnostic_only else (dxf_path, pdf_path, report_path)):
         if path.exists() or path.is_symlink():
             raise ValueError("Drawing artifact paths must be empty before rendering.")
-    document.saveas(dxf_path)
+    if not diagnostic_only:
+        document.saveas(dxf_path)
     backend = pymupdf.PyMuPdfBackend()
     render_config = config.Configuration(background_policy=config.BackgroundPolicy.WHITE,
                                          color_policy=config.ColorPolicy.COLOR)
@@ -150,6 +249,18 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
     pdf = backend.get_pdf_bytes(layout.Page(sheet["width"], sheet["height"], units=layout.Units.mm),
                                 settings=layout.Settings(fit_page=False, scale=1.0),
                                 render_box=BoundingBox2d([(0, 0), (sheet["width"], sheet["height"])]))
+    if diagnostic_only:
+        pdf_path.write_bytes(_diagnostic_pdf(pdf, sheet, report))
+        data = pdf_path.read_bytes()
+        report["artifacts"] = [{"path": str(pdf_path), "name": pdf_path.name, "sha256": hashlib.sha256(data).hexdigest(),
+                                "bytes": len(data), "role": "drawing_diagnostic_preview"}]
+        stored_report = {**report, "artifacts": [{key: value for key, value in item.items() if key != "path"}
+                                                for item in report["artifacts"]]}
+        report_path.write_text(json.dumps(stored_report, sort_keys=True, ensure_ascii=False, allow_nan=False, indent=2), encoding="utf-8")
+        data = report_path.read_bytes()
+        report["artifacts"].append({"path": str(report_path), "name": report_path.name,
+                                    "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "role": "drawing_diagnostic_report"})
+        return report
     pdf_path.write_bytes(pdf)
     reopened = ezdxf.readfile(dxf_path)
     actual_count = len(reopened.modelspace().query("DIMENSION"))

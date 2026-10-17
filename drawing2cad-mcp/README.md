@@ -114,6 +114,12 @@ Preview metadata give the actual display size; the full artifact remains in serv
 6. Download results through `artifact_read`, using its byte offset and bounded length. Verify the complete download against `artifact_get.sha256`.
 
 Artifacts are immutable snapshots. A later build does not replace an earlier artifact ID.
+Failed drawing layouts can return diagnostic PDF and JSON artifacts through `drawing_render`.
+Use `artifact_preview` to inspect the marked PDF. Read the report for label identifiers and rendered bounds in sheet millimeters.
+Diagnostic artifacts retain the drawing hash, description hash, and part revision. They are not accepted technical drawings.
+Correct the identified layout defects and render again. An accepted drawing review and STEP release still require a passing render.
+Malformed declarations fail the maintained Pydantic contract before drawing state changes.
+Schema validation does not establish correct geometry, complete source coverage, or a readable sheet.
 Source and artifact access is scoped to the trusted principal. Source bytes are checked again before use.
 The service does not enforce an aggregate disk quota or a retention period. Operators must manage retained data and free space.
 
