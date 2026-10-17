@@ -83,6 +83,11 @@ class Services:
                 self._results.popitem(last=False)
         return result
 
+    def forget(self, source_id: str) -> None:
+        """Drop the cached analysis of a deleted source."""
+        with self._lock:
+            self._analyses.pop(source_id, None)
+
     def analysis(self, source: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             if source["source_id"] in self._analyses:
@@ -214,6 +219,19 @@ def _source(s: Services, source_id: str) -> dict[str, Any]:
 @router.get("/sources/{source_id}")
 def get_source(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
     return source_view(_source(s, source_id))
+
+
+@router.delete("/sources/{source_id}", status_code=204)
+def delete_source(source_id: str, s: Services = Depends(services)) -> Response:
+    """Delete a drawing with its run records. An active run still uses the source, so it blocks the deletion."""
+    source_id = _source(s, source_id)["source_id"]
+    if any(r["job"]["status"] in ("queued", "running") for r in s.jobs.list(source_id)):
+        raise ServiceError(409, "RUN_ACTIVE", "Für diese Zeichnung läuft noch ein Lauf.",
+                           recovery="Warten, bis der Lauf beendet ist, und dann erneut löschen.")
+    s.backend.delete_source(source_id)
+    s.jobs.remove(source_id)
+    s.forget(source_id)
+    return Response(status_code=204)
 
 
 @router.get("/sources/{source_id}/analysis")

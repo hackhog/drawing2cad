@@ -76,6 +76,15 @@ class DomainBackend:
             raise ServiceError(HTTP_STATUS.get(error.code, 422), error.code, error.message, error.target,
                                error.next_action) from None
 
+    def delete_source(self, source_id: str) -> None:
+        """Remove an uploaded source through the trusted domain method; agents have no delete tool."""
+        assert self.application.domain is not None
+        try:
+            self.application.domain.source_delete(self.context, source_id)
+        except DomainError as error:
+            raise ServiceError(HTTP_STATUS.get(error.code, 422), error.code, error.message, error.target,
+                               error.next_action) from None
+
     def upload(self, filename: str, data: bytes) -> dict[str, Any]:
         """Transfer PDF bytes in bounded chunks and return the immutable source record."""
         started = self.call("upload_begin", filename=filename, size_bytes=len(data), sha256=sha256(data).hexdigest())

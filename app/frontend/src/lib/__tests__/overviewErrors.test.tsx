@@ -1,4 +1,5 @@
 // Server rendering verifies the error text without a browser or a live service.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { SourceRow } from "../../pages/OverviewPage";
@@ -6,6 +7,15 @@ import { ApiFailure } from "../errors";
 import type { Source } from "../contract";
 
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("../apiContext", () => ({ useApi: () => ({ deleteSource: vi.fn() }) }));
+
+function renderRow(error: Error | null) {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>
+      <table><tbody><SourceRow source={source} analysis={undefined} error={error} /></tbody></table>
+    </QueryClientProvider>,
+  );
+}
 
 const source: Source = {
   source_id: "src_synthetic", filename: "synthetic.pdf", media_type: "application/pdf",
@@ -15,7 +25,7 @@ const source: Source = {
 describe("overview analysis errors", () => {
   it("shows the message, stable code, and service recovery action", () => {
     const error = new ApiFailure({ code: "PDF_PREPARATION_FAILED", message: "PDF could not be prepared.", recovery: "Use PDF image tools." }, 422);
-    const html = renderToStaticMarkup(<table><tbody><SourceRow source={source} analysis={undefined} error={error} /></tbody></table>);
+    const html = renderRow(error);
     expect(html).toContain('role="alert"');
     expect(html).toContain("Analyse fehlgeschlagen (PDF_PREPARATION_FAILED)");
     expect(html).toContain("PDF could not be prepared.");
@@ -23,7 +33,7 @@ describe("overview analysis errors", () => {
   });
 
   it("does not show an error while the analysis is loading", () => {
-    const html = renderToStaticMarkup(<table><tbody><SourceRow source={source} analysis={undefined} error={null} /></tbody></table>);
+    const html = renderRow(null);
     expect(html).not.toContain('role="alert"');
     expect(html).not.toContain("Analyse fehlgeschlagen");
   });

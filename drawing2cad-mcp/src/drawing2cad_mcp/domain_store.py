@@ -320,6 +320,14 @@ class DomainStore:
         with self._db() as db:
             return self._public(self._row(db, "sources", ctx, source_id), "source")
 
+    def source_delete(self, ctx: AccessContext, source_id: str) -> dict:
+        """Remove a source and its PDF bytes. Artifacts of earlier runs stay immutable."""
+        with self._db() as db:
+            row = self._row(db, "sources", ctx, source_id)
+            self._path(ctx, "sources", source_id).unlink(missing_ok=True)
+            db.execute("DELETE FROM sources WHERE id=?", (source_id,))
+            return self._public(row, "source")
+
     def source_path(self, ctx: AccessContext, source_id: str) -> Path:
         with self._db() as db:
             row = self._row(db, "sources", ctx, source_id)
