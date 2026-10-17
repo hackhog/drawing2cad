@@ -417,6 +417,12 @@ def test_domain_schema_errors_do_not_echo_private_input(domain):
     with pytest.raises(DomainError) as error:
         service.call(CTX, "part_read", {"run_id": str(service.store.root)})
     assert str(service.store.root) not in error.value.message
+    assert service.store.root.as_posix() not in error.value.message
+    # A forward-slash value checks the same rule independent of the platform.
+    with pytest.raises(DomainError) as error:
+        service.call(CTX, "part_read", {"run_id": "/srv/private-customer/secret"})
+    assert "secret" not in error.value.message
+    assert error.value.target == "/run_id" and "pattern" in error.value.message
 
 
 def test_worker_error_details_cannot_expose_external_server_paths(domain):
@@ -505,7 +511,7 @@ def test_errors_keep_feature_and_field_without_host_paths(domain):
     with pytest.raises(DomainError) as invalid:
         service.call(CTX, "part_read", {"run_id": 5})
     assert invalid.value.code == "INVALID_ARGUMENT"
-    assert invalid.value.target == "/run_id" and "is not of type" in invalid.value.message
+    assert invalid.value.target == "/run_id" and "'type'" in invalid.value.message and '"string"' in invalid.value.message
 
 
 def test_failed_job_keeps_its_public_report(domain):

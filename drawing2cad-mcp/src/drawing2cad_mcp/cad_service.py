@@ -21,6 +21,7 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from . import __version__
 from .cad_tools import CAD_SCHEMAS
+from .schema_errors import describe as describe_schema_error
 from .part_schema import PART_SCHEMA_VERSION, description_schema, part_validate as validate_description
 from .worker_runner import WorkerLimits, WorkerRunner
 
@@ -91,7 +92,9 @@ class CadService:
             Draft202012Validator(CAD_SCHEMAS[name]).validate(arguments)
             _json(arguments)
         except (ValidationError, ValueError, TypeError) as error:
-            raise CadError("INVALID_ARGUMENTS", str(error.message if isinstance(error, ValidationError) else error)[:2000]) from error
+            # Name the field and the schema rule, never the input value.
+            message = describe_schema_error(error)[1] if isinstance(error, ValidationError) else "The arguments must be finite JSON data."
+            raise CadError("INVALID_ARGUMENTS", message) from error
 
     def _root(self):
         if self.output_root.resolve() != self.output_root or self.storage.resolve() != self.storage:

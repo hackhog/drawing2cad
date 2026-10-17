@@ -23,6 +23,7 @@ from PIL import Image
 
 from . import __version__
 from .config import Settings
+from .schema_errors import describe as describe_schema_error
 from .cad_service import CadError, CadService
 from .cad_tools import CAD_DESCRIPTIONS, CAD_SCHEMAS
 from .measurements_tools import MEASUREMENT_DESCRIPTIONS, MEASUREMENT_METHODS, MEASUREMENT_SCHEMAS
@@ -348,7 +349,8 @@ class Application:
                 return await asyncio.shield(task)
             return error_result("UNKNOWN_TOOL", f"Unknown tool: {name}")
         except ValidationError as error:
-            return error_result("INVALID_ARGUMENTS", error.message)
+            target, message = describe_schema_error(error)
+            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": target, "message": message}}, is_error=True)
         except PdfError as error:
             return error_result("PDF_PREPARATION_FAILED", str(error))
         except (StepError, WorkflowError, CadError) as error:
@@ -383,10 +385,11 @@ class Application:
                 images.append(ImageContent(type="image", data=preview.pop("data_base64"), mime_type="image/png"))
             return json_result(data, images=images, is_error=bool(data.get("error")) or data.get("status") == "fail")
         except ValidationError as error:
-            # The JSON Pointer and the schema message tell the agent which field to correct.
-            pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
-            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": pointer,
-                                          "message": "Arguments do not match the published tool schema: " + error.message[:300]}},
+            # The JSON Pointer and the failed schema rule tell the agent which field to correct.
+            # The message never repeats the input value, because it can be private.
+            target, message = describe_schema_error(error)
+            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": target,
+                                          "message": "Arguments do not match the published tool schema. " + message}},
                                is_error=True)
         except DomainError as error:
             return json_result({"error": error.to_dict()}, is_error=True)

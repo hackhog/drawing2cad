@@ -17,6 +17,7 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from . import __version__
 from .workflow_tools import WORKFLOW_SCHEMAS, PHASES
+from .schema_errors import describe as describe_schema_error
 
 
 SCOPE = {
@@ -116,7 +117,8 @@ class WorkflowService:
             # JSON Schema accepts NaN and infinity as numbers; the contract does not.
             json.dumps(args, allow_nan=False)
         except (ValidationError, ValueError, TypeError) as error:
-            message = error.message if isinstance(error, ValidationError) else str(error)
+            # Name the field and the schema rule, never the input value.
+            message = describe_schema_error(error)[1] if isinstance(error, ValidationError) else "The arguments must be finite JSON data."
             raise WorkflowError("INVALID_ARGUMENTS", message) from error
 
     def _load(self, run_id):

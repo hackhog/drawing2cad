@@ -33,6 +33,7 @@ from .domain_tools import DOMAIN_SCHEMAS
 from .drawing_contract import drawing_schema, drawing_validate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import PdfError, PdfService
+from .schema_errors import describe as describe_schema_error
 from .part_schema import EdgeSelectionDiagnostic
 from .step import StepError, StepService
 
@@ -191,10 +192,11 @@ class DomainService:
             if len(encoded) > 8 * 1024 * 1024:
                 raise DomainError("LIMIT_EXCEEDED", "The request exceeds the domain size limit.")
         except ValidationError as error:
-            # The JSON Pointer and the schema message tell the agent which field to correct.
-            pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
-            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract: " + error.message[:300],
-                              target=pointer, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
+            # The JSON Pointer and the failed schema rule tell the agent which field to correct.
+            # The message never repeats the input value, because it can be private.
+            target, message = describe_schema_error(error)
+            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + message,
+                              target=target, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
         except (ValueError, TypeError, RecursionError):
             raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract.") from None
 

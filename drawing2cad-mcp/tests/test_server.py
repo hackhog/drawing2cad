@@ -186,3 +186,13 @@ async def test_full_stdio_server_exposes_native_part_and_pdf_tools(tmp_path):
             text = await session.call_tool("pdf_read_text", {"path": str(source)})
             assert text.structured_content["source"] == pdf.structured_content["source"]
             assert "Dimension 42 mm" in text.structured_content["pages"][0]["text"]
+
+
+async def test_invalid_argument_error_does_not_repeat_the_input_value(app, tmp_path):
+    private = "/srv/private-customer/secret-drawing.pdf"
+    source = make_pdf(tmp_path / "test.pdf")
+    result = await invoke(app, "pdf_read_text", path=str(source), pages=private)
+    assert result.is_error
+    error = result.structured_content["error"]
+    assert error["code"] == "INVALID_ARGUMENTS" and error["target"] == "/pages"
+    assert "secret" not in json.dumps(result.structured_content)
