@@ -33,7 +33,15 @@ View origins, view frames, and note positions are absolute sheet coordinates. A 
 Geometry and dimension or uncertainty-marker positions use local view coordinates. Apply `sheet_point = origin + scale * local_point` to check their sheet positions.
 Reserve space for generated view labels, section notes, dimensions, and the sheet title. Check transformed bounds against both the absolute view frame and the sheet margin.
 Supply view geometry, dimensions, manufacturing notes, and uncertainty markers with evidence references.
+Before drawing creation, prepare two coverage tables in the run evidence:
+
+- List each required feature and the view or section that shows it. Identify visible edges, hidden edges, centre lines, and cut boundaries.
+- List each printed source dimension and its drawing dimension or group callout. Keep assumptions and user decisions in separate rows.
+
+Compare both tables with every source view and the final model revision.
 Use `drawing_validate`, then `drawing_render`. Keep its returned DXF, PDF, and layout-report hashes.
+Inspect the rendered drawing for missing internal features, incorrect visibility, gaps, and misleading overlaps.
+A passed layout check does not prove feature coverage or agreement with the model.
 The adapter does not derive arbitrary projections or sections from the solid.
 Section geometry and its identifying note must be supplied and independently reviewed.
 Automatic drawing-to-solid equivalence, general GD&T validation, and semantic PMI are unsupported.
