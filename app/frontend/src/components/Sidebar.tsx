@@ -64,7 +64,9 @@ export function Sidebar() {
       <footer className="mt-auto pt-2.5 max-[1000px]:hidden">
         <div className="flex items-center gap-2 border-t px-2 py-2.5 text-xs text-muted-foreground">
           <StatusDot tone={caps?.simulated ? "flag" : "done"} />
-          {caps?.simulated ? "Simulierter Dienst" : "Lokal, ohne KI"}
+          <span className="min-w-0 truncate" title={caps?.agent_model ?? undefined}>
+            {caps?.simulated ? "Simulierter Dienst" : caps?.agent_model ? `KI-Agent · ${caps.agent_model}` : "Lokal, ohne KI"}
+          </span>
         </div>
         <div className="flex items-center gap-2.5 border-t px-2 pt-3 pb-1">
           <span aria-hidden="true" className="grid size-8 flex-none place-items-center rounded-full bg-highlight-bg text-[11.5px] font-bold text-bad">KO</span>

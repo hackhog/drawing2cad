@@ -210,6 +210,7 @@ function RunsCard({ sourceId }: { sourceId: string }) {
                     {/* Run IDs are long; the start time identifies a run in this list, the ID stays in the tooltip. */}
                     <span className="min-w-0 flex-1 truncate font-medium text-card-foreground" title={run.run_id}>
                       Lauf {time(run.job.started_at)}
+                      {run.agent && <span className="block truncate text-[11px] font-normal text-muted-foreground">{run.agent.model}</span>}
                     </span>
                     <span className="text-[11px] whitespace-nowrap text-muted-foreground">Rev. {run.part?.revision ?? "–"}</span>
                     <StatusBadge tone={tone}>{label}</StatusBadge>

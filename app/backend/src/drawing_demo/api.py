@@ -185,6 +185,7 @@ def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
         "contract_version": CONTRACT_VERSION, "simulated": False, "runs": s.runner.available, "parameter_edit": False,
         "notes": False, "downloads": True, "model_preview": True, "step_preview_upload": True,
         "max_pdf_bytes": s.backend.max_source_bytes,
+        "agent_model": s.runner.settings.model if s.runner.available and s.runner.settings else None,
     }
 
 
