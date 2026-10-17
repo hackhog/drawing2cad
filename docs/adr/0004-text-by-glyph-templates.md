@@ -6,7 +6,7 @@ Date: 2026-10-16
 
 Accepted. Extends ADR 0003, which excluded text.
 
-[ADR 0012](0012-vector-analysis-in-mcp.md) moves the reader and bundled templates into `drawing2cad_mcp.vector`.
+[ADR 0013](0013-vector-analysis-in-mcp.md) moves the reader and bundled templates into `drawing2cad_mcp.vector`.
 The former template-building script is removed with the standalone package.
 The results below are historical. Recognized text still requires visual verification before CAD construction.
 

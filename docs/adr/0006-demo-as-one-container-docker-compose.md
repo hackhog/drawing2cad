@@ -4,9 +4,10 @@ Date: 2026-10-16
 
 ## Status
 
-Accepted (local part done on 2026-10-16, `app/`).
+Accepted (local part done on 2026-10-16, `app/`). The part "one container" is superseded by
+[ADR 0012](0012-demo-app-as-frontend-and-backend-container.md) (frontend and backend container).
 
-[ADR 0012](0012-vector-analysis-in-mcp.md) replaces the standalone extractor dependency with the MCP package's PDF service.
+[ADR 0013](0013-vector-analysis-in-mcp.md) replaces the standalone extractor dependency with the MCP package's PDF service.
 The demo still has its own HTTP API. It does not host the MCP endpoint.
 The original decision below remains historical evidence.
 

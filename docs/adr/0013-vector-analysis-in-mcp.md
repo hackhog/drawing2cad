@@ -1,4 +1,4 @@
-# 12. Keep drawing analysis inside the MCP package
+# 13. Keep drawing analysis inside the MCP package
 
 Date: 2026-10-17
 
@@ -7,6 +7,7 @@ Date: 2026-10-17
 Accepted. Replaces the separate extractor package and its CLI.
 Supersedes the packaging and execution decisions in [ADR 0003](0003-vector-extractor-as-fact-base.md) and [ADR 0009](0009-drawing-extract-as-mcp-tool.md).
 Updates the module location in [ADR 0004](0004-text-by-glyph-templates.md) and the demo dependency in [ADR 0006](0006-demo-as-one-container-docker-compose.md).
+Amends the backend dependency in [ADR 0012](0012-demo-app-as-frontend-and-backend-container.md). The two-container design remains unchanged.
 Their original observations remain historical evidence. They are not new test results.
 
 ## Context
@@ -43,7 +44,7 @@ Colored overlay exports and complete JSON-file exports are outside this change.
 5. Report built-in analysis status through `drawing2cad_status.drawing_analysis`.
 6. Remove the standalone package, CLI, installation instructions, and template-building scripts.
 7. Keep the analysis regression tests with the MCP tests. Keep their source evidence outside the skill package.
-8. Use `PdfService` from the demo API. Do not register a second MCP server.
+8. Use `PdfService` from the demo backend API. Do not register a second MCP server.
 
 The MCP still supplies six local tools and dynamically discovered `freecad_*` tools.
 It supplies no new overlay or JSON-file export tool.

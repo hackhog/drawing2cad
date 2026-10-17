@@ -23,7 +23,7 @@ Details: [app/README.md](app/README.md).
 
 Interactive version: [`docs/diagrams/drawing2cad-overview.html`](docs/diagrams/drawing2cad-overview.html)
 (open it locally in a browser). The image is built from `docs/diagrams/drawing2cad-overview.json`, never by hand.
-After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks the result
+After a change, run `npm run build --prefix tools/diagrams`. The CI checks the result
 ([ADR 0011](docs/adr/0011-diagrams-in-readme-checked-by-ci.md)).
 
 ## Project structure
@@ -34,7 +34,7 @@ After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks th
 | [Streamable HTTP guide](drawing2cad-mcp/STREAMABLE_HTTP.md) | Installation, authentication, LiteLLM, network setup, and troubleshooting |
 | [skills/drawing2cad/](skills/drawing2cad/SKILL.md) | Skill, workflow, adapter instructions, and references |
 | [Vector analysis](drawing2cad-mcp/README.md#vector-analysis) | Built-in MCP analysis: classified strokes, views, and text from glyph outlines |
-| [app/](app/README.md) | Demo UI (FastAPI + React): upload PDFs, review MCP analysis, and view a 3D model |
+| [app/](app/README.md) | Demo UI: upload PDFs, review MCP analysis, and view a 3D model. Separate [frontend](app/frontend/README.md) and [backend](app/backend/README.md) containers |
 | [docs/adr/](docs/adr/README.md) | Architecture decisions, including the MCP and former extractor comparison |
 | [docs/diagrams/](docs/diagrams/drawing2cad-overview.json) | Architecture diagram: JSON source, interactive HTML, SVG for this README |
 | `tools/diagrams/` | Builds and checks the diagrams (archify, Playwright), not part of the app build |
@@ -60,7 +60,7 @@ MCP registration supplies tools. The agent must also load the skill instructions
 
 The MCP supplies PDF metadata, text, vector analysis, page images, detail images, and FreeCAD tools.
 The demo API uses the same Python PDF service. There is no separate extractor package or CLI.
-See [ADR 0012](docs/adr/0012-vector-analysis-in-mcp.md) for the feature comparison and migration decision.
+See [ADR 0013](docs/adr/0013-vector-analysis-in-mcp.md) for the feature comparison and migration decision.
 The HTTP transport does not supply a headless CAD worker, web interface, or download service.
 Test CAD history, semantic PMI, and exports without a GUI for each adapter and tool version.
 A successful STEP export does not prove these properties.

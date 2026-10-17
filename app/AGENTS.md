@@ -1,8 +1,10 @@
 # Work instructions for drawing-demo
 
 This app uses the shared `drawing2cad-mcp` PDF service.
-See [ADR 0006](../docs/adr/0006-demo-as-one-container-docker-compose.md) and
-[ADR 0010](../docs/adr/0010-demo-ui-in-react-with-3d-viewer.md) for the UI design history.
+See [ADR 0012](../docs/adr/0012-demo-app-as-frontend-and-backend-container.md) for the separate frontend and backend containers.
+See [ADR 0013](../docs/adr/0013-vector-analysis-in-mcp.md) for the shared analysis service.
+The UI design history is in [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md),
+[ADR 0008](../docs/adr/0008-demo-ui-light-dashboard.md), and [ADR 0010](../docs/adr/0010-demo-ui-in-react-with-3d-viewer.md).
 
 ## Rules
 
@@ -11,13 +13,17 @@ See [ADR 0006](../docs/adr/0006-demo-as-one-container-docker-compose.md) and
 - Compare the source hashes from analysis and rendering. Reject a result if the hashes differ.
 - The app can derive review flags from service results. Keep unclear strokes and unrecognized text characters visible.
 - Keep the browser response compatible unless you also update its types and consumers.
-- Use React and TypeScript in `web/`. Vite builds the UI into ignored `src/drawing_demo/static/`.
+- Keep two containers: `frontend/` supplies the React UI through nginx; `backend/` supplies the FastAPI API without static files.
+- Use relative `/api/...` paths in the UI. Do not add a backend URL to the UI code.
+- Use React and TypeScript in `frontend/`. Vite builds the UI into ignored `frontend/dist/`.
 - Do not use a CDN, external scripts, or external fonts. The UI must work offline. Install npm packages with exact versions.
 - Keep three.js and react-three-fiber in the lazy-loaded `ModelViewer.tsx` module.
 - SVG coordinates use sheet millimeters, with the Y axis down. Keep the established UI class colors.
-- The Docker image includes `drawing2cad-mcp/` and `app/`. It must not include input data or local configuration.
-- The MCP package is a non-editable path dependency. After an MCP change, run `uv sync --reinstall-package drawing2cad-mcp`.
-- After a change, run `uv run pytest` and `npm run build --prefix web`. Also test the container when Docker is available.
+- The backend image includes `drawing2cad-mcp/` and `app/backend/`. The frontend image contains the UI build.
+- Do not include input data or local configuration in either image.
+- The MCP package is a non-editable path dependency. After an MCP change, run `uv sync --reinstall-package drawing2cad-mcp` in `backend/`.
+- After a change, run `uv run pytest` in `backend/` and `npm run build` in `frontend/`.
+- Test both containers with Docker Compose when Docker is available.
 - Test PDF upload and the STEP viewer in the browser when browser access is available. Report tests that could not run.
 
 The demo uses the first PDF page and the built-in BCT/NX analysis profile.

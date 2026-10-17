@@ -11,7 +11,7 @@ wie sie in alten, von Hand nachbearbeiteten Zeichnungen vorkommen:
 Die Positionen sind auf den Flansch zugeschnitten (Blatt-mm, Ursprung oben links). Das Ergebnis ist erzeugt und gehört
 deshalb nach `output/` (ignoriert, kommt nicht ins Docker-Image).
 
-    uv run python scripts/make_demo_drawing.py ../resources/Drawing2CAD/Flansch/Flansch_dwg.pdf ../output/demo/Flansch-Demo_dwg.pdf
+    uv run python scripts/make_demo_drawing.py ../../resources/Drawing2CAD/Flansch/Flansch_dwg.pdf ../../output/demo/Flansch-Demo_dwg.pdf
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ def plus_minus(page: pymupdf.Page, x: float, bottom: float) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("src", type=Path, help="Flansch_dwg.pdf aus den Samples")
-    ap.add_argument("out", type=Path, help="Ziel-PDF, z. B. ../output/demo/Flansch-Demo_dwg.pdf")
+    ap.add_argument("out", type=Path, help="Ziel-PDF, z. B. ../../output/demo/Flansch-Demo_dwg.pdf")
     args = ap.parse_args(argv)
 
     doc = pymupdf.open(args.src)

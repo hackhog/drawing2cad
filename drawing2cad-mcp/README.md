@@ -317,7 +317,7 @@ For visual review, use `pdf_render_page` and `pdf_crop_region`.
 Create and review a dimensioned technical drawing from the verified observations.
 Then build the editable 3D model and export STEP AP242 last.
 Vector analysis does not author drawings, build CAD features, or supply semantic PMI.
-See [ADR 0012](../docs/adr/0012-vector-analysis-in-mcp.md) for the feature comparison and package migration.
+See [ADR 0013](../docs/adr/0013-vector-analysis-in-mcp.md) for the feature comparison and package migration.
 
 ## Behavior and limits
 

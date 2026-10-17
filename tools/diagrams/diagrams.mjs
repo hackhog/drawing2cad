@@ -106,7 +106,7 @@ if (!check) {
   writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
 } else if (problems.length) {
   console.error(problems.map((p) => `✗ ${p}`).join('\n'));
-  console.error('→ run "npm run diagrams --prefix tools/diagrams" locally, then commit all files in docs/diagrams');
+  console.error('→ run "npm run build --prefix tools/diagrams" locally, then commit all files in docs/diagrams');
   process.exit(1);
 } else {
   console.log(`✓ ${names.length} diagrams up to date (${names.join(', ')})`);

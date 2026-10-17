@@ -1,14 +1,14 @@
-# Include only application source and package metadata. Exclude input data.
+# The backend context contains the MCP package and backend source only.
+# The frontend image uses app/frontend/ and its own .dockerignore.
 *
 !drawing2cad-mcp/
-!app/
+!app/backend/
 **/.venv
 **/node_modules
-app/src/drawing_demo/static
 **/__pycache__
 **/.pytest_cache
 drawing2cad-mcp/tests
 drawing2cad-mcp/*.local.toml
 drawing2cad-mcp/output
-app/tests
-app/scripts
+app/backend/tests
+app/backend/scripts

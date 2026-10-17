@@ -1,12 +1,23 @@
 # Local demo: docker compose up --build, then open http://localhost:8000.
 services:
-  app:
+  backend:
     build:
-      context: .
-      dockerfile: app/Dockerfile
-    image: drawing2cad-app:local
-    ports:
-      - "127.0.0.1:8000:8000"   # Bind to the local computer only.
+      context: .                # The MCP package is a path dependency at the repository root.
+      dockerfile: app/backend/Dockerfile
+    image: drawing2cad-backend:local
+    # Only the frontend can reach this API through the Compose network.
     read_only: true
     tmpfs:
       - /tmp                    # Keep uploads and render artifacts only during each request.
+
+  frontend:
+    build: app/frontend
+    image: drawing2cad-frontend:local
+    ports:
+      - "127.0.0.1:8000:8080"   # Bind to the local computer only.
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp                    # nginx PID file and temporary upload data.

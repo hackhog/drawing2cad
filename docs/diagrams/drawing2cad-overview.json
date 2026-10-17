@@ -12,13 +12,13 @@
       "id": "engineer",
       "type": "external",
       "label": "Engineer",
-      "sublabel": "browser, drawing PDFs",
+      "sublabel": "browser, PDFs and STEP",
       "pos": [
         40,
         200
       ],
       "size": [
-        150,
+        160,
         64
       ]
     },
@@ -26,13 +26,13 @@
       "id": "webui",
       "type": "frontend",
       "label": "Demo UI",
-      "sublabel": "React, Vite, three.js",
+      "sublabel": "React, three.js, nginx",
       "pos": [
-        300,
+        310,
         200
       ],
       "size": [
-        150,
+        170,
         64
       ]
     },
@@ -40,13 +40,13 @@
       "id": "api",
       "type": "backend",
       "label": "Demo API",
-      "sublabel": "FastAPI :8000, review flags",
+      "sublabel": "FastAPI + MCP PdfService",
       "pos": [
-        660,
+        670,
         200
       ],
       "size": [
-        160,
+        180,
         64
       ]
     },
@@ -56,28 +56,27 @@
       "label": "STEP mesher",
       "sublabel": "cascadio, OpenCASCADE",
       "pos": [
-        665,
+        680,
         40
-      ],
-      "size": [
-        150,
-        64
-      ]
-    },
-    {
-      "id": "pdfservice",
-      "type": "backend",
-      "label": "MCP PDF service",
-      "sublabel": "source hash, analysis, images",
-      "pos": [
-        940,
-        200
       ],
       "size": [
         160,
         64
+      ]
+    },
+    {
+      "id": "demovector",
+      "type": "backend",
+      "label": "Vector analysis",
+      "sublabel": "isolated request process",
+      "pos": [
+        1010,
+        200
       ],
-      "tag": "shared Python service"
+      "size": [
+        170,
+        64
+      ]
     },
     {
       "id": "agent",
@@ -85,8 +84,8 @@
       "label": "AI agent",
       "sublabel": "drawing2cad skill",
       "pos": [
-        665,
-        400
+        320,
+        440
       ],
       "size": [
         150,
@@ -99,11 +98,11 @@
       "label": "LiteLLM",
       "sublabel": "optional MCP client",
       "pos": [
-        945,
-        580
+        320,
+        630
       ],
       "size": [
-        150,
+        160,
         64
       ]
     },
@@ -111,13 +110,27 @@
       "id": "mcp",
       "type": "backend",
       "label": "drawing2cad-mcp",
-      "sublabel": "stdio + HTTP /mcp",
+      "sublabel": "PDF service and CAD proxy",
       "pos": [
-        945,
-        400
+        670,
+        440
       ],
       "size": [
-        150,
+        180,
+        64
+      ]
+    },
+    {
+      "id": "mcpvector",
+      "type": "backend",
+      "label": "Vector analysis",
+      "sublabel": "isolated request process",
+      "pos": [
+        1010,
+        440
+      ],
+      "size": [
+        170,
         64
       ]
     },
@@ -127,11 +140,11 @@
       "label": "FreeCAD MCP",
       "sublabel": "upstream CAD tools",
       "pos": [
-        1225,
-        400
+        680,
+        630
       ],
       "size": [
-        150,
+        160,
         64
       ]
     },
@@ -141,25 +154,11 @@
       "label": "STEP AP242",
       "sublabel": "export and adapter tests",
       "pos": [
-        1225,
-        580
+        1010,
+        630
       ],
       "size": [
-        150,
-        64
-      ]
-    },
-    {
-      "id": "vector",
-      "type": "backend",
-      "label": "Vector analysis",
-      "sublabel": "MCP request process",
-      "pos": [
-        1225,
-        200
-      ],
-      "size": [
-        150,
+        170,
         64
       ]
     }
@@ -167,10 +166,18 @@
   "boundaries": [
     {
       "kind": "region",
-      "label": "Demo HTTP API",
+      "label": "Frontend container",
+      "wraps": [
+        "webui"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Backend container",
       "wraps": [
         "api",
-        "mesher"
+        "mesher",
+        "demovector"
       ]
     }
   ],
@@ -179,14 +186,14 @@
       "id": "upload",
       "from": "engineer",
       "to": "webui",
-      "label": "upload PDFs",
+      "label": "upload PDFs / STEP",
       "variant": "emphasis"
     },
     {
       "id": "http",
       "from": "webui",
       "to": "api",
-      "label": "/api/extract, /api/model",
+      "label": "nginx /api proxy",
       "variant": "emphasis"
     },
     {
@@ -196,16 +203,16 @@
       "label": "STEP to GLB"
     },
     {
-      "id": "extract",
+      "id": "demoanalysis",
       "from": "api",
-      "to": "pdfservice",
-      "label": "PdfService"
+      "to": "demovector",
+      "label": "snapshot + timeout"
     },
     {
       "id": "stdio",
       "from": "agent",
       "to": "mcp",
-      "label": "stdio or HTTP"
+      "label": "stdio or HTTP /mcp"
     },
     {
       "id": "litellm-http",
@@ -214,10 +221,10 @@
       "label": "HTTP /mcp"
     },
     {
-      "id": "tool",
+      "id": "mcpanalysis",
       "from": "mcp",
-      "to": "pdfservice",
-      "label": "PDF tool calls"
+      "to": "mcpvector",
+      "label": "snapshot + timeout"
     },
     {
       "id": "proxy",
@@ -231,50 +238,47 @@
       "to": "step",
       "label": "export",
       "variant": "dashed"
-    },
-    {
-      "id": "analyze",
-      "from": "pdfservice",
-      "to": "vector",
-      "label": "snapshot + timeout"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Demo flow",
+      "title": "Demo containers",
       "items": [
-        "1 Drawing, 2 Recognized, 3 Review, 4 3D model",
-        "Review lists unclear strokes and '?' text: marked, not guessed",
-        "Tab 4 shows a pipeline STEP, meshed to GLB on the server"
+        "nginx serves the UI and sends /api requests to FastAPI",
+        "Only the frontend port is published on the host",
+        "The backend uses MCP PDF preparation and review checks",
+        "The viewer displays an uploaded STEP file as a GLB mesh"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Built-in drawing analysis",
+      "title": "Shared analysis code",
       "items": [
+        "Demo and MCP load the same drawing2cad_mcp PDF service",
+        "Each runtime starts a separate vector process per request",
         "Page 1: classified strokes, views, and candidate glyph text",
-        "Demo and MCP call the same Python PDF service",
-        "Separate process per request; inspect critical values in images",
-        "No standalone extractor package or CLI"
+        "Inspect critical values in images; no standalone extractor"
       ]
     },
     {
       "dot": "rose",
-      "title": "Rules",
+      "title": "Workflow requirements",
       "items": [
-        "Ground-truth STEP files are never a pipeline input",
-        "Drawing first, then 3D model, STEP export last",
-        "Uploaded PDFs stay in a temp directory, not stored"
+        "Validation-only STEP files are not construction inputs",
+        "Create and review a dimensioned drawing before the 3D model",
+        "Keep model operations editable; export STEP last",
+        "Uploaded demo files use temporary storage"
       ]
     },
     {
       "dot": "cyan",
-      "title": "MCP transport",
+      "title": "MCP scope",
       "items": [
         "Streamable HTTP clients share one FreeCAD proxy and CAD state",
-        "Stdio remains available; HTTP does not make FreeCAD headless",
-        "Headless CAD and semantic AP242 still require separate tests"
+        "The MCP runtime is separate from the demo HTTP backend",
+        "HTTP transport does not make the FreeCAD upstream headless",
+        "Headless CAD and semantic AP242 need separate validation"
       ]
     }
   ]

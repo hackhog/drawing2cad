@@ -6,7 +6,7 @@ Date: 2026-10-16
 
 Accepted. Extended by ADR 0004 (text).
 
-The separate package and CLI outputs are superseded by [ADR 0012](0012-vector-analysis-in-mcp.md).
+The separate package and CLI outputs are superseded by [ADR 0013](0013-vector-analysis-in-mcp.md).
 Current analysis code is in `drawing2cad-mcp/src/drawing2cad_mcp/vector/`.
 The original decision and observations below remain historical evidence.
 

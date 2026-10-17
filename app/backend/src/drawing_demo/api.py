@@ -1,4 +1,4 @@
-"""Serve the demo UI and process uploaded PDFs through the MCP PDF service.
+"""Process uploaded PDFs through the MCP PDF service.
 
 Temporary input files and render artifacts are removed after each request.
 """
@@ -15,7 +15,6 @@ import cascadio
 from drawing2cad_mcp import __version__ as mcp_version
 from drawing2cad_mcp.pdf import PdfError, PdfService
 from fastapi import FastAPI, HTTPException, Response, UploadFile
-from fastapi.staticfiles import StaticFiles
 
 from .review import review_flags
 
@@ -26,7 +25,6 @@ STEP_TOL_LINEAR = 0.05
 STEP_TOL_ANGULAR = 0.3
 PAGE_DPI = 102
 PAGE_PX_PER_MM = PAGE_DPI / 25.4
-STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Drawing2CAD Demo", version="0.1.0")
 
@@ -103,7 +101,3 @@ def step_to_glb(file: UploadFile) -> Response:
     if not glb.startswith(b"glTF"):
         raise HTTPException(422, "STEP enthält keine Körper")
     return Response(glb, media_type="model/gltf-binary")
-
-
-# Register static files last to preserve /api/* routes. The API also works without a UI build.
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True, check_dir=False), name="ui")

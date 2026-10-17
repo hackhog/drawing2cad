@@ -21,7 +21,7 @@ If the HTML or SVG is changed by hand, it does not agree with the source any mor
 ## Decision
 
 1. **Versioned source:** `docs/diagrams/<name>.json` is the only source. Do not edit the HTML or the SVGs by hand.
-2. **Local build:** `npm run diagrams --prefix tools/diagrams`. For each JSON: `archify finalize` gives the HTML,
+2. **Local build:** `npm run build --prefix tools/diagrams`. For each JSON: `archify finalize` gives the HTML,
    then the export dialog of the viewer gives the light and dark SVG (Playwright with the local Google Chrome),
    then `docs/diagrams/diagrams.lock.json` records the SHA-256 of JSON, HTML and SVGs.
    archify evidence goes to `.archify/`. Delivery receipts with local paths (`*.delivery*.json`) are ignored by Git.

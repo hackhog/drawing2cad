@@ -1,7 +1,7 @@
 [project]
 name = "drawing-demo"
 version = "0.1.0"
-description = "Drawing2CAD demo UI with PDF analysis through drawing2cad-mcp"
+description = "Drawing2CAD demo API with PDF analysis through drawing2cad-mcp"
 readme = "README.md"
 authors = [
     { name = "dernerl", email = "50828248+dernerl@users.noreply.github.com" }
@@ -30,7 +30,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-drawing2cad-mcp = { path = "../drawing2cad-mcp", editable = false }
+drawing2cad-mcp = { path = "../../drawing2cad-mcp", editable = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

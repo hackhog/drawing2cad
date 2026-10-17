@@ -1,4 +1,4 @@
-"""Drawing2CAD demo UI for the shared MCP PDF service (ADR 0006)."""
+"""Drawing2CAD demo API for the shared MCP PDF service (ADR 0012)."""
 
 from __future__ import annotations
 

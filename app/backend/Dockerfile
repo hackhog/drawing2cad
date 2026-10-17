@@ -1,15 +1,6 @@
-# Demo app (ADR 0006, 0010). Use the repository root as the build context.
-#   docker compose build   or   docker build -f app/Dockerfile .
-
-# Stage 1 builds the static UI. The runtime image does not need Node.js.
-FROM node:24.21.0-slim AS web
-WORKDIR /src/app/web
-COPY app/web/package.json app/web/package-lock.json ./
-RUN npm ci --no-audit --no-fund
-COPY app/web/ ./
-RUN npm run build
-
-# Stage 2 serves the API and UI with the shared MCP PDF service.
+# Demo backend (ADR 0012): the API uses the shared MCP PDF service.
+# Use the repository root as the build context for the MCP path dependency.
+#   docker compose build   or   docker build -f app/backend/Dockerfile .
 FROM python:3.12-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
@@ -25,15 +16,14 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /src
 COPY drawing2cad-mcp/ drawing2cad-mcp/
-COPY app/ app/
-COPY --from=web /src/app/src/drawing_demo/static/ app/src/drawing_demo/static/
+COPY app/backend/ app/backend/
 
-WORKDIR /src/app
+WORKDIR /src/app/backend
 RUN uv sync --locked --no-dev --no-editable \
     && useradd --system --uid 10001 --no-create-home demo
 
 USER demo
-ENV PATH="/src/app/.venv/bin:$PATH" \
+ENV PATH="/src/app/backend/.venv/bin:$PATH" \
     HOST=0.0.0.0 \
     PORT=8000
 EXPOSE 8000

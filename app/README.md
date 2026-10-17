@@ -2,7 +2,18 @@
 
 This demo uses the PDF service from `drawing2cad-mcp`.
 Upload a drawing PDF to examine its vector analysis and review flags.
-The app imports `PdfService` in the same process. It does not duplicate PDF analysis or expose an MCP protocol endpoint.
+The API imports `PdfService` in the same process. It does not duplicate PDF analysis or expose an MCP protocol endpoint.
+
+The app has two parts, each with its own container ([ADR 0012](../docs/adr/0012-demo-app-as-frontend-and-backend-container.md)):
+
+| Part | Contents | Container |
+|---|---|---|
+| [frontend/](frontend/README.md) | React and TypeScript UI, review sequence, and 3D viewer | nginx serves the UI and forwards `/api` requests |
+| [backend/](backend/README.md) | FastAPI, shared PDF service, review flags, and STEP-to-GLB display conversion | Python, accessible through the Compose network |
+
+The browser connects to the frontend at `127.0.0.1:8000`.
+The frontend forwards `/api` requests to `backend:8000`.
+The backend uses the MCP package as a Python dependency.
 
 ## Build and run
 
@@ -13,28 +24,33 @@ docker compose up --build
 ```
 
 Open `http://localhost:8000`.
-The image contains the app, the MCP package, and Poppler.
-It excludes source drawings and local configuration.
-The container runs with a read-only file system. Temporary uploads and render artifacts use `/tmp`.
+If a Compose project with the former single `app` service still runs, add `--remove-orphans` once.
+The backend image includes the MCP package and Poppler.
+Neither image includes source drawings or local configuration.
+Both containers use a read-only file system. Temporary uploads and render artifacts use `/tmp`.
 
-For a local installation, use Python 3.12 or later, uv, Node.js 22.12 or later, and Poppler:
+For a local installation, use Python 3.12 or later, uv, Node.js 22.12 or later, and Poppler.
+Put `pdftoppm` on `PATH`, or set `DRAWING2CAD_PDFTOPPM` to its executable path.
+
+Start the API in one terminal:
 
 ```bash
-cd app/web
-npm ci
-npm run build
-cd ..
+cd app/backend
 uv sync --locked
-uv run pytest
 uv run drawing-demo
 ```
 
-Put `pdftoppm` on `PATH`, or set `DRAWING2CAD_PDFTOPPM` to its executable path.
-Without a UI build, the API remains available.
-For UI development, start the API and run `npm run dev` in `web/`.
-Vite forwards `/api` requests to port 8000.
+Start the UI in another terminal:
 
-After an MCP source change, refresh the non-editable dependency:
+```bash
+cd app/frontend
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173` for UI development.
+Vite forwards `/api` requests to port 8000.
+After an MCP source change, refresh the non-editable dependency from `app/backend/`:
 
 ```bash
 uv sync --reinstall-package drawing2cad-mcp
@@ -59,9 +75,9 @@ The UI includes its font and libraries. It does not use a CDN.
 
 ## PDF processing
 
-The app supplies each upload to `PdfService.extract_drawing` and `PdfService.render_page`.
+The API supplies each upload to `PdfService.extract_drawing` and `PdfService.render_page`.
 Both operations use one temporary source file.
-The app compares their source hashes before it returns a result.
+The API compares their source hashes before it returns a result.
 It removes the source file and render artifacts when the request ends.
 The response includes source and render hashes without temporary server paths.
 
@@ -72,7 +88,7 @@ Its stroke classes, outline-glyph templates, and view grouping are heuristic evi
 It does not provide general OCR, complete dimension interpretation, or a verified CAD model.
 Review all unclear data before drawing or CAD work.
 
-The app uses Poppler at 102 DPI for the page image.
+The API uses Poppler at 102 DPI for the page image.
 The response gives the image scale in pixels per millimeter.
 PDF size, rendering time, and image pixel limits apply through the shared service.
 The PDF upload limit is 20 MiB. The STEP upload limit is 50 MiB.
@@ -97,15 +113,15 @@ Use the drawing-first workflow and separate CAD validation for model production.
 
 ## Structure and validation
 
-- `src/drawing_demo/api.py`: upload limits, shared PDF service calls, STEP display conversion, and static UI routes.
-- `src/drawing_demo/review.py`: review flags derived from drawing data.
-- `web/`: React and TypeScript UI.
-- `src/drawing_demo/static/`: ignored UI build output.
-- `Dockerfile`: Node.js build stage and Python runtime stage.
+- `backend/src/drawing_demo/api.py`: upload limits, shared PDF service calls, and STEP display conversion.
+- `backend/src/drawing_demo/review.py`: review flags derived from drawing data.
+- `backend/Dockerfile`: Python runtime with the MCP package and Poppler.
+- `frontend/`: React and TypeScript UI, nginx configuration, and frontend Dockerfile.
+- `frontend/dist/`: ignored UI build output.
 
-Run `uv run pytest` for API and review tests.
+Run `uv run pytest` in `backend/` for API and review tests.
 Sample-based tests are skipped when their inputs are absent.
 Synthetic tests verify the shared service boundary, hash agreement, and temporary-file cleanup.
-Run `npm run build --prefix web` for the frontend type check and build.
-Run `docker compose build` for the container build.
+Run `npm run build` in `frontend/` for the type check and build.
+Run `docker compose build` at the repository root for both container builds.
 These commands describe the test procedure. They do not assert a completed test run.

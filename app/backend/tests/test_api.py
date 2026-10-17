@@ -12,14 +12,13 @@ from pypdf import PdfWriter
 from drawing_demo import api
 from drawing_demo.api import app
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_DIR = next(
     (p for p in (ROOT / "resources" / "Drawing2CAD", ROOT / "data" / "samples") if p.is_dir()),
     ROOT / "data" / "samples",
 )
 SAMPLES = sorted(SAMPLE_DIR.glob("*/*_dwg.pdf"))
 STEPS = sorted(SAMPLE_DIR.glob("*/*.stp"))
-UI_BUILT = (Path(__file__).resolve().parents[1] / "src" / "drawing_demo" / "static" / "index.html").exists()
 POPPLER = shutil.which(os.environ.get("DRAWING2CAD_PDFTOPPM", "pdftoppm"))
 
 client = TestClient(app)
@@ -31,11 +30,9 @@ def test_health():
     assert data["drawing2cad_mcp_version"] == api.mcp_version
 
 
-@pytest.mark.skipif(not UI_BUILT, reason="Build the UI with npm run build in web/.")
-def test_ui_is_served():
-    res = client.get("/")
-    assert res.status_code == 200
-    assert "Drawing2CAD" in res.text
+def test_api_does_not_serve_ui():
+    # The frontend container serves the UI (ADR 0012).
+    assert client.get("/").status_code == 404
 
 
 def test_rejects_non_pdf():

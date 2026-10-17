@@ -41,5 +41,5 @@
 ## Architecture diagram
 
 - The source of the README image is `docs/diagrams/drawing2cad-overview.json` ([ADR 0011](docs/adr/0011-diagrams-in-readme-checked-by-ci.md)).
-- Do not edit the HTML or the SVGs in `docs/diagrams/` by hand. Change the JSON, run `npm run diagrams --prefix tools/diagrams`, and commit all files in `docs/diagrams/`.
+- Do not edit the HTML or the SVGs in `docs/diagrams/` by hand. Change the JSON, run `npm run build --prefix tools/diagrams`, and commit all files in `docs/diagrams/`.
 - If the architecture changes (new component, new interface, new client), update the overview in the same PR.
