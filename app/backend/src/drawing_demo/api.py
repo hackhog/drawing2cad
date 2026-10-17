@@ -161,6 +161,7 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     view = {key: record[key] for key in ("run_id", "source_id", "phase", "job", "error")}
     view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
     view["agent"] = record.get("agent")
+    view["iterations"] = record.get("iterations")  # Records from before this field have none.
     view.update(part=None, review=None, artifacts=[], simulated=False)
     if record["part_run_id"] is None or record["job"]["status"] in ("queued", "running"):
         return view
