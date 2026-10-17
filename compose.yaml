@@ -1,0 +1,12 @@
+# Lokale Demo: docker compose up --build  →  http://localhost:8000
+services:
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    image: drawing2cad-app:local
+    ports:
+      - "127.0.0.1:8000:8000"   # nur vom eigenen Rechner erreichbar
+    read_only: true
+    tmpfs:
+      - /tmp                    # hochgeladene PDFs liegen nur hier und nur während der Anfrage

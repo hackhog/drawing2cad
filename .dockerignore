@@ -1,0 +1,11 @@
+# Nur Extraktor und App gehören ins Image, keine Eingabedaten (data/).
+*
+!extractor/
+!app/
+**/.venv
+**/__pycache__
+**/.pytest_cache
+extractor/out
+extractor/tests
+extractor/scripts
+app/tests

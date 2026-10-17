@@ -1,0 +1,378 @@
+"""Regelbasierte Einordnung der Striche.
+
+Die Strichstärke allein trägt keine verlässliche Bedeutung: Je nach Zeichnung sind Konturen
+0,18–0,35 mm breit, und Maßlinien können genauso breit sein wie Konturen. Deshalb arbeiten
+die Regeln vor allem geometrisch, in dieser Reihenfolge:
+
+1. Schnittverlauf: Stärke ≥ 0,45 mm oder großer Pfeil (Basis > 2 mm) samt Schaft und Strich
+2. Maßpfeile: schmale geschlossene Dreiecke samt ihren Füllstrichen
+3. Maßlinien: Striche durch eine Pfeilspitze in Pfeilrichtung, plus kollineare Fortsetzungen
+4. Maßhilfslinien: quer zur Maßlinie, mit kurzem freiem Überstand, auch über Lücken hinweg
+5. Schraffur: Scharen paralleler Linien mit gleichem Abstand
+6. Strichlinien: unterbrochene Linien/Kreise auf demselben Träger (Strich-Punkt = Mittellinie)
+7. Mittelkreuze: dünne Linien durch Kreismittelpunkte
+8. Rest: Kontur
+"""
+
+from __future__ import annotations
+
+import math
+from collections import defaultdict
+from dataclasses import dataclass
+
+from .geometry import Grid, angle_diff, expand, point_segment_distance
+from .model import Arc, Kind, Line, Point, Stroke
+
+_TOUCH = 0.06  # mm: Punkte gelten als identisch / berührend
+_CUTTING_PLANE_WIDTH = 0.45  # mm
+_ARROW_MAX_SIDE = 10.0  # mm
+_ARROW_MAX_BASE = 4.5  # mm
+_DIM_ARROW_MAX_BASE = 2.0  # mm; größere Pfeile markieren Schnittverläufe
+_EXTENSION_MAX_GAP = 8.0  # mm; Maßhilfslinien werden an Kreuzungen mit Maßlinien unterbrochen
+
+
+@dataclass(slots=True)
+class ArrowHead:
+    tip: Point
+    direction_deg: float  # Achse Basis → Spitze, modulo 180°
+
+
+def classify(strokes: list[Stroke]) -> list[ArrowHead]:
+    """Setzt `kind` jedes Strichs. Gibt die gefundenen Pfeile zurück."""
+    grid = Grid()
+    for s in strokes:
+        grid.insert(s.id, expand(s.bbox(), _TOUCH))
+
+    for s in strokes:
+        if s.width_mm >= _CUTTING_PLANE_WIDTH:
+            s.kind = Kind.CUTTING_PLANE
+
+    arrows = _find_arrows(strokes, grid)
+    _find_dimension_lines(strokes, grid, arrows)
+    _find_extension_lines(strokes, grid, arrows)
+    _find_hatching(strokes, grid)
+    _find_dashed(strokes)
+    _find_center_marks(strokes)
+    for s in strokes:
+        if s.kind is Kind.UNCLEAR:
+            s.kind = Kind.CONTOUR
+    return arrows
+
+
+def _open(s: Stroke) -> bool:
+    return s.kind is Kind.UNCLEAR
+
+
+def _lines(strokes: list[Stroke]) -> list[Stroke]:
+    return [s for s in strokes if isinstance(s.geom, Line)]
+
+
+def _near(grid: Grid, strokes: list[Stroke], p: Point) -> list[Stroke]:
+    return [strokes[i] for i in grid.query((p[0], p[1], p[0], p[1]))]
+
+
+def _same(p: Point, q: Point) -> bool:
+    return math.dist(p, q) < _TOUCH
+
+
+def _in_triangle(p: Point, a: Point, b: Point, c: Point) -> bool:
+    """Punkt liegt im Dreieck oder höchstens _TOUCH von seinem Rand entfernt."""
+
+    def side(p1: Point, p2: Point, p3: Point) -> float:
+        return (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1])
+
+    d1, d2, d3 = side(p, a, b), side(p, b, c), side(p, c, a)
+    if not ((d1 < 0 or d2 < 0 or d3 < 0) and (d1 > 0 or d2 > 0 or d3 > 0)):
+        return True
+    return min(point_segment_distance(p, u, v)[0] for u, v in ((a, b), (b, c), (c, a))) < _TOUCH
+
+
+def _same_path(a: Stroke, b: Stroke) -> bool:
+    """Gleicher oder direkt benachbarter PDF-Pfad: NX verteilt manche Pfeilspitzen auf zwei
+    aufeinanderfolgende Pfade (z. B. Maschinenteil, Winkelmaß 25,5°)."""
+    return abs(a.path_id - b.path_id) <= 1
+
+
+def _find_arrows(strokes: list[Stroke], grid: Grid) -> list[ArrowHead]:
+    arrows: list[ArrowHead] = []
+    for base in _lines(strokes):
+        g = base.geom
+        if not _open(base) or g.length > _ARROW_MAX_BASE:
+            continue
+        # zwei Schenkel, die an den Basisenden beginnen und sich in einer Spitze treffen
+        legs0 = [s for s in _near(grid, strokes, g.p0) if s is not base and isinstance(s.geom, Line)
+                 and _same_path(s, base) and _open(s) and any(_same(e, g.p0) for e in s.geom.endpoints())]
+        legs1 = [s for s in _near(grid, strokes, g.p1) if s is not base and isinstance(s.geom, Line)
+                 and _same_path(s, base) and _open(s) and any(_same(e, g.p1) for e in s.geom.endpoints())]
+        found = None
+        for l0 in legs0:
+            far0 = l0.geom.p1 if _same(l0.geom.p0, g.p0) else l0.geom.p0
+            for l1 in legs1:
+                far1 = l1.geom.p1 if _same(l1.geom.p0, g.p1) else l1.geom.p0
+                # gleichschenklig, Basis kürzeste Seite
+                if l0 is not l1 and _same_path(l0, l1) and _same(far0, far1) and g.length < l0.geom.length <= _ARROW_MAX_SIDE \
+                        and abs(l0.geom.length - l1.geom.length) < 0.05 * l0.geom.length:
+                    found = (l0, l1, far0)
+                    break
+            if found:
+                break
+        if not found:
+            continue
+        l0, l1, tip = found
+        kind = Kind.ARROW if g.length <= _DIM_ARROW_MAX_BASE else Kind.CUTTING_PLANE
+        tri = (g.p0, g.p1, tip)
+        x0, y0 = min(p[0] for p in tri), min(p[1] for p in tri)
+        x1, y1 = max(p[0] for p in tri), max(p[1] for p in tri)
+        for i in grid.query((x0, y0, x1, y1)):
+            s = strokes[i]
+            if _same_path(s, base) and isinstance(s.geom, Line) and _open(s) and all(
+                _in_triangle(e, *tri) for e in s.geom.endpoints()
+            ):
+                s.kind = kind
+        mid = ((g.p0[0] + g.p1[0]) / 2, (g.p0[1] + g.p1[1]) / 2)
+        direction = math.degrees(math.atan2(tip[1] - mid[1], tip[0] - mid[0])) % 180.0
+        if kind is Kind.ARROW:
+            arrows.append(ArrowHead(tip, direction))
+        else:
+            _mark_section_marker(strokes, grid, tip, direction)
+    return arrows
+
+
+def _mark_section_marker(strokes: list[Stroke], grid: Grid, tip: Point, direction: float) -> None:
+    """Schaft des Schnittpfeils und der kurze Strich der Schnittlinie, an dem er endet."""
+    for shaft in _near(grid, strokes, tip):
+        g = shaft.geom
+        if not (_open(shaft) and isinstance(g, Line) and angle_diff(g.angle, direction) < 2.0
+                and point_segment_distance(tip, g.p0, g.p1)[0] < _TOUCH):
+            continue
+        shaft.kind = Kind.CUTTING_PLANE
+        for e in g.endpoints():
+            for bar in _near(grid, strokes, e):
+                if _open(bar) and isinstance(bar.geom, Line) and angle_diff(bar.geom.angle, direction) > 60.0 \
+                        and point_segment_distance(e, bar.geom.p0, bar.geom.p1)[0] < _TOUCH:
+                    bar.kind = Kind.CUTTING_PLANE
+                    for piece in _collinear_continuations(bar, strokes, grid, max_gap=2.0):
+                        piece.kind = Kind.CUTTING_PLANE
+
+
+def _collinear_continuations(s: Stroke, strokes: list[Stroke], grid: Grid, max_gap: float) -> list[Stroke]:
+    """Offene Linien auf derselben Trägergeraden, die höchstens max_gap vor einem Ende von s beginnen."""
+    g = s.geom
+    ang, off = g.angle, _offset(g, g.angle)
+    out = []
+    for i in grid.query(expand(s.bbox(), max_gap)):
+        t = strokes[i]
+        if t is s or not _open(t) or not isinstance(t.geom, Line) or abs(t.width_mm - s.width_mm) > 1e-3:
+            continue
+        if angle_diff(t.geom.angle, ang) > 0.5 or abs(_offset(t.geom, ang) - off) > 0.02:
+            continue
+        gap = min(math.dist(a, b) for a in g.endpoints() for b in t.geom.endpoints())
+        if gap <= max_gap:
+            out.append(t)
+    return out
+
+
+def _arc_tangent_deg(arc: Arc, p: Point) -> float:
+    radial = math.degrees(math.atan2(p[1] - arc.center[1], p[0] - arc.center[0]))
+    return (radial + 90.0) % 180.0
+
+
+def _find_dimension_lines(strokes: list[Stroke], grid: Grid, arrows: list[ArrowHead]) -> None:
+    for arrow in arrows:
+        for s in _near(grid, strokes, arrow.tip):
+            if not _open(s):
+                continue
+            g = s.geom
+            if isinstance(g, Line):
+                hit = point_segment_distance(arrow.tip, g.p0, g.p1)[0] < _TOUCH
+                aligned = angle_diff(g.angle, arrow.direction_deg) < 2.0
+            else:
+                hit = abs(math.dist(arrow.tip, g.center) - g.radius) < _TOUCH
+                aligned = angle_diff(_arc_tangent_deg(g, arrow.tip), arrow.direction_deg) < 5.0
+            if hit and aligned:
+                s.kind = Kind.DIMENSION
+
+    # kollineare Fortsetzungen (Maßlinie durch Maßzahl oder Pfeil unterbrochen)
+    changed = True
+    while changed:
+        changed = False
+        for s in strokes:
+            if s.kind is not Kind.DIMENSION or not isinstance(s.geom, Line):
+                continue
+            for e in s.geom.endpoints():
+                for t in _near(grid, strokes, e):
+                    if _open(t) and isinstance(t.geom, Line) and angle_diff(t.geom.angle, s.geom.angle) < 1.0 \
+                            and any(_same(e, f) for f in t.geom.endpoints()):
+                        t.kind = Kind.DIMENSION
+                        changed = True
+
+
+def _is_free_end(p: Point, owner: Stroke, strokes: list[Stroke], grid: Grid) -> bool:
+    """Kein anderer Körper-Strich berührt diesen Punkt."""
+    for t in _near(grid, strokes, p):
+        if t is owner or t.kind in (Kind.DIMENSION, Kind.ARROW, Kind.EXTENSION, Kind.CUTTING_PLANE):
+            continue
+        g = t.geom
+        if isinstance(g, Line):
+            if point_segment_distance(p, g.p0, g.p1)[0] < _TOUCH:
+                return False
+        elif abs(math.dist(p, g.center) - g.radius) < _TOUCH:
+            return False
+    return True
+
+
+def _find_extension_lines(strokes: list[Stroke], grid: Grid, arrows: list[ArrowHead]) -> None:
+    anchors: list[tuple[Point, float]] = [(a.tip, a.direction_deg) for a in arrows]
+    for s in strokes:
+        if s.kind is Kind.DIMENSION and isinstance(s.geom, Line):
+            anchors += [(e, s.geom.angle) for e in s.geom.endpoints()]
+
+    for p, dim_dir in anchors:
+        for s in _near(grid, strokes, p):
+            if not _open(s) or not isinstance(s.geom, Line):
+                continue
+            g = s.geom
+            dist, t = point_segment_distance(p, g.p0, g.p1)
+            if dist > _TOUCH or angle_diff(g.angle, dim_dir) < 30.0:
+                continue
+            # Überstand: das nähere Ende liegt 0,3–6 mm hinter dem Ankerpunkt und ist frei
+            end = g.p0 if t < 0.5 else g.p1
+            overshoot = math.dist(p, end)
+            if 0.3 <= overshoot <= 6.0 and _is_free_end(end, s, strokes, grid):
+                s.kind = Kind.EXTENSION
+                _extend_across_gaps(s, strokes, grid)
+
+
+def _extend_across_gaps(s: Stroke, strokes: list[Stroke], grid: Grid) -> None:
+    """NX unterbricht Maßhilfslinien dort, wo sie eine andere Maßlinie kreuzen. Nur über solche
+    Lücken wird fortgesetzt; eine Lücke zur Körperkante (Normalfall) bleibt eine Grenze."""
+    todo = [s]
+    while todo:
+        cur = todo.pop()
+        for piece in _collinear_continuations(cur, strokes, grid, _EXTENSION_MAX_GAP):
+            a, b = min(((a, b) for a in cur.geom.endpoints() for b in piece.geom.endpoints()),
+                       key=lambda ab: math.dist(*ab))
+            mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            crossed = any(
+                t.kind is Kind.DIMENSION and isinstance(t.geom, Line)
+                and point_segment_distance(mid, t.geom.p0, t.geom.p1)[0] < math.dist(a, b) / 2 + _TOUCH
+                for t in _near(grid, strokes, mid)
+            )
+            if crossed:
+                piece.kind = Kind.EXTENSION
+                todo.append(piece)
+
+
+def _offset(g: Line, angle_deg: float) -> float:
+    """Senkrechter Abstand der Trägergeraden vom Ursprung."""
+    a = math.radians(angle_deg)
+    return -g.p0[0] * math.sin(a) + g.p0[1] * math.cos(a)
+
+
+def _along(p: Point, angle_deg: float) -> float:
+    a = math.radians(angle_deg)
+    return p[0] * math.cos(a) + p[1] * math.sin(a)
+
+
+def _find_hatching(strokes: list[Stroke], grid: Grid) -> None:
+    """Eine Linie ist Schraffur, wenn sie parallele Nachbarn im selben Abstand auf beiden
+    Seiten hat (bzw. zwei Nachbarn im Abstand s und 2s)."""
+    cands = [s for s in _lines(strokes) if _open(s) and s.geom.length > 0.5]
+    by_id = {s.id: s for s in cands}
+    hatch: set[int] = set()
+    for s in cands:
+        g = s.geom
+        ang = g.angle
+        off = _offset(g, ang)
+        lo, hi = sorted((_along(g.p0, ang), _along(g.p1, ang)))
+        spacings: list[float] = []
+        for i in grid.query(expand(s.bbox(), 5.0)):
+            t = by_id.get(i)
+            if t is None or t is s or angle_diff(t.geom.angle, ang) > 0.5 or t.width_mm != s.width_mm:
+                continue
+            tlo, thi = sorted((_along(t.geom.p0, ang), _along(t.geom.p1, ang)))
+            if thi < lo or tlo > hi:  # muss sich in Längsrichtung überlappen
+                continue
+            d = _offset(t.geom, ang) - off
+            if 0.3 < abs(d) <= 5.0:
+                spacings.append(d)
+        for d in spacings:
+            if any(abs(e + d) < 0.1 * abs(d) or abs(e - 2 * d) < 0.1 * abs(d) for e in spacings):
+                hatch.add(s.id)
+                break
+    for i in hatch:
+        by_id[i].kind = Kind.HATCH
+
+
+def _dash_kind(pieces: list[float]) -> Kind:
+    """Strich-Punkt-Linie wechselt lange und kurze Striche (bei BCT 14,7 / 3 mm),
+    eine Strichlinie hat gleich lange Striche."""
+    if len(pieces) >= 3 and max(pieces) > 2.5 * min(pieces):
+        return Kind.CENTERLINE
+    return Kind.HIDDEN
+
+
+def _find_dashed(strokes: list[Stroke]) -> None:
+    # Geraden: Stücke auf demselben Träger mit Lücken dazwischen
+    carriers: dict[tuple, list[Stroke]] = defaultdict(list)
+    for s in _lines(strokes):
+        if _open(s):
+            ang = round(s.geom.angle * 2) / 2 % 180.0
+            carriers[(ang, round(_offset(s.geom, ang) * 10), round(s.width_mm, 3))].append(s)
+    for (ang, _, _), group in carriers.items():
+        if len(group) < 3:
+            continue
+        spans = sorted(
+            ((sorted((_along(s.geom.p0, ang), _along(s.geom.p1, ang))), s) for s in group), key=lambda x: x[0]
+        )
+        # Läufe bilden: Stücke mit Lücke ≤ 4 mm (Überlappung erlaubt, z. B. Mittelkreuze)
+        run: list[tuple[list[float], Stroke]] = [spans[0]]
+        run_end, gaps = spans[0][0][1], 0
+        for item in spans[1:] + [None]:
+            if item is not None and item[0][0] - run_end <= 4.0:
+                gaps += item[0][0] - run_end >= 0.3
+                run.append(item)
+                run_end = max(run_end, item[0][1])
+                continue
+            if len(run) >= 3 and gaps >= 2:
+                kind = _dash_kind([hi - lo for (lo, hi), _ in run])
+                for _, s in run:
+                    s.kind = kind
+            if item is not None:
+                run, run_end, gaps = [item], item[0][1], 0
+
+    # Kreise: mehrere Bogenstücke mit gleichem Mittelpunkt und Radius
+    circles: dict[tuple, list[Stroke]] = defaultdict(list)
+    for s in strokes:
+        if isinstance(s.geom, Arc) and _open(s) and not s.geom.is_circle:
+            g = s.geom
+            circles[(round(g.center[0], 1), round(g.center[1], 1), round(g.radius, 1), round(s.width_mm, 3))].append(s)
+    for group in circles.values():
+        if len(group) >= 3:
+            kind = _dash_kind([s.geom.length for s in group])
+            for s in group:
+                s.kind = kind
+
+
+def _find_center_marks(strokes: list[Stroke]) -> None:
+    """Dünne Linien durch einen Kreismittelpunkt sind Mittellinien (Mittelkreuz)."""
+    contour_width = _dominant_width(strokes)
+    centers = [s.geom.center for s in strokes if isinstance(s.geom, Arc)]
+    for s in _lines(strokes):
+        if not _open(s) or s.width_mm >= contour_width:
+            continue
+        g = s.geom
+        for c in centers:
+            d, t = point_segment_distance(c, g.p0, g.p1)
+            if d < _TOUCH and 0.05 < t < 0.95:
+                s.kind = Kind.CENTERLINE
+                break
+
+
+def _dominant_width(strokes: list[Stroke]) -> float:
+    """Strichstärke mit der größten Gesamtlänge unter den noch offenen Strichen."""
+    total: dict[float, float] = defaultdict(float)
+    for s in strokes:
+        if _open(s):
+            total[round(s.width_mm, 3)] += s.geom.length
+    return max(total, key=total.__getitem__) if total else 0.0
