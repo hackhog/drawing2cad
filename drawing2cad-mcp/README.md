@@ -33,7 +33,7 @@ docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up --build -d
 The endpoint is `http://127.0.0.1:8765/mcp`. Use the same bearer token in the client.
 Only the host loopback interface is exposed. The application can receive HTTP requests; the CAD child retains its separate network restrictions.
 
-The image contains Python, Poppler, build123d, OCP/OpenCascade, and the worker.
+The image contains Python, Poppler, build123d, OCP/OpenCascade, STEPcode, and the worker.
 The container has a read-only root filesystem, no Linux capabilities, no-new-privileges, and finite CPU, memory, and process limits.
 Each CAD job adds Landlock filesystem rules, seccomp restrictions, resource limits, and a timeout.
 A missing sandbox produces a structured failure. There is no unsandboxed host fallback.
@@ -51,9 +51,19 @@ The default profile exports AP214 geometry and records the actual file schema.
 The optional `ap242` profile embeds application-specific construction and supports nominal
 diameter and linear PMI. Read `pmi_schema` before use. The remote `step_reconstruct`
 tool accepts an existing STEP artifact ID and hash, then returns diagnostic replay outputs.
-It does not release or change the original run. External STEP upload is not yet supported.
+It does not release or change the original run. External STEP upload is out of scope.
 See [ADR 0017](../docs/adr/0017-ap242-application-construction-and-pmi.md) for the contract,
 validation boundaries, and remaining M3 requirements.
+
+Each AP242 build also uses the independent STEPcode reader in a fresh restricted
+worker. Release requires a passing schema read and nominal PMI graph check bound
+to the candidate hash. The graph check covers values, units, identifiers, product
+links, and face membership. It does not independently measure the solid.
+This is not full EXPRESS or exact-edition certification. Read each report's checks.
+Use `part_render_pmi` before release, or `step_render_pmi` on a generated artifact,
+to produce PDF/PNG inspection views of the actual stored PMI strokes. Read detail
+views in the annotation plane; overview views can reverse or flatten text.
+Rendering does not replace an identified visual review or a third-party CAD test.
 
 ## Tools
 
@@ -81,6 +91,8 @@ Use the live catalog for exact schemas and limits.
 | `build_from_description` | Build the description, export a candidate, and validate a fresh-worker import. |
 | `pmi_schema` | Read the closed nominal PMI contract for the optional AP242 profile. |
 | `step_reconstruct` | Rebuild an existing STEP artifact in fresh workers. Return separate diagnostic artifacts; do not approve or change the source run. |
+| `part_render_pmi` | Inspect the current AP242 build before release. Return stored-PMI PDF/PNG views bound to its revision and hash. |
+| `step_render_pmi` | Inspect an authorized generated STEP artifact by ID and exact hash. Return PDF/PNG views; no model approval. |
 | `build_code` | Optional in-memory execution, requiring configuration and a verified sandbox. |
 | `export_step` | Release a candidate after trusted re-import, dimension checks, and source-review coverage. |
 | `part_export_review` | Review records, coverage, manifest, and event evidence. |

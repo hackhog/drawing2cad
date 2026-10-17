@@ -1,7 +1,7 @@
 # drawing2cad
 
 Convert uploaded technical PDFs into an editable part description, a dimensioned DXF drawing with a PDF copy, and validated STEP through one MCP interface.
-The Docker image includes PDF tools, build123d, OCP/OpenCascade, the drawing adapter, and an isolated worker.
+The Docker image includes PDF tools, build123d, OCP/OpenCascade, STEPcode, the drawing adapter, and isolated workers.
 The skill uses domain tools and remains independent of the CAD backend.
 
 ## Docker start
@@ -45,8 +45,11 @@ See the [MCP guide](drawing2cad-mcp/README.md) for tools, configuration, and tes
 
 The web interface and complete M3 acceptance remain required follow-up work.
 The initial [AP242 adapter](docs/adr/0017-ap242-application-construction-and-pmi.md)
-adds application-specific construction replay and nominal PMI. External STEP ingestion,
-independent conformance, and target-viewer display remain open in #25.
+adds application-specific construction replay and nominal PMI. AP242 builds require
+bounded independent STEPcode analysis. Headless PDF/PNG inspection shows the actual
+stored PMI strokes, with annotation-plane detail views. Full conformance and the
+remaining PMI scope stay open in #25. Product input is PDF; external STEP
+upload is out of scope. Internal re-import tests verify generated STEP output.
 CAD-specific export and native feature adapters are separate in
 [#33](https://github.com/hackhog/drawing2cad/issues/33).
 The JSON description is the editable source for the declarative M1 path.

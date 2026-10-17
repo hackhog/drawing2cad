@@ -197,6 +197,9 @@ class DomainService:
         if name == "step_reconstruct":
             with self._cad_slots:
                 return self._reconstruct_step(ctx, args)
+        if name == "step_render_pmi":
+            with self._cad_slots:
+                return self._step_visual(ctx, args)
         if name.startswith("step_"):
             return self._step_call(ctx, name, args)
         if name == "drawing_schema":
@@ -207,7 +210,7 @@ class DomainService:
                 with self._cad_slots:
                     return cad.call(name, args)
             return cad.call(name, args)
-        if name in {"build_from_description", "build_code", "drawing_render", "export_step"}:
+        if name in {"build_from_description", "build_code", "drawing_render", "export_step", "part_render_pmi"}:
             with self._cad_slots:
                 return self._run_call(ctx, name, args)
         return self._run_call(ctx, name, args)
@@ -374,6 +377,78 @@ class DomainService:
                                                        "reconstruction_report", replay_id, 0))
         return report
 
+    def _step_visual(self, ctx, args):
+        metadata = self.store.artifact_get(ctx, args["artifact_id"])
+        if metadata["sha256"] != args["expected_sha256"]:
+            raise DomainError("ARTIFACT_HASH_MISMATCH", "The artifact differs from the expected hash.")
+        if metadata["media_type"] != "model/step":
+            raise DomainError("INVALID_ARTIFACT_TYPE", "Use a STEP artifact for PMI inspection.")
+        source = self.store._path(ctx, "artifacts", args["artifact_id"])
+        self.store._verify(source, metadata["size_bytes"], metadata["sha256"])
+        return self._visual(ctx, self._backend(ctx)[0], source, metadata["sha256"],
+                            metadata["run_id"], metadata["revision"],
+                            {"source_artifact_id": metadata["artifact_id"]})
+
+    def _part_visual(self, ctx, cad, state):
+        built = state.get("build") or {}
+        if (built.get("status") != "pass" or built.get("description_revision") != state["revision"]
+                or built.get("description_sha256") != state["description_sha256"]):
+            raise DomainError("VALIDATED_BUILD_REQUIRED", "Build and validate the current part before PMI inspection.")
+        if built.get("export_profile") != "ap242":
+            raise DomainError("AP242_PROFILE_REQUIRED", "PMI inspection requires an AP242 build.")
+        source = cad._candidate(built["build"])
+        if str(source) != built.get("candidate_path"):
+            raise DomainError("CANDIDATE_CHANGED", "The current build candidate path differs from its record.")
+        if hashlib.sha256(source.read_bytes()).hexdigest() != built["candidate_sha256"]:
+            raise DomainError("CANDIDATE_CHANGED", "The current build candidate bytes changed.")
+        return self._visual(ctx, cad, source, built["candidate_sha256"], state["run_id"], state["revision"],
+                            {"candidate_sha256": built["candidate_sha256"],
+                             "description_sha256": state["description_sha256"], "released": False})
+
+    def _visual(self, ctx, cad, source, source_hash, run_id, revision, binding):
+        """Publish only fixed, hash-checked outputs from the restricted reader."""
+        if not self.settings.cad.enabled:
+            raise DomainError("CAD_DISABLED", "Enable the restricted worker before PMI inspection.")
+        source_bytes = source.stat().st_size
+        if source_bytes > min(self.settings.server.max_step_bytes, 32 * 1024 * 1024):
+            raise DomainError("LIMIT_EXCEEDED", "The STEP exceeds the PMI inspection limit.")
+        self.store._verify(source, source_bytes, source_hash)
+        result = cad.runner.run("ap242_visual", input_step=source)
+        self.store._verify(source, source_bytes, source_hash)
+        report = {"status": "fail", "run_id": run_id, "revision": revision,
+                  "source_sha256": source_hash, **binding, "inspection": self._public(result)}
+        report["inspection"].pop("artifacts", None)
+        if result.get("status") != "pass":
+            return report
+        if result.get("source_sha256") != source_hash or result.get("source_bytes") != source_bytes:
+            raise DomainError("INSPECTION_HASH_MISMATCH", "PMI inspection used different STEP bytes.")
+        workdir = Path(result.get("worker", {}).get("work_dir", ""))
+        if (not workdir.is_absolute() or workdir.parent != Path(cad.runner.storage).resolve()
+                or workdir.resolve() != workdir):
+            raise DomainError("INVALID_WORKER_ARTIFACT", "The PMI worker directory is invalid.")
+        expected_files = [("ap242-inspection.pdf", "application/pdf", "ap242_visual_inspection", 32 * 1024 * 1024),
+                          ("ap242-inspection.png", "image/png", "ap242_visual_overview", 8 * 1024 * 1024),
+                          ("ap242-inspection-detail.png", "image/png", "ap242_visual_detail", 8 * 1024 * 1024)]
+        outputs = result.get("artifacts", [])
+        if len(outputs) != len(expected_files):
+            raise DomainError("INVALID_WORKER_ARTIFACT", "The PMI worker did not return all inspection artifacts.")
+        verified = []
+        for filename, media, role, limit in expected_files:
+            path = workdir / filename
+            self.store._check_path(path)
+            item = next((item for item in outputs if item.get("path") == str(path)), None)
+            if (not item or item.get("media_type") != media or item.get("role") != role
+                    or not isinstance(item.get("bytes"), int) or not 0 < item["bytes"] <= limit):
+                raise DomainError("INVALID_WORKER_ARTIFACT", "The PMI worker did not return bounded fixed artifact paths.")
+            self.store._verify(path, item["bytes"], item["sha256"])
+            verified.append((path, media, role, filename))
+        report["artifacts"] = [self.store.artifact_register(ctx, path, role, run_id, revision, media, filename)
+                               for path, media, role, filename in verified]
+        report["status"] = "pass"
+        report["artifacts"].append(self._register_json(ctx, workdir, report, "ap242-inspection-report.json",
+                                                       "ap242_visual_report", run_id, revision))
+        return report
+
     @staticmethod
     def _drawing_path(directory):
         return directory / "drawing-state.json"
@@ -445,6 +520,8 @@ class DomainService:
                     drawing = result.get("drawing") or {}
                     event.update(drawing_sha256=drawing.get("drawing_sha256"),
                                  artifacts=self._public(drawing.get("artifacts", [])), review=self._public(drawing.get("review")))
+                if name == "part_render_pmi":
+                    event.update(source_sha256=result.get("source_sha256"), artifacts=result.get("artifacts", []))
                 if record:
                     CadService._atomic(event_path, _json(event))
                 return result
@@ -475,6 +552,8 @@ class DomainService:
             return report
         if name == "drawing_render":
             return self._render(ctx, cad, directory, state, args["drawing_spec"])
+        if name == "part_render_pmi":
+            return self._part_visual(ctx, cad, state)
         if name == "drawing_review":
             return self._review(ctx, cad, directory, state, args)
         if name == "part_export_review":

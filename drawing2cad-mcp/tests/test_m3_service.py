@@ -8,7 +8,7 @@ import pytest
 
 from drawing2cad_mcp.cad_service import CadError
 from drawing2cad_mcp.domain_store import DomainError
-from test_cad_service import FakeRunner, setup_service, create
+from test_cad_service import FakeRunner, setup_service, create, coverage
 from test_domain_service import CTX, OTHER, domain
 
 
@@ -18,10 +18,19 @@ class ReplayRunner(FakeRunner):
         self.description = description
         self.bad_hash = False
         self.bad_replay = False
+        self.bad_analysis = False
+        self.bad_analysis_hash = False
         self.requests = []
 
     def run(self, operation, *, description=None, input_step=None, **kwargs):
         self.requests.append((operation, deepcopy(description), deepcopy(kwargs)))
+        if operation == "analyze_ap242":
+            self.calls.append(operation)
+            return {"status": "fail" if self.bad_analysis else "pass", "analyzer": "STEPcode",
+                    "pmi_inventory": [], "pmi_inventory_complete": True, "entity_counts": {},
+                    "input_sha256": "0" * 64 if self.bad_analysis_hash else hashlib.sha256(input_step.read_bytes()).hexdigest(),
+                    "checks": [{"check": "independent_ap242_schema_read", "status": "pass"}],
+                    "worker": {"worker_id": uuid4().hex}}
         if operation != "reconstruct_step":
             result = super().run(operation, description=description, input_step=input_step, **kwargs)
             if operation == "validate" and result.get("status") == "pass":
@@ -58,9 +67,44 @@ def test_ap242_build_requires_fresh_step_only_replay(setup_service, bad_hash, ba
     service.runner = runner
     result = service.build_from_description(run_id="example", expected_revision=1, export_profile="ap242")
     assert result["status"] == ("fail" if bad_hash or bad_replay else "pass")
-    assert runner.calls == ["build", "validate", "reconstruct_step"]
+    assert runner.calls == ["build", "validate", "reconstruct_step", "analyze_ap242"]
     assert runner.requests[-1][1] is None
     assert result["released"] is False
+
+
+@pytest.mark.parametrize("bad_status,bad_hash", [(True, False), (False, True)])
+def test_ap242_build_rejects_failed_or_unbound_independent_analysis(setup_service, bad_status, bad_hash):
+    service, _, description, _ = setup_service
+    create(setup_service)
+    runner = ReplayRunner(service.runner.storage, description)
+    runner.bad_analysis, runner.bad_analysis_hash = bad_status, bad_hash
+    service.runner = runner
+    result = service.build_from_description(run_id="example", expected_revision=1, export_profile="ap242")
+    assert result["status"] == "fail" and result["released"] is False
+    assert result["build"]["independent_analysis"]["input_sha256"] == (
+        "0" * 64 if bad_hash else result["build"]["candidate_sha256"])
+
+
+@pytest.mark.parametrize("mutation", ["remove", "hash", "missing_check"])
+def test_ap242_release_requires_current_independent_evidence(setup_service, mutation):
+    service, _, description, source = setup_service
+    create(setup_service)
+    service.runner = ReplayRunner(service.runner.storage, description)
+    assert service.build_from_description(run_id="example", expected_revision=1,
+                                          export_profile="ap242")["status"] == "pass"
+    with service._lock("example") as directory:
+        state = service._load(directory)
+        if mutation == "remove":
+            del state["build"]["independent_analysis"]
+        elif mutation == "hash":
+            state["build"]["independent_analysis"]["input_sha256"] = "0" * 64
+        else:
+            state["build"]["independent_analysis"]["checks"] = []
+        service._save(directory, state)
+    with pytest.raises(CadError) as failure:
+        service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
+    assert failure.value.code == "INDEPENDENT_ANALYSIS_REQUIRED"
+    assert service.part_read(run_id="example")["part"]["release"] is None
 
 
 def prepare_artifact(domain):

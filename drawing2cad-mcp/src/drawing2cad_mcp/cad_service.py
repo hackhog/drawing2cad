@@ -67,6 +67,7 @@ class CadService:
         self._probe = None
 
     def capabilities(self):
+        from .adapters.stepcode import capabilities as analyzer_capabilities
         runtime = self.runner.capabilities()
         return {"enabled": self.settings.enabled, "runtime": runtime, "sandbox_probe": deepcopy(self._probe),
                 "build_code_enabled": bool(self.settings.enabled and self.settings.allow_build_code and self._probe and self._probe.get("status") == "pass"),
@@ -74,6 +75,7 @@ class CadService:
                 "export_profiles": ["ap214", "ap242"],
                 "ap242_construction": "application_specific_adapter",
                 "semantic_pmi": "nominal_diameter_and_linear",
+                "independent_step_analysis": analyzer_capabilities(),
                 "native_target_cad_features": "not_tested", "full_express_conformance": "not_tested"}
 
     def call(self, name, arguments):
@@ -415,9 +417,39 @@ class CadService:
                              and replay_worker and replay_worker not in {build_worker, import_worker})
                 if not replay_ok:
                     record["status"] = status = "fail"
+                analysis = self.runner.run("analyze_ap242", input_step=candidate)
+                from .adapters.stepcode_pmi import verify_nominal_pmi
+                nominal = verify_nominal_pmi(analysis, expected=result.get("pmi", {}).get("dimensions", []),
+                                             product_name=state["description"]["name"])
+                analysis["nominal_pmi"] = nominal
+                analysis.setdefault("checks", []).append({"check": nominal["check"], "status": nominal["status"]})
+                if nominal["status"] != "pass":
+                    analysis["status"] = "fail"
+                # The parent-owned worker record retains the complete typed inventory.
+                # Keep the run state and MCP result limited to the inspected dimensions.
+                analysis.pop("pmi_inventory", None)
+                record["independent_analysis"] = analysis
+                if _sha(candidate.read_bytes()) != candidate_hash:
+                    raise CadError("CANDIDATE_CHANGED", "The candidate changed during independent analysis.")
+                analysis_worker = analysis.get("worker", {}).get("worker_id")
+                analysis_ok = (self._analysis_passed(analysis, candidate_hash)
+                               and analysis_worker
+                               and analysis_worker not in {build_worker, import_worker, replay_worker})
+                if not analysis_ok:
+                    record["status"] = status = "fail"
             state["build"] = record
             return {"status": status, "build": deepcopy(record), "released": False}
         return self._perform(name, arguments, action)
+
+    @staticmethod
+    def _analysis_passed(analysis, candidate_hash):
+        checks = {item.get("check"): item.get("status") for item in analysis.get("checks", [])}
+        return (analysis.get("status") == "pass"
+                and analysis.get("input_sha256") == candidate_hash
+                and analysis.get("analyzer") == "STEPcode"
+                and checks.get("independent_ap242_schema_read") == "pass"
+                and checks.get("independent_nominal_pmi_graph") == "pass"
+                and "fail" not in checks.values())
 
     @staticmethod
     def _compare(built, imported):
@@ -455,6 +487,9 @@ class CadService:
             built = state["build"]
             if not built or built["status"] != "pass" or built["description_sha256"] != state["description_sha256"] or built["description_revision"] != state["revision"]:
                 raise CadError("VALIDATED_BUILD_REQUIRED", "Build and validate the current description before release.")
+            if built.get("export_profile") == "ap242" and not self._analysis_passed(
+                    built.get("independent_analysis", {}), built["candidate_sha256"]):
+                raise CadError("INDEPENDENT_ANALYSIS_REQUIRED", "Rebuild the AP242 candidate with independent schema and nominal PMI analysis before release.")
             checks = built["validation"].get("checks", [])
             statuses = {item["check"]: item["status"] for item in checks}
             required = {"step_reimport", "solid_validity", "solid_count", "positive_volume", "step_references", "step_product_name", "step_units_mm", "step_schema_present", "drawing_measurements"}
@@ -475,7 +510,7 @@ class CadService:
             state["release"]["export_profile"] = built.get("export_profile", "ap214")
             if built.get("export_profile") == "ap242":
                 state["release"].update(profile="validated_ap242_application_construction",
-                    scope="Geometry and the application-specific STEP-only adapter passed. Read the separate PMI report. Native target-CAD features, graphical display, and full EXPRESS conformance are not proven.")
+                    scope="Geometry, the application-specific STEP-only adapter, and bounded independent schema analysis passed. Read the separate PMI and visual reports. Native target-CAD features and full EXPRESS conformance are not proven.")
             return {"status": "pass", "release": deepcopy(state["release"]), "checks": deepcopy(checks), "source_review": coverage}
         return self._perform("export_step", arguments, action)
 

@@ -53,16 +53,47 @@ AP242 builds retain the normal drawing, revision, source-review, and release gat
 A profile or PMI change requires a new build and a new drawing review.
 No FreeCAD service or GUI becomes a production dependency.
 
+## Independent analysis and visual inspection
+
+Each AP242 build runs the STEPcode AP242 reader in another restricted worker.
+The build records its source revision, schema hash, input hash, and bounded checks.
+Release requires a passing independent schema read and nominal PMI graph check for
+the exact candidate bytes. The graph check consumes only STEPcode's typed inventory.
+It checks dimension values and IDs against the build contract, millimetre units,
+product links, and face membership. It does not measure the geometry independently.
+The worker replaces its process with the fixed reader binary. It keeps the sandbox
+and resource limits. It does not start an unrestricted analyzer process.
+
+STEPcode uses a separate parser and generated schema library. Its schema read and
+instance checks do not evaluate all EXPRESS WHERE rules or prove geometric correctness.
+The schema identifier alone does not establish exact-edition conformity. Keep these
+results separate from the geometric re-import and the same-kernel PMI checks.
+
+Use `part_render_pmi` before release to inspect the current AP242 build. Use
+`step_render_pmi` to inspect an existing generated artifact by ID and exact hash.
+The renderer imports the actual STEP geometry and stored PMI strokes through XDE.
+It does not recreate graphical labels from the construction record. Its PDF supplies
+fixed overview views and detail views in each annotation plane. Fixed views can show
+text from the reverse side or edge-on; use the detail views to read the stored strokes.
+PNG artifacts support direct visual inspection. Semantic values are listed separately.
+
+This is a supported headless inspection renderer with sampled wireframe curves and
+no hidden-line removal. A render pass checks nonempty panels and clipping. It does
+not establish readable layout or correct annotation placement without an identified
+visual review. It is not an independent-kernel or third-party CAD display test.
+
 ## Remaining M3 work
 
-- Accept externally supplied STEP bytes in a new service through a bounded public interface.
-  The initial remote replay operates on existing artifacts.
-- Test supported AP242 entities and rules with an external analyzer.
-- Open graphical PMI in a supported target viewer and inspect its actual display.
+- Extend independent analysis beyond the declared STEPcode checks where required.
+- Record visual review for each delivered part; generic renderer tests do not inspect it.
 - Extend or explicitly constrain tolerances, datums, thread semantics, feature scope,
   and geometry associations across edits.
 - Approve the edition and conformance profile against the complete acceptance matrix.
   A writer setting, file header, or successful OCCT round trip is insufficient.
+
+External STEP upload and restoration of a user session from an uploaded STEP are out of scope.
+The product input is PDF. Internal STEP re-import and reconstruction tests remain required
+to verify the generated output; they do not require a public import workflow.
 
 ## Separate CAD-specific feature
 
@@ -79,3 +110,5 @@ documents XDE data exchange and the AP242 writer selection.
 The [NIST STEP File Analyzer](https://www.nist.gov/services-resources/software/step-file-analyzer-and-viewer)
 supports separate semantic and graphical PMI analysis. Its documented Windows and Excel
 requirements make it an external acceptance option, not a required Linux production phase.
+The [STEPcode project](https://github.com/stepcode/stepcode) supplies a separate
+Part 21 reader and generated AP242 schema library for the Linux service.
