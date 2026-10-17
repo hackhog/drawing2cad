@@ -126,18 +126,20 @@ class AgentRunner:
     def finish(self, run_id: str, summary: dict[str, Any]) -> None:
         """Store the agent report as a note of the part run and set the final job state from the domain part state."""
         part_run = self.jobs.get(run_id)["part_run_id"]
-        if part_run is None:
-            error = summary.get("error") or {}
-            if error:  # For example, the model endpoint rejected the request. Show its message, not a generic one.
-                self._fail(run_id, "AGENT_FAILED", f"{error.get('type', 'Error')}: {error.get('message', '')}"[:4000],
-                           "Modell-Endpunkt und DRAWING2CAD_AGENT_* prüfen, dann Lauf erneut starten.")
-            else:
-                self._fail(run_id, "AGENT_NO_PART", f"Der Agent hat kein Teil angelegt (Status: {summary.get('status')}).",
-                           "Zeichnung prüfen und Lauf erneut starten.")
-            return
         report = summary.get("final_text") or ""
-        if report:
+        if part_run is not None and report:
             self.store_report(part_run, report)
+        error = summary.get("error") or {}
+        if error:
+            # The conversation did not end, for example after a rate limit. A part built before stays readable,
+            # but the run is not a finished result. Show the actual message, not a generic one.
+            self._fail(run_id, "AGENT_FAILED", f"{error.get('type', 'Error')}: {error.get('message', '')}"[:4000],
+                       "Modell-Endpunkt und DRAWING2CAD_AGENT_* prüfen, dann Lauf erneut starten.")
+            return
+        if part_run is None:
+            self._fail(run_id, "AGENT_NO_PART", f"Der Agent hat kein Teil angelegt (Status: {summary.get('status')}).",
+                       "Zeichnung prüfen und Lauf erneut starten.")
+            return
         part = self.backend.call("part_read", run_id=part_run)["part"]
         if part.get("release") or (part.get("build") or {}).get("status") == "pass":
             # A built model without release is a finished run; its review shows why the release is blocked.

@@ -166,3 +166,36 @@ def test_rate_limit_waits_for_retry_after(monkeypatch):
     monkeypatch.setattr(model.time, "sleep", waits.append)
     assert make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 300)["message"]["content"] == "ok"
     assert waits == [7.0]
+
+
+def test_rate_limits_are_retried_until_the_turn_deadline(monkeypatch):
+    from urllib.error import HTTPError
+    clock = [0.0]
+    waits = []
+    monkeypatch.setattr(model.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(model.time, "sleep", lambda seconds: (waits.append(seconds), clock.__setitem__(0, clock[0] + seconds)))
+    outcomes = [HTTPError("u", 429, "limit", {}, io.BytesIO(b"rate limit")) for _ in range(model.ATTEMPTS + 2)]
+    outcomes.append(_response({"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]}))
+
+    def fake_urlopen(request, timeout):
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    assert make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 300)["message"]["content"] == "ok"
+    # More rate-limit answers than ATTEMPTS, with longer waits up to one minute.
+    assert waits == [10.0, 15.0, 30.0, 45.0, 60.0, 60.0]
+
+
+def test_a_rate_limit_after_the_turn_deadline_is_reported(monkeypatch):
+    from urllib.error import HTTPError
+    clock = [0.0]
+    monkeypatch.setattr(model.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(model.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    monkeypatch.setattr(model, "urlopen", lambda request, timeout: (_ for _ in ()).throw(
+        HTTPError("u", 429, "limit", {}, io.BytesIO(b"rate limit"))))
+    with pytest.raises(RuntimeError, match="HTTP 429"):
+        make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 100)
+    assert clock[0] < 100
