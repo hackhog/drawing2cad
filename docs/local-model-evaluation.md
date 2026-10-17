@@ -78,7 +78,7 @@ Any later mutation or build request clears its release claim until another succe
 One completed run cannot rank models.
 Record equivalent inputs, runtime limits, reasoning settings, assistance, and actual acceptance checks before comparison.
 The client's `released` status identifies an MCP release response.
-It does not prove full metric acceptance, AP242, independent STEP conformance, or NX opening.
+It does not prove full metric acceptance, AP242, independent STEP conformance, or opening in a target CAD system.
 
 The protocol follows the official [Ollama tool calling guide](https://docs.ollama.com/capabilities/tool-calling)
 and [chat API](https://docs.ollama.com/api/chat).

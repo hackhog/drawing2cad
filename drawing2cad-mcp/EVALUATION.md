@@ -10,7 +10,7 @@ Report actual evidence. Do not infer model performance from unit tests.
 |---|---|---|---|
 | Deterministic tests | Verify parsers, schemas, source restrictions, revision conflicts, and evidence gates. | Actual test command, environment identity, exit status, test results, and artifact hashes. | No proof of model decisions, drawing quality, CAD execution, or complete AP242 support. |
 | Synthetic model decisions | Measure tool selection, argument construction, error recovery, and next actions on generic inputs. | Model transcript, tool-call trace, expected decisions, gate results, and independent scoring. | No proof of customer-drawing interpretation or physical CAD correctness. |
-| M1 reconstruction | Measure PDF interpretation, editable JSON construction, geometry checks, and fresh STEP import. | Source inventory, description, geometry measurements, candidate/release, review records, manifest, and trace. | A technical release does not prove source completeness, independent STEP conformance, NX opening, or AP242. |
+| M1 reconstruction | Measure PDF interpretation, editable JSON construction, geometry checks, and fresh STEP import. | Source inventory, description, geometry measurements, candidate/release, review records, manifest, and trace. | A technical release does not prove source completeness, independent STEP conformance, opening in a target CAD system, or AP242. |
 | Complete-service matrix | Measure the M2 drawing/service requirements and M3 AP242 requirements on permitted fixtures. | Actual drawing, model, STEP, PMI, reconstruction, change, and independent validation artifacts. | No success claim for an unavailable or unexecuted phase. |
 
 [ADR 0014](../docs/adr/0014-headless-build123d-metric-prototype.md) defines the milestones.
@@ -156,4 +156,4 @@ Keep the callout-to-measurement inventory and an independent source review with 
 Do not treat a bounding-box pass as proof of an internal web, perimeter rim, rib, or drill tip.
 If source review finds an omission, mark source accuracy and the metric result as failed.
 Keep the technical release response as historical evidence; it does not override the failed source review.
-Independent conformance, NX opening, and complete M2/M3 claims remain separate results.
+Independent conformance, target-CAD opening, and complete M2/M3 claims remain separate results.

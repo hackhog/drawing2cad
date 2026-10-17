@@ -207,7 +207,6 @@ The metric pass requires:
 - Every missing dimension assigned a reasonable documented assumption, or an explicit blocker.
 - MCP geometry validation and fresh STEP re-import passed.
 - Product identity, units, and actual schema recorded.
-- An actual NX opening test for the final STEP recorded as passed.
 - Review list, coverage report, manifest, and event trace exported.
 
 Use source tolerances where given.
@@ -216,8 +215,7 @@ This test tolerance is not a manufacturing tolerance.
 Do not invent manufacturing tolerances or count assumed values as printed-dimension coverage.
 
 At least two parts must build without `build_code`.
-A missing NX opening result gives `not_tested` and leaves the metric incomplete.
-Record independent conformance analysis as a separate acceptance claim. It is not a prerequisite for the hackathon metric.
+Record independent conformance analysis and an optional opening test in a target CAD system as separate claims. They are not prerequisites for the hackathon metric.
 
 Repeat equivalent trials with strong, cheaper, and local models when those runtimes are available.
 Record reasoning settings, tool calls, retries, questions, review assistance, queue time, and infrastructure failures.

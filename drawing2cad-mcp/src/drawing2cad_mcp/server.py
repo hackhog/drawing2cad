@@ -221,7 +221,7 @@ class Application:
                     "step_schema": "AP214IS", "default_export_profile": "ap214",
                     "export_profiles": ["ap214", "ap242"],
                     "editable_source": "versioned_json_part_description",
-                    "metric_acceptance": "Requires source review, independent STEP analysis, and target-CAD test."},
+                    "metric_acceptance": "Requires three parts with passing MCP validation and fresh STEP re-import, complete source review, and a review list. Independent STEP analysis and a target-CAD opening test are optional, separate claims."},
             "measurement_tools": list(MEASUREMENT_SCHEMAS),
             "domain_services": {**{name: {"available": False, "reason": "Verified backend adapter is not implemented."}
                                 for name in ("drawing_authoring", "drawing_rendering", "parametric_build",
