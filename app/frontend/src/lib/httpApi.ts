@@ -1,4 +1,4 @@
-// Adapter for the web backend (app/backend, ADR 0017): stored sources, their analysis, agent runs, and artifacts.
+// Adapter for the web backend (app/backend, ADR 0018): stored sources, their analysis, agent runs, and artifacts.
 // Parameter edits and notes are not available yet; the capabilities report this, and the UI explains it.
 import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
 import type { ExtractResult } from "./drawing";

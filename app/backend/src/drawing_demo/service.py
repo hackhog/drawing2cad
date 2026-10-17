@@ -1,4 +1,4 @@
-"""The one shared domain service of the web backend and its MCP endpoint (ADR 0017).
+"""The one shared domain service of the web backend and its MCP endpoint (ADR 0018).
 
 Web routes and agent runs use the same `drawing2cad_mcp` application: routes call the domain service directly,
 and agents use the Streamable HTTP endpoint that this backend mounts at `/mcp`. Storage and release rules stay

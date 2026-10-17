@@ -128,7 +128,7 @@ export interface Run {
   review: Review | null;
   error: ServiceError | null;
   simulated: boolean;
-  /** Final text of the agent conversation, stored as the note of its part run (ADR 0017). */
+  /** Final text of the agent conversation, stored as the note of its part run (ADR 0018). */
   agent_report?: string;
 }
 

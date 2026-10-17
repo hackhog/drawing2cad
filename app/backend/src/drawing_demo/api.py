@@ -1,4 +1,4 @@
-"""Web API: drawing sources, their analysis, agent runs, artifacts, and STEP display (ADR 0012, ADR 0017).
+"""Web API: drawing sources, their analysis, agent runs, artifacts, and STEP display (ADR 0012, ADR 0018).
 
 Every route uses the one shared domain service of this process. The backend also mounts the MCP endpoint of that
 service at `/mcp`, for its agent runs. The web adapter adds no storage or release rule.
@@ -200,7 +200,7 @@ def list_runs(source_id: str, s: Services = Depends(services)) -> list[dict[str,
 
 @router.post("/sources/{source_id}/runs", status_code=201)
 def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
-    """Queue one agent run. The agent builds the model only through the MCP endpoint (ADR 0017)."""
+    """Queue one agent run. The agent builds the model only through the MCP endpoint (ADR 0018)."""
     if not s.runner.available:
         raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modell-Endpunkt konfiguriert (DRAWING2CAD_AGENT_*).",
                            recovery="Endpunkt in .env eintragen und das Backend neu starten.")

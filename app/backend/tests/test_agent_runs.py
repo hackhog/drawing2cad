@@ -1,4 +1,4 @@
-"""Agent runs through the web API and the shared domain service (ADR 0017). No model is called."""
+"""Agent runs through the web API and the shared domain service (ADR 0018). No model is called."""
 
 import io
 import re

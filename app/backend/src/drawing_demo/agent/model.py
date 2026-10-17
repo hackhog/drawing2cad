@@ -1,4 +1,4 @@
-"""Model call for OpenAI-compatible Chat Completions endpoints (ADR 0017).
+"""Model call for OpenAI-compatible Chat Completions endpoints (ADR 0018).
 
 `drawing2cad_mcp.local_model_client.drive` exchanges messages in the Ollama chat format.
 This module translates them to Chat Completions and back, so that Azure AI Foundry, OpenRouter,

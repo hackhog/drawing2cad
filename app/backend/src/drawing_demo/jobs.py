@@ -1,4 +1,4 @@
-"""Web-adapter records of agent runs (ADR 0017).
+"""Web-adapter records of agent runs (ADR 0018).
 
 A record holds the job state, the agent trace, and the ID of the domain part run. It copies no domain data:
 part state, artifacts, and the agent report stay in the domain service.

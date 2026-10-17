@@ -1,4 +1,4 @@
-"""Drawing2CAD web API on the shared domain service (ADR 0012, ADR 0017)."""
+"""Drawing2CAD web API on the shared domain service (ADR 0012, ADR 0018)."""
 
 from __future__ import annotations
 

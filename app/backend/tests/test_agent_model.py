@@ -1,4 +1,4 @@
-"""Translation between the drive() message format and OpenAI Chat Completions (ADR 0017)."""
+"""Translation between the drive() message format and OpenAI Chat Completions (ADR 0018)."""
 
 import io
 import json

@@ -1,4 +1,4 @@
-"""Run one bounded drawing2cad agent conversation for each web run (ADR 0017).
+"""Run one bounded drawing2cad agent conversation for each web run (ADR 0018).
 
 The agent uses only the tools of the backend's own `/mcp` endpoint through `drive()`, with the uploaded source ID
 as its only input. The runner records progress from the trace and stores the final agent report as a run note.

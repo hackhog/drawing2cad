@@ -6,7 +6,7 @@ services:
       dockerfile: app/backend/Dockerfile
     image: drawing2cad-backend:local
     # Only the frontend can reach this API through the Compose network.
-    # Optional model endpoint for agent runs (ADR 0017). Without .env, the stack builds and runs; runs show as unavailable.
+    # Optional model endpoint for agent runs (ADR 0018). Without .env, the stack builds and runs; runs show as unavailable.
     env_file:
       - path: .env
         required: false

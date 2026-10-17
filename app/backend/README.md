@@ -1,6 +1,6 @@
 # drawing-demo backend
 
-This service supplies the web API ([ADR 0012](../../docs/adr/0012-demo-app-as-frontend-and-backend-container.md), [ADR 0017](../../docs/adr/0017-agent-runner-in-the-web-backend.md)).
+This service supplies the web API ([ADR 0012](../../docs/adr/0012-demo-app-as-frontend-and-backend-container.md), [ADR 0018](../../docs/adr/0018-agent-runner-in-the-web-backend.md)).
 It creates one shared domain service (`drawing2cad_mcp.server.Application`, domain profile) for the process.
 Web routes call this service. The backend also mounts its MCP endpoint at `/mcp` for agent runs.
 It derives review flags and converts STEP files to GLB for display.
@@ -60,7 +60,7 @@ The STEP conversion is for display only. It does not verify AP242, editable cons
 
 ## Agent runs
 
-See [ADR 0017](../../docs/adr/0017-agent-runner-in-the-web-backend.md).
+See [ADR 0018](../../docs/adr/0018-agent-runner-in-the-web-backend.md).
 A run executes one bounded agent conversation (`drive()` from `drawing2cad_mcp.local_model_client`) in a background thread.
 The agent connects to the mounted `/mcp` endpoint and can call only its permitted tools, with the uploaded source ID as its only input.
 The runner stores the final agent report as the note of the part run.

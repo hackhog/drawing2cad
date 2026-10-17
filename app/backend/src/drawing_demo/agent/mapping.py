@@ -1,4 +1,4 @@
-"""Map domain part state, artifacts, and agent trace events to the provisional contract types (ADR 0015, ADR 0017).
+"""Map domain part state, artifacts, and agent trace events to the provisional contract types (ADR 0015, ADR 0018).
 
 The domain service owns the domain data. This module only presents it; it adds no CAD, drawing, or release rule.
 """

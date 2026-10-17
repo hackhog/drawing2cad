@@ -98,7 +98,7 @@ The PDF upload limit is 20 MiB. The STEP upload limit is 50 MiB.
 
 See [backend/README.md](backend/README.md) for the endpoints and configuration.
 The browser uploads PDFs to `/api/sources`. The backend transfers each source to the shared domain service.
-"Lauf starten" queues an agent run ([ADR 0017](../docs/adr/0017-agent-runner-in-the-web-backend.md)):
+"Lauf starten" queues an agent run ([ADR 0018](../docs/adr/0018-agent-runner-in-the-web-backend.md)):
 the agent builds the model only through the MCP endpoint of the same service, and step 4 shows the released model.
 Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values; without `.env`, runs show as unavailable.
 

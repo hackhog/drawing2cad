@@ -1,4 +1,4 @@
-# Web backend (ADR 0012, ADR 0017): one shared domain service for the web API and its MCP endpoint.
+# Web backend (ADR 0012, ADR 0018): one shared domain service for the web API and its MCP endpoint.
 # Agent runs build models only through that endpoint and its restricted build123d worker.
 # Use the repository root as the build context for the MCP path dependency.
 #   docker compose build   or   docker build -f app/backend/Dockerfile .
