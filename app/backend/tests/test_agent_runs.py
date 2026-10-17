@@ -120,7 +120,8 @@ def upload(client):
 def test_runs_are_unavailable_without_model_endpoint(environment):
     with TestClient(api.create_app()) as client:
         source = upload(client)
-        assert client.get("/api/capabilities").json()["runs"] is False
+        capabilities = client.get("/api/capabilities").json()
+        assert capabilities["runs"] is False and capabilities["agent_model"] is None
         res = client.post(f"/api/sources/{source['source_id']}/runs")
         assert res.status_code == 503 and res.json()["detail"]["code"] == "CAPABILITY_UNAVAILABLE"
 
@@ -131,7 +132,8 @@ def test_a_run_is_queued_with_a_model_endpoint(environment):
     environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id: submitted.append(run_id))
     with TestClient(api.create_app()) as client:
         source = upload(client)
-        assert client.get("/api/capabilities").json()["runs"] is True
+        capabilities = client.get("/api/capabilities").json()
+        assert capabilities["runs"] is True and capabilities["agent_model"] == "m"
         res = client.post(f"/api/sources/{source['source_id']}/runs")
         assert res.status_code == 201
         run = res.json()

@@ -154,4 +154,6 @@ export interface Capabilities {
   model_preview: boolean;
   step_preview_upload: boolean;
   max_pdf_bytes: number;
+  /** The configured agent model, if the service starts agent runs. */
+  agent_model?: string | null;
 }

@@ -34,7 +34,8 @@ export function RunPage() {
     <>
       <PageHeader
         title={<span className="flex items-center gap-2">Lauf {run.run_id}{run.simulated && <Badge variant="secondary" className="bg-warn-bg text-bad">Simuliert</Badge>}</span>}
-        subtitle={`${source ? partName(source.filename) : run.source_id} · Revision ${run.part?.revision ?? "–"} · gestartet ${time(run.job.started_at)}`}
+        subtitle={`${source ? partName(source.filename) : run.source_id} · Revision ${run.part?.revision ?? "–"} · gestartet ${time(run.job.started_at)}`
+          + (run.agent ? ` · ${run.agent.model} · MCP ${run.agent.mcp_version}` : "")}
         actions={
           <Button variant="outline" size="sm" className="rounded-full" asChild>
             <Link to="/sources/$sourceId" params={{ sourceId: run.source_id }}><ArrowLeft />Zur Zeichnung</Link>
