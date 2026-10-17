@@ -538,7 +538,7 @@ wheels = [
 
 [[package]]
 name = "drawing2cad-mcp"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -554,6 +554,7 @@ dependencies = [
 [package.optional-dependencies]
 cad = [
     { name = "build123d" },
+    { name = "ezdxf" },
 ]
 test = [
     { name = "httpx2" },
@@ -564,6 +565,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "build123d", marker = "extra == 'cad'", specifier = "==0.13.0" },
+    { name = "ezdxf", marker = "extra == 'cad'", specifier = "==1.4.5" },
     { name = "httpx2", marker = "extra == 'test'", specifier = ">=2.13,<3" },
     { name = "jsonschema", specifier = ">=4.20,<5" },
     { name = "mcp", specifier = "==2.3.0" },

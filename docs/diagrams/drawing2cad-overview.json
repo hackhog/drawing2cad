@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Drawing2CAD: M1 service and delivery milestones",
+    "title": "Drawing2CAD: shared headless service and delivery milestones",
     "output": "docs/diagrams/drawing2cad-overview.html",
     "quality_profile": "showcase",
     "locale": "en"
@@ -12,7 +12,7 @@
       "id": "engineer",
       "type": "external",
       "label": "Engineer",
-      "sublabel": "PDF and STEP files",
+      "sublabel": "Authorized PDFs and downloads",
       "pos": [
         40,
         140
@@ -25,42 +25,42 @@
     {
       "id": "webui",
       "type": "frontend",
-      "label": "Existing demo UI",
-      "sublabel": "React, three.js, nginx",
+      "label": "Web UI: planned #26",
+      "sublabel": "React, shadcn, TanStack",
       "pos": [
         320,
         140
       ],
       "size": [
-        180,
+        220,
         64
       ]
     },
     {
       "id": "demoapi",
       "type": "backend",
-      "label": "Existing demo API",
-      "sublabel": "FastAPI + PDF service",
+      "label": "Web adapter: planned",
+      "sublabel": "Routes use shared contracts",
       "pos": [
         660,
         140
       ],
       "size": [
-        200,
+        220,
         64
       ]
     },
     {
       "id": "demotools",
       "type": "backend",
-      "label": "Demo tools",
-      "sublabel": "vector analysis, STEP mesh",
+      "label": "Shared DomainService",
+      "sublabel": "Uploads, drawings, jobs, notes",
       "pos": [
-        1020,
-        140
+        660,
+        480
       ],
       "size": [
-        200,
+        230,
         64
       ]
     },
@@ -81,8 +81,8 @@
     {
       "id": "mcp",
       "type": "backend",
-      "label": "drawing2cad-mcp",
-      "sublabel": "parts, revisions, validation",
+      "label": "MCP adapter",
+      "sublabel": "IDs, schemas, trusted context",
       "pos": [
         320,
         480
@@ -98,7 +98,7 @@
       "label": "PDF preparation",
       "sublabel": "Poppler, vectors, measures",
       "pos": [
-        660,
+        1040,
         360
       ],
       "size": [
@@ -109,28 +109,28 @@
     {
       "id": "worker",
       "type": "backend",
-      "label": "Isolated CAD worker",
-      "sublabel": "build123d, OCP, OpenCascade",
+      "label": "Restricted CAD / drawing",
+      "sublabel": "build123d, OCP, ezdxf, PDF",
       "pos": [
-        660,
+        1040,
         600
       ],
       "size": [
-        200,
+        230,
         64
       ]
     },
     {
       "id": "artifacts",
       "type": "database",
-      "label": "Part and artifact store",
-      "sublabel": "JSON, STEP, reports, trace",
+      "label": "Persistent domain store",
+      "sublabel": "Sources, jobs, JSON, DXF, PDF, STEP",
       "pos": [
-        1020,
+        1450,
         480
       ],
       "size": [
-        200,
+        260,
         64
       ]
     }
@@ -138,24 +138,18 @@
   "boundaries": [
     {
       "kind": "region",
-      "label": "Existing demo frontend",
+      "label": "Future browser client: #26",
       "wraps": [
         "webui"
       ]
     },
     {
       "kind": "region",
-      "label": "Existing demo backend",
-      "wraps": [
-        "demoapi",
-        "demotools"
-      ]
-    },
-    {
-      "kind": "region",
-      "label": "M1 MCP image: headless runtime",
+      "label": "One Python application: MCP now, web adapter planned",
       "wraps": [
         "mcp",
+        "demoapi",
+        "demotools",
         "pdf",
         "worker"
       ]
@@ -166,93 +160,98 @@
       "id": "upload",
       "from": "engineer",
       "to": "webui",
-      "label": "upload",
+      "label": "upload / download",
       "variant": "emphasis"
     },
     {
-      "id": "demohttp",
+      "id": "webhttp",
       "from": "webui",
       "to": "demoapi",
-      "label": "nginx /api proxy",
-      "variant": "emphasis"
+      "label": "HTTP API: planned"
     },
     {
-      "id": "demoruntime",
+      "id": "webdomain",
       "from": "demoapi",
       "to": "demotools",
-      "label": "request processes"
+      "label": "same service instance"
     },
     {
       "id": "mcptransport",
       "from": "agent",
       "to": "mcp",
-      "label": "stdio / HTTP",
+      "label": "stdio / authenticated HTTP",
       "variant": "emphasis"
     },
     {
-      "id": "pdfrequest",
+      "id": "domainrequest",
       "from": "mcp",
+      "to": "demotools",
+      "label": "versioned contracts"
+    },
+    {
+      "id": "pdfrequest",
+      "from": "demotools",
       "to": "pdf",
-      "label": "source hash + observations"
+      "label": "source ID + verified hash"
     },
     {
       "id": "cadrequest",
-      "from": "mcp",
+      "from": "demotools",
       "to": "worker",
-      "label": "versioned description"
+      "label": "part + drawing specifications"
     },
     {
       "id": "store",
-      "from": "mcp",
+      "from": "demotools",
       "to": "artifacts",
-      "label": "revisions and evidence"
+      "label": "ownership, revisions, jobs"
     },
     {
-      "id": "export",
+      "id": "artifacts",
       "from": "worker",
       "to": "artifacts",
-      "label": "validated STEP candidate"
+      "label": "immutable output snapshots"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "M1: metric prototype",
+      "title": "M2 MCP: shared services",
       "items": [
-        "One MCP image includes PDF and CAD dependencies",
-        "Editable JSON is the construction source",
-        "Granular tools and full builds use one feature graph",
-        "Fresh-worker STEP import is separate from external checks"
+        "PDF bytes arrive through bounded resumable uploads",
+        "Source, run, job, and artifact IDs keep paths internal",
+        "Persistent jobs, notes, revisions, and review gates",
+        "MCP currently uses one configured principal"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Worker boundary",
+      "title": "Headless worker boundary",
       "items": [
-        "Landlock filesystem rules and seccomp syscall restrictions",
-        "Per-job process, directory, resource limits and timeout",
-        "CAD execution fails when the sandbox is unavailable",
-        "No Docker socket or CAD GUI is required"
+        "Landlock, seccomp, finite resources, and timeouts",
+        "No CAD GUI, FreeCAD proxy, or Docker socket",
+        "Fresh STEP import validates the AP214 candidate",
+        "Supplied 2D views become native DXF dimensions and PDF"
       ]
     },
     {
       "dot": "rose",
-      "title": "M2: complete service, pending",
+      "title": "Web and acceptance follow-up",
       "items": [
-        "One Python application serves MCP and the web API",
-        "PDF uploads return source IDs; outputs use artifact IDs",
-        "React, shadcn, TanStack Router and Query",
-        "Deliver a reviewed technical drawing and matching model"
+        "Issue #26: routes and React interface use shared services",
+        "No automatic arbitrary projection or section extraction",
+        "Drawing review follows the current model build",
+        "Resource acceptance remains deferred until milestones finish"
       ]
     },
     {
       "dot": "cyan",
-      "title": "M3: AP242, pending",
+      "title": "M3: AP242, pending #25",
       "items": [
         "AP242 construction and editable import adapters",
         "STEP-only reconstruction and parameter-change tests",
-        "Semantic PMI and graphical PMI verified separately",
-        "JSON sidecars and end bodies do not prove these claims"
+        "Semantic and graphical PMI have separate tests",
+        "JSON descriptions and end bodies do not prove these claims"
       ]
     }
   ]

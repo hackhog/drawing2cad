@@ -1,0 +1,572 @@
+"""Shared upload, CAD, drawing, artifact, and job application service.
+
+Transport adapters supply a verified AccessContext. Public contracts use source
+and artifact IDs. Only maintained adapters resolve those IDs to private paths.
+"""
+
+from __future__ import annotations
+
+import base64
+from contextlib import contextmanager
+from copy import deepcopy
+import hashlib
+from io import BytesIO
+import json
+import os
+from pathlib import Path
+import threading
+import time
+from tempfile import TemporaryDirectory
+from uuid import uuid4
+
+from jsonschema import Draft202012Validator, ValidationError
+
+from . import __version__
+from .cad_service import CadError, CadService
+from .cad_tools import CAD_SCHEMAS
+from .domain_jobs import JobCancelled, JobService
+from .domain_store import AccessContext, DomainError, DomainStore
+from .domain_tools import DOMAIN_SCHEMAS
+from .drawing_contract import drawing_schema, drawing_validate
+from .measurements_tools import MEASUREMENT_METHODS
+from .pdf import PdfError, PdfService
+from .step import StepError, StepService
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8")
+
+
+def _digest(value):
+    return hashlib.sha256(_json(value)).hexdigest()
+
+
+class DomainService:
+    """Use one instance for all adapters in a backend application."""
+
+    def __init__(self, settings):
+        self.settings = settings
+        root = settings.domain.root or settings.pdf.output_root / "domain"
+        self.store = DomainStore(root, settings.domain.max_source_bytes, settings.domain.max_chunk_bytes)
+        self._services = {}
+        self._services_lock = threading.Lock()
+        self._cad_slots = threading.BoundedSemaphore(settings.cad.concurrency)
+        self._pdf_slots = threading.BoundedSemaphore(settings.server.pdf_concurrency)
+        self.jobs = JobService(self.store.root / "jobs", self._dispatch_job,
+                               concurrency=settings.cad.concurrency)
+
+    def start(self):
+        self.jobs.start()
+
+    def close(self):
+        self.jobs.close()
+
+    def _backend(self, ctx):
+        namespace = self.store.namespace_root(ctx)
+        with self._services_lock:
+            if ctx.subject not in self._services:
+                output = namespace / "execution"
+                pdf = self.settings.pdf
+                self._services[ctx.subject] = (
+                    CadService([namespace], output, self.settings.cad),
+                    PdfService((namespace,), output / "pdf", pdf.pdftoppm, pdf.timeout_seconds,
+                               min(pdf.max_pdf_bytes, self.store.max_source_bytes), pdf.max_pixels),
+                    StepService([namespace], output / "step", self.settings.server.max_step_bytes),
+                )
+            return self._services[ctx.subject]
+
+    @contextmanager
+    def _run_lock(self, ctx, run_id):
+        """Serialize domain operations across processes without nesting CAD locks."""
+        cad = self._backend(ctx)[0]
+        directory = cad._directory(run_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / "domain.lock"
+        self.store._check_path(path)
+        with path.open("a+b") as stream:
+            stream.seek(0, os.SEEK_END)
+            if not stream.tell():
+                stream.write(b"0")
+                stream.flush()
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    stream.seek(0)
+                    if os.name == "nt":
+                        import msvcrt
+                        msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise DomainError("RUN_BUSY", "Another operation holds this run.") from None
+                    time.sleep(0.02)
+            try:
+                yield cad, directory
+            finally:
+                stream.seek(0)
+                if os.name == "nt":
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+    def _state(self, cad, directory, expected_revision=None):
+        if not (directory / "state.json").is_file():
+            raise DomainError("NOT_FOUND", "The requested run does not exist.")
+        state = cad._load(directory)
+        if expected_revision is not None and state["revision"] != expected_revision:
+            raise DomainError("REVISION_CONFLICT", "Read the current part revision before this operation.")
+        return state
+
+    def _public(self, value):
+        """Remove private locations and process output from transport results."""
+        private = {"path", "work_dir", "candidate_step", "logs", "stdout", "stderr", "traceback"}
+        if isinstance(value, dict):
+            result = {}
+            for key, item in value.items():
+                if key in private or key.endswith("_path"):
+                    continue
+                if key == "error" and item is not None:
+                    # A worker exception can contain paths outside its run directory.
+                    code = item.get("code", "OPERATION_FAILED") if isinstance(item, dict) else "OPERATION_FAILED"
+                    result[key] = {"code": code, "message": "The operation reported an error. Inspect its code and check results."}
+                else:
+                    result[key] = self._public(item)
+            return result
+        if isinstance(value, list):
+            return [self._public(item) for item in value]
+        if isinstance(value, str):
+            for root in (self.store.root, self.settings.pdf.output_root):
+                value = value.replace(str(root), "[private storage]").replace(root.as_posix(), "[private storage]")
+            return value
+        return value
+
+    @staticmethod
+    def _validate(name, arguments):
+        if name not in DOMAIN_SCHEMAS:
+            raise DomainError("UNKNOWN_TOOL", "The domain operation is not supported.")
+        try:
+            Draft202012Validator(DOMAIN_SCHEMAS[name]).validate(arguments)
+            encoded = _json(arguments)
+            if len(encoded) > 8 * 1024 * 1024:
+                raise DomainError("LIMIT_EXCEEDED", "The request exceeds the domain size limit.")
+        except (ValidationError, ValueError, TypeError, RecursionError):
+            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract.") from None
+
+    def call(self, ctx: AccessContext, name: str, arguments: dict):
+        self.store.namespace_root(ctx)
+        self._validate(name, arguments)
+        try:
+            return self._public(self._call(ctx, name, deepcopy(arguments)))
+        except DomainError:
+            raise
+        except CadError as error:
+            message = error.message if error.code != "CAD_SERVICE_FAILED" else "The CAD operation failed."
+            raise DomainError(error.code, self._public(message)) from None
+        except StepError as error:
+            raise DomainError(error.code, "The STEP inspection failed. Check the artifact and expected hash.") from None
+        except PdfError:
+            raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.") from None
+        except Exception:
+            raise DomainError("DOMAIN_OPERATION_FAILED", "The domain operation failed. No private process details are returned.") from None
+
+    def _call(self, ctx, name, args):
+        if name == "domain_schema":
+            from .domain_contracts import domain_schema
+            return domain_schema()
+        if name.startswith("upload_") or name in {"source_get", "source_list", "artifact_get", "artifact_list", "artifact_read"}:
+            return getattr(self.store, name)(ctx, **args)
+        if name in {"job_get", "job_cancel"}:
+            return getattr(self.jobs, name.removeprefix("job_"))(ctx, **args)
+        if name == "job_list":
+            return {"items": self.jobs.list(ctx, **args)}
+        if name == "job_submit":
+            operation, operation_args = args["operation"], args["arguments"]
+            self._validate(operation, operation_args)
+            with self._run_lock(ctx, operation_args["run_id"]) as (cad, directory):
+                self._state(cad, directory, operation_args["expected_revision"])
+                return self.jobs.submit(ctx, operation, operation_args, args["idempotency_key"])
+        if name == "artifact_preview":
+            with self._pdf_slots:
+                return self._artifact_preview(ctx, args)
+        if name.startswith("pdf_") or name == "drawing_extract":
+            with self._pdf_slots:
+                return self._pdf_call(ctx, name, args)
+        if name.startswith("step_"):
+            return self._step_call(ctx, name, args)
+        if name == "drawing_schema":
+            return drawing_schema()
+        cad = self._backend(ctx)[0]
+        if name in {"part_schema", "part_validate", "cad_worker_probe"}:
+            if name == "cad_worker_probe":
+                with self._cad_slots:
+                    return cad.call(name, args)
+            return cad.call(name, args)
+        if name in {"build_from_description", "build_code", "drawing_render", "export_step"}:
+            with self._cad_slots:
+                return self._run_call(ctx, name, args)
+        return self._run_call(ctx, name, args)
+
+    def _dispatch_job(self, ctx, operation, arguments, cancel_event):
+        if cancel_event.is_set():
+            raise JobCancelled()
+        # call() repeats schema, ownership, and revision checks after queue delay.
+        # Once execution starts, the actual result is recorded even if cancelled.
+        result = self.call(ctx, operation, arguments)
+        if result.get("status") == "fail":
+            raise DomainError("JOB_OPERATION_FAILED", "The operation failed its checks. Read the current run or drawing state for its report.")
+        return result
+
+    def _preview(self, path):
+        from PIL import Image
+        with Image.open(path) as original:
+            image = original.copy()
+        try:
+            max_pixels = self.settings.server.preview_max_pixels
+            ratio = min(1, (max_pixels / (image.width * image.height)) ** 0.5)
+            if ratio < 1:
+                image.thumbnail((max(1, int(image.width * ratio)), max(1, int(image.height * ratio))))
+            for _ in range(12):
+                buffer = BytesIO()
+                image.save(buffer, format="PNG")
+                if len(buffer.getvalue()) <= self.settings.server.preview_max_bytes:
+                    return {"mime_type": "image/png", "data_base64": base64.b64encode(buffer.getvalue()).decode("ascii"),
+                            "width_pixels": image.width, "height_pixels": image.height}
+                image.thumbnail((max(1, image.width // 2), max(1, image.height // 2)))
+            return {"status": "unavailable", "reason": "The preview exceeds the configured limit."}
+        finally:
+            image.close()
+
+    def _pdf_call(self, ctx, name, args):
+        source_id = args.pop("source_id")
+        source = self.store.source_get(ctx, source_id)
+        path = self.store.source_path(ctx, source_id)
+        preview = args.pop("include_image", True)
+        methods = {"pdf_info": "info", "pdf_read_text": "read_text", "pdf_render_page": "render_page",
+                   "pdf_crop_region": "crop_region", "drawing_extract": "extract_drawing", **MEASUREMENT_METHODS}
+        result = getattr(self._backend(ctx)[1], methods[name])(path=path, **args)
+        self.store.source_path(ctx, source_id)
+        if result.get("source", {}).get("sha256", source["sha256"]) != source["sha256"]:
+            raise DomainError("SOURCE_HASH_MISMATCH", "The PDF preparation used different source bytes.")
+        result["source"] = source
+        if "artifact" in result:
+            internal = result["artifact"]
+            result["artifact"] = self.store.artifact_register(ctx, internal["path"], "source_preview", source_id,
+                                                              0, "image/png", Path(internal["path"]).name)
+            if preview:
+                result["preview"] = self._preview(internal["path"])
+        return result
+
+    def _artifact_preview(self, ctx, args):
+        metadata = self.store.artifact_get(ctx, args["artifact_id"])
+        source = self.store._path(ctx, "artifacts", args["artifact_id"])
+        self.store._verify(source, metadata["size_bytes"], metadata["sha256"])
+        if metadata["media_type"] == "image/png":
+            if args.get("page", 1) != 1:
+                raise DomainError("INVALID_ARGUMENT", "A PNG artifact has one page.")
+            result = {"artifact": metadata}
+            if args.get("include_image", True):
+                result["preview"] = self._preview(source)
+            return result
+        if metadata["media_type"] != "application/pdf":
+            raise DomainError("INVALID_ARTIFACT_TYPE", "Preview supports PDF and PNG artifacts.")
+        if metadata["size_bytes"] > min(self.settings.pdf.max_pdf_bytes, self.store.max_source_bytes):
+            raise DomainError("LIMIT_EXCEEDED", "The PDF artifact exceeds the preparation byte limit.")
+        parent = self.store.namespace_root(ctx) / "inspection"
+        self.store._check_path(parent)
+        parent.mkdir(exist_ok=True)
+        with TemporaryDirectory(prefix="preview-", dir=parent) as temporary:
+            snapshot = Path(temporary) / "drawing.pdf"
+            CadService._atomic(snapshot, source.read_bytes())
+            result = self._backend(ctx)[1].render_page(snapshot, page=args.get("page", 1), dpi=args.get("dpi", 150))
+        internal = result.pop("artifact")
+        result.pop("source", None)
+        result["source_artifact"] = metadata
+        result["artifact"] = self.store.artifact_register(ctx, internal["path"], "artifact_preview", metadata["run_id"],
+                                                          metadata["revision"], "image/png", Path(internal["path"]).name)
+        if args.get("include_image", True):
+            result["preview"] = self._preview(internal["path"])
+        return result
+
+    def _step_call(self, ctx, name, args):
+        artifact_id = args.pop("artifact_id")
+        metadata = self.store.artifact_get(ctx, artifact_id)
+        if metadata["sha256"] != args["expected_sha256"].lower():
+            raise DomainError("ARTIFACT_HASH_MISMATCH", "The artifact differs from the expected hash.")
+        if metadata["media_type"] != "model/step":
+            raise DomainError("INVALID_ARTIFACT_TYPE", "Use a STEP artifact for this operation.")
+        if metadata["size_bytes"] > self.settings.server.max_step_bytes:
+            raise DomainError("LIMIT_EXCEEDED", "The STEP artifact exceeds the inspection byte limit.")
+        source = self.store._path(ctx, "artifacts", artifact_id)
+        self.store._verify(source, metadata["size_bytes"], metadata["sha256"])
+        parent = self.store.namespace_root(ctx) / "inspection"
+        self.store._check_path(parent)
+        parent.mkdir(exist_ok=True)
+        with TemporaryDirectory(prefix="step-", dir=parent) as temporary:
+            snapshot = Path(temporary) / "part.step"
+            CadService._atomic(snapshot, source.read_bytes())
+            result = self._backend(ctx)[2].call(name, {"path": str(snapshot), **args})
+        result["artifact_id"] = artifact_id
+        return result
+
+    @staticmethod
+    def _drawing_path(directory):
+        return directory / "drawing-state.json"
+
+    def _drawing(self, directory, state):
+        path = self._drawing_path(directory)
+        self.store._check_path(path)
+        if not path.is_file():
+            return None
+        if path.stat().st_size > 4 * 1024 * 1024:
+            raise DomainError("DRAWING_STATE_INVALID", "The stored drawing state exceeds its limit.")
+        drawing = json.loads(path.read_text(encoding="utf-8"))
+        if drawing["part_revision"] != state["revision"] or drawing["description_sha256"] != state["description_sha256"]:
+            return None
+        return drawing
+
+    def _save_drawing(self, directory, drawing):
+        CadService._atomic(self._drawing_path(directory), _json(drawing))
+
+    def _register_json(self, ctx, directory, value, filename, role, run_id, revision):
+        path = directory / (uuid4().hex + "-" + filename)
+        CadService._atomic(path, _json(self._public(value)))
+        return self.store.artifact_register(ctx, path, role, run_id, revision, "application/json", filename)
+
+    def _notes(self, ctx, run_id):
+        try:
+            return self.store.notes_read(ctx, run_id)
+        except DomainError as error:
+            if error.code != "NOT_FOUND":
+                raise
+            return {"run_id": run_id, "revision": 0, "text": ""}
+
+    def _invalidate_release(self, cad, run_id):
+        with cad._lock(run_id) as directory:
+            state = cad._load(directory)
+            state["release"] = None
+            state["source_review"] = None
+            cad._save(directory, state)
+
+    @staticmethod
+    def _release_is_current(state, drawing):
+        release = state.get("release") or {}
+        review = (drawing or {}).get("review") or {}
+        return bool(release.get("artifact") and drawing and drawing.get("status") == "pass"
+                    and release.get("drawing_sha256") == drawing["drawing_sha256"]
+                    and review.get("decision") == "accepted"
+                    and review.get("candidate_sha256") == release.get("sha256"))
+
+    def _run_call(self, ctx, name, args):
+        with self._run_lock(ctx, args["run_id"]) as (cad, directory):
+            # Record domain mutations separately from the existing CAD trace.
+            # Read-only calls do not consume an unbounded audit log.
+            record = name not in {"part_read", "drawing_read", "drawing_validate", "notes_read", "part_export_review"}
+            events = directory / "domain-events"
+            if record:
+                self.store._check_path(events)
+                events.mkdir(exist_ok=True)
+                if sum(1 for _ in events.glob("*.json")) >= 1000:
+                    raise DomainError("AUDIT_LIMIT", "The run reached its domain mutation limit.")
+            event = {"operation": name, "request": self._public(args), "request_sha256": _digest(self._public(args)),
+                     "started_at": time.time(), "status": "interrupted", "scope": "domain_run_operation"}
+            event_path = events / (str(time.time_ns()) + "-" + uuid4().hex + ".json")
+            if record:
+                CadService._atomic(event_path, _json(event))
+            try:
+                result = self._run_operation(ctx, name, args, cad, directory)
+                event.update(status=result.get("status", "pass"), result_sha256=_digest(self._public(result)), finished_at=time.time())
+                if name in {"drawing_review", "drawing_render", "export_step"}:
+                    drawing = result.get("drawing") or {}
+                    event.update(drawing_sha256=drawing.get("drawing_sha256"),
+                                 artifacts=self._public(drawing.get("artifacts", [])), review=self._public(drawing.get("review")))
+                if record:
+                    CadService._atomic(event_path, _json(event))
+                return result
+            except (DomainError, CadError) as error:
+                if record:
+                    event.update(status="fail", error={"code": error.code}, finished_at=time.time())
+                    CadService._atomic(event_path, _json(event))
+                raise
+
+    def _run_operation(self, ctx, name, args, cad, directory):
+        if name == "part_create":
+            for source in args["sources"]:
+                metadata = self.store.source_get(ctx, source["source_id"])
+                if metadata["sha256"] != source["sha256"]:
+                    raise DomainError("SOURCE_HASH_MISMATCH", "The source differs from its expected hash.")
+                source["path"] = str(self.store.source_path(ctx, source["source_id"]))
+            return cad.call(name, args)
+        state = self._state(cad, directory, None if name.startswith("notes_") else args.get("expected_revision"))
+        if name == "notes_read":
+            return self._notes(ctx, args["run_id"])
+        if name == "notes_update":
+            return getattr(self.store, name)(ctx, **args)
+        if name == "drawing_read":
+            return {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state)}
+        if name == "drawing_validate":
+            report = drawing_validate(args["drawing_spec"], state["description"], state["revision"])
+            report.pop("resolved", None)
+            return report
+        if name == "drawing_render":
+            return self._render(ctx, cad, directory, state, args["drawing_spec"])
+        if name == "drawing_review":
+            return self._review(ctx, cad, directory, state, args)
+        if name == "part_export_review":
+            return self._export_review(ctx, cad, directory, state)
+        if name == "export_step":
+            drawing = self._require_review(ctx, directory, state)
+            result = cad.call(name, args)
+            if result.get("status") == "pass":
+                release = result["release"]
+                artifact = self.store.artifact_register(ctx, release["path"], "released_step", args["run_id"],
+                                                        state["revision"], "model/step", Path(release["path"]).name)
+                result["release"]["artifact"] = artifact
+                with cad._lock(args["run_id"]) as saved_directory:
+                    saved = cad._load(saved_directory)
+                    saved["release"]["artifact"] = artifact
+                    saved["release"]["drawing_sha256"] = drawing["drawing_sha256"]
+                    saved["release"]["drawing_artifacts"] = drawing["artifacts"]
+                    cad._save(saved_directory, saved)
+                result["drawing"] = drawing
+            return result
+        if name not in CAD_SCHEMAS:
+            raise DomainError("UNKNOWN_TOOL", "The run operation is not supported.")
+        if name in {"build_from_description", "build_code"}:
+            self._invalidate_release(cad, state["run_id"])
+            drawing = self._drawing(directory, state)
+            if drawing:
+                drawing["review"] = None
+                self._save_drawing(directory, drawing)
+        result = cad.call(name, args)
+        if name == "part_read":
+            result["drawing"] = self._drawing(directory, state)
+            if not self._release_is_current(result["part"], result["drawing"]):
+                result["part"]["release"] = None
+        return result
+
+    def _render(self, ctx, cad, directory, state, spec):
+        if not self.settings.cad.enabled:
+            raise DomainError("CAD_DISABLED", "Enable the restricted worker before drawing creation.")
+        report = drawing_validate(spec, state["description"], state["revision"])
+        if report["status"] != "pass":
+            report.pop("resolved", None)
+            return report
+        # Invalidate first, including when the worker fails or the process exits.
+        drawing = {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
+                   "drawing_sha256": _digest(spec), "status": "not_tested", "review": None, "artifacts": [], "spec": spec}
+        self._invalidate_release(cad, state["run_id"])
+        self._save_drawing(directory, drawing)
+        for source in state["sources"]:
+            self.store.source_path(ctx, source["source_id"])
+        result = cad.runner.run("drawing", drawing_spec=spec, description=state["description"], revision=state["revision"])
+        if result.get("status") != "pass":
+            drawing.update(status="fail", report=self._public(result))
+            self._save_drawing(directory, drawing)
+            return {"status": "fail", "drawing": drawing}
+        if result.get("checks", {}).get("rendered_layout") != "pass":
+            raise DomainError("DRAWING_LAYOUT_REQUIRED", "The drawing worker must pass the rendered layout check.")
+        workdir = Path(result.get("worker", {}).get("work_dir", ""))
+        if not workdir.is_absolute() or not workdir.is_relative_to(cad.runner.storage) or workdir.resolve() != workdir:
+            raise DomainError("INVALID_WORKER_ARTIFACT", "The drawing worker directory is invalid.")
+        for filename, media in (("drawing.dxf", "image/vnd.dxf"), ("drawing.pdf", "application/pdf")):
+            path = workdir / filename
+            self.store._check_path(path)
+            expected = next((item for item in result.get("artifacts", []) if item.get("name") == filename), None)
+            if not expected or expected.get("path") != str(path):
+                raise DomainError("INVALID_WORKER_ARTIFACT", "The drawing worker did not return its fixed artifact paths.")
+            self.store._verify(path, expected["bytes"], expected["sha256"])
+            drawing["artifacts"].append(self.store.artifact_register(ctx, path, "technical_drawing", state["run_id"],
+                                                                    state["revision"], media, filename))
+        public_report = self._public(result)
+        public_report.pop("artifacts", None)
+        drawing["artifacts"].append(self._register_json(ctx, directory, public_report, "drawing-report.json",
+                                                       "drawing_report", state["run_id"], state["revision"]))
+        drawing.update(status="pass", report=public_report)
+        self._save_drawing(directory, drawing)
+        return {"status": "pass", "run_id": state["run_id"], "revision": state["revision"], "drawing": drawing}
+
+    def _review(self, ctx, cad, directory, state, args):
+        drawing = self._drawing(directory, state)
+        if not drawing or drawing["status"] != "pass" or drawing["drawing_sha256"] != args["drawing_sha256"]:
+            raise DomainError("DRAWING_REVIEW_CONFLICT", "Render the current drawing and review its exact hash.")
+        hashes = {source["sha256"] for source in state["sources"] if source["role"] == "construction"}
+        if set(args["source_hashes"]) != hashes:
+            raise DomainError("COVERAGE_SOURCE_MISMATCH", "The drawing review must cover all construction source hashes.")
+        for source in state["sources"]:
+            self.store.source_path(ctx, source["source_id"])
+        for artifact in drawing["artifacts"]:
+            self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
+        drawing["review"] = {**args, "scope": "identified_drawing_and_model_review_attestation",
+                             "automatic_cad_equivalence": "not_tested",
+                             "candidate_sha256": (state.get("build") or {}).get("candidate_sha256")}
+        self._invalidate_release(cad, state["run_id"])
+        self._save_drawing(directory, drawing)
+        return {"status": "pass", "drawing": drawing}
+
+    def _require_review(self, ctx, directory, state):
+        drawing = self._drawing(directory, state)
+        if not drawing or drawing["status"] != "pass":
+            raise DomainError("CURRENT_DRAWING_REQUIRED", "Render a checked technical drawing for the current part revision.")
+        review = drawing.get("review") or {}
+        if review.get("decision") != "accepted" or review.get("candidate_sha256") != (state.get("build") or {}).get("candidate_sha256"):
+            raise DomainError("DRAWING_REVIEW_REQUIRED", "Review the current drawing and validated model before release.")
+        for artifact in drawing["artifacts"]:
+            self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
+        return drawing
+
+    def _export_review(self, ctx, cad, directory, state):
+        remaining = 32 * 1024 * 1024
+
+        def read_record(path):
+            nonlocal remaining
+            self.store._check_path(path)
+            size = path.stat().st_size
+            if size > remaining:
+                raise DomainError("TRACE_LIMIT", "The complete run trace exceeds the 32 MiB export limit.")
+            with path.open("rb") as stream:
+                raw = stream.read(remaining + 1)
+            if len(raw) > remaining:
+                raise DomainError("TRACE_LIMIT", "The complete run trace exceeds the 32 MiB export limit.")
+            remaining -= len(raw)
+            return raw
+
+        trace = []
+        for event in state["events"]:
+            record = deepcopy(event)
+            for field in ("request", "result"):
+                if field + "_path" not in event:
+                    continue
+                path = Path(event[field + "_path"])
+                self.store._check_path(path)
+                if path.parent != directory or path.stat().st_size > 16 * 1024 * 1024:
+                    raise DomainError("TRACE_INVALID", "A stored trace record is invalid.")
+                raw = read_record(path)
+                if hashlib.sha256(raw).hexdigest() != event[field + "_sha256"]:
+                    raise DomainError("TRACE_INVALID", "A stored trace record changed.")
+                record[field] = self._public(json.loads(raw))
+                record["recorded_private_" + field + "_sha256"] = record[field + "_sha256"]
+                record[field + "_sha256"] = _digest(record[field])
+            trace.append(record)
+        domain_events = []
+        for path in sorted((directory / "domain-events").glob("*.json")):
+            self.store._check_path(path)
+            if path.stat().st_size > 8 * 1024 * 1024:
+                raise DomainError("TRACE_INVALID", "A domain event exceeds its limit.")
+            domain_events.append(json.loads(read_record(path)))
+        drawing = self._drawing(directory, state)
+        public_state = deepcopy(state)
+        if not self._release_is_current(public_state, drawing):
+            public_state["release"] = None
+        manifest = {"schema_version": "1.0", "package_version": __version__, "run": public_state,
+                    "drawing": drawing, "notes": self._notes(ctx, state["run_id"]),
+                    "scope": "Path-free application evidence. Target CAD and AP242 acceptance require separate tests.",
+                    "trace_hash_scope": "request_sha256 and result_sha256 bind canonical public payloads. recorded_private_* hashes preserve the original private record hashes."}
+        artifacts = []
+        for filename, role, value in (("part.json", "part_description", state["description"]),
+                                       ("manifest.json", "run_manifest", manifest), ("trace.json", "run_trace", trace),
+                                       ("domain-events.json", "domain_run_events", domain_events)):
+            artifacts.append(self._register_json(ctx, directory, value, filename, role, state["run_id"], state["revision"]))
+        return {"status": "pass", "run_id": state["run_id"], "revision": state["revision"], "artifacts": artifacts}

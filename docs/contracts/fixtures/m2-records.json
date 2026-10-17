@@ -1,0 +1,62 @@
+{
+  "schema_version": "drawing2cad.domain/1",
+  "synthetic": true,
+  "records": {
+    "SourceRecord": {
+      "source_id": "src_11111111111111111111111111111111",
+      "filename": "synthetic-plate.pdf",
+      "media_type": "application/pdf",
+      "size_bytes": 2048,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "created": 1800000000.0,
+      "status": "uploaded",
+      "pdf_validation": "not_tested"
+    },
+    "ArtifactRecord": {
+      "artifact_id": "art_22222222222222222222222222222222",
+      "filename": "drawing.dxf",
+      "size_bytes": 8192,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "role": "technical_drawing",
+      "run_id": "synthetic_plate",
+      "revision": 2,
+      "media_type": "image/vnd.dxf",
+      "created": 1800000001.0
+    },
+    "UploadRecord": {
+      "upload_id": "upl_11111111111111111111111111111111",
+      "filename": "synthetic-plate.pdf",
+      "size_bytes": 2048,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "offset": 512,
+      "status": "uploading",
+      "source_id": null,
+      "created": 1800000000.0
+    },
+    "ArtifactChunk": {
+      "artifact_id": "art_22222222222222222222222222222222",
+      "offset": 0,
+      "length": 3,
+      "data_base64": "QUJD",
+      "eof": false,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "RunNote": {"run_id": "synthetic_plate", "revision": 1, "text": "Source review is pending."},
+    "ServiceError": {"code": "REVISION_CONFLICT", "message": "Read the current part revision before this operation."},
+    "JobRecord": {
+      "job_id": "job_33333333333333333333333333333333",
+      "operation": "build_from_description",
+      "run_id": "synthetic_plate",
+      "expected_revision": 2,
+      "state": "queued",
+      "created_at": "2026-10-17T12:00:00.000000Z",
+      "updated_at": "2026-10-17T12:00:00.000000Z",
+      "started_at": null,
+      "finished_at": null,
+      "cancellation_requested_at": null,
+      "arguments": {"run_id": "synthetic_plate", "expected_revision": 2},
+      "result": null,
+      "error": null
+    }
+  }
+}

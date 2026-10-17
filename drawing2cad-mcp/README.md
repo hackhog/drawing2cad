@@ -1,14 +1,15 @@
 # drawing2cad-mcp
 
-This server supplies PDF preparation, drawing measurements, versioned part construction, and validated STEP through one MCP interface.
-The M1 backend is build123d with OCP/OpenCascade.
+This server supplies PDF uploads and preparation, versioned part construction, dimensioned DXF/PDF drawings, and validated STEP through one MCP interface.
+The backend is build123d with OCP/OpenCascade. The drawing adapter uses ezdxf and its PDF renderer.
 A restricted child process executes each build or fresh STEP import.
 CAD execution uses only the headless build123d worker. The server has no FreeCAD proxy.
 
 Use the [Streamable HTTP guide](STREAMABLE_HTTP.md) for HTTP transport and client registration.
 Use [ADR 0014](../docs/adr/0014-headless-build123d-metric-prototype.md) for the selected sandbox and milestone boundaries.
+Use [ADR 0015](../docs/adr/0015-shared-domain-service-and-drawing-delivery.md) for shared services, persistent jobs, and drawing delivery.
 
-## M1 Docker runtime
+## Docker runtime
 
 From the repository root:
 
@@ -19,8 +20,18 @@ docker compose -f compose.mcp.yaml run --rm -T mcp
 
 This starts MCP over stdio. Attach a client to stdin/stdout.
 The service has no network and publishes no HTTP port.
-It mounts permitted inputs at `/inputs` and retains outputs in the `cad-data` volume at `/data`.
-Set `DRAWING2CAD_INPUT_DIR` to select the permitted input directory; the default is `./resources`.
+It retains sources, revisions, jobs, notes, and artifacts in the `cad-data` volume at `/data`.
+The Docker configuration enables the domain profile, with private storage at `/data/domain`.
+Send PDF bytes through the upload tools. No source directory mount is required.
+
+For HTTP, set `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism and run:
+
+```bash
+docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up --build -d
+```
+
+The endpoint is `http://127.0.0.1:8765/mcp`. Use the same bearer token in the client.
+Only the host loopback interface is exposed. The application can receive HTTP requests; the CAD child retains its separate network restrictions.
 
 The image contains Python, Poppler, build123d, OCP/OpenCascade, and the worker.
 The container has a read-only root filesystem, no Linux capabilities, no-new-privileges, and finite CPU, memory, and process limits.
@@ -28,10 +39,12 @@ Each CAD job adds Landlock filesystem rules, seccomp restrictions, resource limi
 A missing sandbox produces a structured failure. There is no unsandboxed host fallback.
 The current profile is not a claim of hostile multi-tenant isolation.
 
-M1 accepts configured server-side paths.
-Persistent PDF uploads, opaque source/artifact IDs, browser downloads, and the unified MCP/API application belong to M2.
-A client-local file path is not an upload.
-The existing demo does not implement that production storage contract.
+The domain profile uses source, run, job, and artifact IDs. It does not accept client-supplied server paths.
+`DomainService` owns the shared operations and storage for MCP and the future web adapter.
+The web routes and React interface belong to #26 and are not implemented here.
+MCP uses one configured principal. A bearer token does not establish separate identities for each client.
+The service accepts a trusted `AccessContext` from an adapter; no tool argument can select that identity.
+The existing demo is separate from this service.
 
 The editable source for declarative construction is the versioned JSON part description.
 The prototype exports AP214 geometry and records the actual file schema.
@@ -46,6 +59,12 @@ Use the live catalog for exact schemas and limits.
 |---|---|
 | `drawing2cad_status`, `cad_capabilities` | Runtime versions, service scope, and capability limits. |
 | `cad_worker_probe` | Actual restriction, failure, and recovery tests for the worker. |
+| `upload_begin`, `upload_get`, `upload_chunk`, `upload_complete`, `upload_abort` | Resumable PDF bytes with size, hash, and committed-offset checks. |
+| `source_get`, `source_list` | Source metadata for the authenticated principal. |
+| `artifact_get`, `artifact_list`, `artifact_read`, `artifact_preview` | Immutable artifact metadata, bounded downloads, and PDF/PNG inspection. |
+| `domain_schema` | Shared input contracts and public response-record schemas for MCP and web adapters. |
+| `job_submit`, `job_get`, `job_list`, `job_cancel` | Persistent CAD and drawing jobs, idempotent submission, and cancellation requests. |
+| `notes_read`, `notes_update` | Run notes with their own expected revision. |
 | `pdf_info` | PDF hash, page count, page geometry, boxes, and rotation. |
 | `pdf_read_text` | Bounded embedded-text extraction; no OCR. |
 | `pdf_render_page`, `pdf_crop_region` | Page/detail images and artifact hashes. |
@@ -59,13 +78,37 @@ Use the live catalog for exact schemas and limits.
 | `build_code` | Optional in-memory execution, requiring configuration and a verified sandbox. |
 | `export_step` | Release a candidate after trusted re-import, dimension checks, and source-review coverage. |
 | `part_export_review` | Review records, coverage, manifest, and event evidence. |
-| `workflow_*` | Legacy structural evidence profile; hidden unless `server.expose_legacy_workflow=true`. |
-| `step_*` | Bounded STEP inspection and application-property tools; not full conformance analysis. |
+| `drawing_schema`, `drawing_validate`, `drawing_render`, `drawing_read`, `drawing_review` | Revision-bound drawing specification, DXF/PDF output, layout checks, and identified review. |
+| Read-only `step_*` | Inspect STEP by artifact ID and expected hash; not full conformance analysis. |
 
 The server can prefix tool names with its client namespace.
 PDF results contain `structuredContent` and equivalent text metadata.
 Page and detail results also contain PNG image blocks.
 Preview metadata give the actual display size; the full artifact remains in server storage.
+
+## Uploads, artifacts, and jobs
+
+1. Call `upload_begin` with `filename`, byte count, and exact SHA-256. The filename is metadata only.
+2. Send base64 chunks through `upload_chunk` at the committed byte offset. The default chunk limit is 512 KiB before base64 encoding. The PDF limit is 20 MiB.
+3. After a lost response, use `upload_get`. An exact retry of a committed chunk is safe; different bytes or a different chunk boundary are rejected.
+4. Call `upload_complete`. The service verifies size, hash, and PDF header/trailer markers. Structural PDF validation remains `not_tested` at this point.
+5. Use the returned `source_id` in PDF tools and `part_create.sources`. Include its exact hash and source role.
+6. Download results through `artifact_read`, using its byte offset and bounded length. Verify the complete download against `artifact_get.sha256`.
+
+Artifacts are immutable snapshots. A later build does not replace an earlier artifact ID.
+Source and artifact access is scoped to the trusted principal. Source bytes are checked again before use.
+The service does not enforce an aggregate disk quota or a retention period. Operators must manage retained data and free space.
+
+Use `job_submit` for `build_from_description`, `build_code`, `drawing_render`, or `export_step`.
+Supply `operation`, its normal `arguments`, and an `idempotency_key`. Reuse a key only for the identical operation and arguments.
+Read completion with `job_get`; a transport response that confirms submission is not a CAD pass.
+The queue permits 128 pending or active jobs by default. It returns `JOB_QUEUE_FULL` at the limit and still permits exact idempotent retries.
+One job service holds an operating-system lock for the shared store. Start it once in the application lifespan.
+After a restart, queued jobs resume. Unfinished active jobs become `interrupted`; uncertain effects are not replayed.
+Cancellation prevents queued work from starting. A running operation can still finish with effects and a `succeeded` or `failed` state.
+Inspect its result and the part before another mutation. Cancellation does not roll back CAD state.
+
+Run notes have an independent revision that starts at zero. `notes_update.expected_revision` refers to the note revision, not the part revision.
 
 ## Part description and supported geometry
 
@@ -119,6 +162,25 @@ If this field is absent, `entry_side` is `not_tested`; diameter and depth alone 
 Named references update their direct uses. There is no algebraic constraint solver for derived profile coordinates.
 Rebuild and measure a changed description before claiming parameter editability.
 
+## Technical drawing delivery
+
+Read `drawing_schema`. DrawingSpec 1.0 binds the sheet to `part_revision` and the canonical `description_sha256` returned by the part service.
+Supply views with line, circle, and arc geometry, evidence and feature references, dimensions, notes, and uncertainty markers.
+Coordinates can reference named part parameters with a factor and offset. A model edit requires a newly bound drawing specification and rendering.
+Native DXF linear, radius, diameter, and angular dimension entities describe the supplied view geometry. The PDF is rendered from these same entities.
+The output is editable DXF; it is not a native parametric CAD drawing with automatic solid projections.
+
+The adapter does not infer arbitrary orthographic views or extract sections from the solid.
+Supply required section geometry and labels, then review them against source images and the model.
+Automatic drawing-to-solid equivalence, general GD&T validation, and semantic PMI remain unsupported.
+Schema and layout checks cannot prove that the source was interpreted correctly or that all necessary views were supplied.
+
+Use `drawing_validate`, then `drawing_render`. Inspect the returned PDF artifact and layout report.
+Either drawing or model can be created first. After the model build, record `drawing_review` for the exact drawing hash, current part revision, construction-source hashes, reviewer, decision, and reason.
+A model rebuild invalidates the earlier drawing review, including a rebuild of the same revision.
+STEP release requires current drawing artifacts, passing layout checks, and an accepted review bound to the current model candidate.
+The review is an identified attestation; automatic CAD equivalence remains `not_tested`.
+
 ## Validation and milestone limits
 
 Call `cad_worker_probe` before CAD work.
@@ -126,16 +188,16 @@ Use the current revision returned by `part_read` for mutations.
 After a lost response, inspect stored state and artifacts before another mutation.
 
 The build creates the first STEP candidate and validates its import in a fresh worker.
-`export_step` releases that candidate only after dimension checks and complete source-review coverage.
+`export_step` releases that candidate only after dimension checks, complete source-review coverage, and the current drawing-review gate.
 The coverage record is a reviewer attestation, not automatic proof of source interpretation.
 The geometry test is separate from independent STEP conformance analysis and opening in NX.
 Unavailable external tests remain `not_tested`.
 They prevent a complete metric pass where required.
 
-The M2 service must also produce an editable technical drawing and rendered inspection copy.
-Drawing and model creation can occur in either order.
-Their final revisions must agree.
+Drawing delivery and model validation are separate checks. Their final revisions must agree.
 M3 must prove construction and parameter changes from STEP alone, plus separate semantic and graphical PMI results.
+The web interface remains #26. AP242 and PMI remain #25.
+Issue #12 is closed; resource acceptance trials are deferred until the milestones are complete. Issues #7 and #11 remain deferred.
 
 See the [skill workflow](../skills/drawing2cad/references/managed-workflow.md)
 and [validation contract](../skills/drawing2cad/references/validation.md).
@@ -154,7 +216,7 @@ These clients are evaluation tools. They are not part of the production API.
 
 Install Python 3.11 or later and Poppler with `pdftoppm`.
 Installation includes PyMuPDF 1.28.2 for vector analysis.
-For CAD work, use the M1 Docker image with its supported Linux sandbox.
+For CAD work, use the Docker image with its supported Linux sandbox.
 A local `[cad]` installation does not bypass the sandbox requirement.
 
 On Windows, run these commands from this directory:
@@ -180,8 +242,10 @@ Set the TOML configuration:
 - `[cad]`: enable the maintained worker and set finite timeout, memory, concurrency, and call-budget limits. Keep `allow_build_code=false` unless its verified scope is needed.
 - `[server]`: transport, preview limits, PDF concurrency, `max_step_bytes`, and optional `expose_legacy_workflow`. The default transport is `stdio`.
 - `[http]`: listener address, port, permitted Host and Origin headers, and the bearer-token environment variable.
+- `[domain]`: enable ID-based operations, select private storage, set the server principal, and bound PDF/chunk sizes. Docker enables this profile.
 
-Relative **configuration paths** use the TOML directory as their base. PDF tool calls use **absolute file paths**.
+Relative **configuration paths** use the TOML directory as their base. Domain tools use IDs and keep server paths internal.
+The default Python settings keep `domain.enabled=false` for the local-path development profile. Enable it for remote upload operation.
 The `.local.toml` file is specific to this computer. The portable example has no user-specific paths.
 Remove the old `[freecad]` section and `server.expose_freecad_proxy` setting when migrating.
 The current configuration rejects these fields, including disabled values.
@@ -235,9 +299,9 @@ The address `127.0.0.1` in a LiteLLM container refers to that container.
 For connections across an untrusted network, put the endpoint behind a TLS reverse proxy.
 Preserve the permitted Host header and request streaming through that proxy.
 
-The HTTP endpoint uses the same PDF path rules, part revision gates, and CAD worker restrictions as stdio.
-It does not add user-specific file isolation, a web interface, or artifact downloads.
-Returned `artifact.path` values refer to the server filesystem.
+The HTTP endpoint uses the same domain storage, source ownership, part revision gates, and CAD worker restrictions as stdio.
+Uploads and downloads use MCP tools. There are no separate REST download routes or web interface in this milestone.
+The local-path development profile returns server paths; do not use that profile as the remote upload contract.
 MCP image blocks remain available to remote clients.
 
 For a future shared Python backend, use `drawing2cad_mcp.http.create_http_app(application)` as the ASGI application factory.
@@ -246,7 +310,7 @@ The lifespan manages the MCP application. Reuse that application for requests.
 
 ## Register with an agent
 
-Register only this server. The M1 worker and CAD dependencies are part of its image.
+Register only this server. The worker and CAD dependencies are part of its image.
 For LiteLLM, use [litellm-mcp.example.json](litellm-mcp.example.json) and the [registration procedure](#register-with-litellm).
 For an HTTP client with an `mcpServers` configuration, use the server URL:
 
@@ -370,7 +434,7 @@ Set `LITELLM_ENABLE_MCP_STDIO=true` in the LiteLLM process environment before st
 Select **Standard Input/Output (stdio)** and paste the adjusted JSON into its configuration field.
 See the [stdio registration instructions](https://docs.litellm.ai/docs/mcp/#add-stdio-mcp-server).
 
-Registration does not install server dependencies. The M1 Docker image supplies the worker. The supplied Compose profile uses stdio and no network.
+Registration does not install server dependencies. The Docker image supplies the worker. The base Compose profile uses stdio and no network; the HTTP override publishes the authenticated endpoint.
 
 Load the complete [drawing2cad skill folder](../skills/drawing2cad/SKILL.md) in the agent that uses these tools.
 Include its `references/` files. MCP registration does not install the skill or load its workflow instructions.
@@ -378,7 +442,7 @@ The skill remains at `skills/drawing2cad`; the JSON examples remain with the MCP
 
 ## Reproducible PDF procedure
 
-1. Give only the permitted PDF to `pdf_info`.
+1. Upload only the permitted PDF, then give its `source_id` to `pdf_info`.
 2. Record `source.sha256`.
 3. Call `pdf_read_text` for the necessary pages.
 4. If page 1 has `status="native_text_missing"`, assess whether it meets the [vector analysis profile](#vector-analysis).
@@ -390,7 +454,7 @@ The skill remains at `skills/drawing2cad`; the JSON examples remain with the MCP
 7. Create detail images for critical dimensions, for example:
 
 ```json
-{"path":"C:/Projekt/resources/Zeichnung.pdf","page":1,"bbox":[0.25,0.0,0.75,0.5],"dpi":300,"include_image":true}
+{"source_id":"src_0123456789abcdef0123456789abcdef","page":1,"bbox":[0.25,0.0,0.75,0.5],"dpi":300,"include_image":true}
 ```
 
 8. Record the source hash, page, crop region, resolution, and artifact hash with the observation.
@@ -438,7 +502,7 @@ The analysis runs in a separate process for each request.
 The source snapshot and internal response are temporary data. The operation creates no persistent JSON export or colored overlay.
 For visual review, use `pdf_render_page` and `pdf_crop_region`.
 
-Create the model through the maintained part tools. The complete M2 service must also create and review a dimensioned technical drawing.
+Create the model through the maintained part tools. Use the drawing tools to create and review the dimensioned technical drawing.
 Its creation can precede or follow construction; final revisions must agree.
 Vector analysis does not author drawings, build CAD features, or supply semantic PMI.
 See [ADR 0013](../docs/adr/0013-vector-analysis-in-mcp.md) for the feature comparison and package migration.
@@ -448,12 +512,12 @@ See [ADR 0013](../docs/adr/0013-vector-analysis-in-mcp.md) for the feature compa
 - PDF preparation uses pypdf for text and metadata, Poppler for raster images, and Pillow for crops and previews.
 - `drawing_extract` uses the internal `drawing2cad_mcp.vector` module and PyMuPDF in an isolated request process.
 - The server has no OCR or autonomous drawing interpretation. CAD tools build the explicit feature description supplied through MCP.
-- The server verifies resolved PDF paths against permitted directories, file-size limits, page limits, and pixel limits.
+- The domain service resolves authorized source IDs to private paths, verifies source hashes, and applies file-size, page, and pixel limits.
 - Poppler and vector analysis each use `pdf.timeout_seconds`. That timeout does not apply to the in-process pypdf parser.
 - This server is not an isolated service for unrestricted hostile PDF inputs.
 - PDF preparation remains available when CAD execution is disabled or its sandbox is unavailable.
 - CAD calls use the maintained build123d worker. There is no external CAD proxy or GUI dispatcher.
-- Part revisions and per-run locks prevent conflicting mutations. They do not provide user-specific storage isolation.
+- Part revisions and per-run locks prevent conflicting mutations. Domain storage also scopes objects to the adapter's trusted principal. MCP currently supplies one configured principal.
 - The server does not automatically retry failed or canceled CAD calls.
 - An operation that has started can have changed stored state. Use `part_read` before a retry.
 - `build_code` requires configuration and a verified sandbox. Its exact inline payload is part of the construction evidence.

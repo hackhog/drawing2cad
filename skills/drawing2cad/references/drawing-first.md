@@ -6,7 +6,7 @@ Either artifact can be created first. Compare their final revisions before deliv
 
 The M1 prototype delivers a validated STEP candidate and an editable JSON part description.
 It does not satisfy the complete drawing deliverable.
-The M2 milestone adds the dimensioned technical drawing and its headless rendering.
+The M2 domain profile supplies dimensioned DXF and PDF rendering from an explicit drawing specification.
 
 ## Drawing requirements
 
@@ -23,9 +23,17 @@ The drawing must include:
 - Readable identifiers for assumptions and unclear details.
 - An editable sheet and a rendered inspection artifact from the same revision.
 
-The proposed default is DXF with native dimension entities, plus a PDF preview.
-This format choice remains subject to the M2 adapter tests.
+The maintained adapter creates DXF with native linear, radius, diameter, and angular dimension entities, plus a PDF inspection copy.
+The same DXF entities supply the PDF render.
 A DXF file with text and line segments alone does not prove dimension semantics.
+
+Read `drawing_schema` for the supported declaration. Bind it to the current part revision and description hash.
+Supply view geometry, dimensions, manufacturing notes, and uncertainty markers with evidence references.
+Use `drawing_validate`, then `drawing_render`. Keep its returned DXF, PDF, and layout-report hashes.
+The adapter does not derive arbitrary projections or sections from the solid.
+Section geometry and its identifying note must be supplied and independently reviewed.
+Automatic drawing-to-solid equivalence, general GD&T validation, and semantic PMI are unsupported.
+Passing layout checks cannot prove that the source was interpreted correctly or that the selected views are sufficient.
 
 ## Review and consistency
 
@@ -36,6 +44,11 @@ A DXF file with text and line segments alone does not prove dimension semantics.
 5. Compare measured model geometry with the final drawing revision.
 6. Record each finding and its disposition.
 7. Repeat affected checks after a drawing or model change.
+
+Record `drawing_review` with the current drawing hash, part revision, construction-source hashes, reviewer, decision, and reason.
+The final accepted review must follow the current model build. Rebuilding the model invalidates an earlier review.
+This is an identified review attestation. Automatic drawing-to-solid equivalence remains `not_tested`.
+STEP release requires the current drawing and its accepted review, in addition to the model validation gates.
 
 A drawing can reveal a model error. Do not change the source requirement to conceal that error.
 A changed design requires a new revision and a recorded reason.

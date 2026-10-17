@@ -56,6 +56,9 @@ def execute(request: dict) -> dict:
     if operation == "build":
         from .cad_kernel import build
         result = build(request["description"], directory)
+    elif operation == "drawing":
+        from .drafting import render_drawing
+        result = render_drawing(request["drawing_spec"], request["description"], request["revision"], directory)
     elif operation == "validate":
         from .cad_validation import validate_step
         result = validate_step(directory / "input.step", request["description"])

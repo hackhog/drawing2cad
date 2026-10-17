@@ -2,10 +2,10 @@ name: Headless MCP
 
 on:
   pull_request:
-    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.dockerignore', '.github/workflows/mcp.yml']
+    paths: ['drawing2cad-mcp/**', 'compose.mcp*.yaml', 'docs/contracts/**', '.dockerignore', '.github/workflows/mcp.yml']
   push:
     branches: [main]
-    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.dockerignore', '.github/workflows/mcp.yml']
+    paths: ['drawing2cad-mcp/**', 'compose.mcp*.yaml', 'docs/contracts/**', '.dockerignore', '.github/workflows/mcp.yml']
 
 permissions:
   contents: read

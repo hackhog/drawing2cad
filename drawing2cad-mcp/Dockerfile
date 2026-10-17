@@ -1,4 +1,4 @@
-# M1: the complete headless MCP runtime. Use the repository root as build context.
+# Headless MCP runtime. Use the repository root as the build context.
 FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv UV_PYTHON_DOWNLOADS=never \
     PATH=/opt/venv/bin:$PATH
 WORKDIR /opt/drawing2cad-mcp
-COPY drawing2cad-mcp/pyproject.toml drawing2cad-mcp/uv.lock drawing2cad-mcp/README.md ./
+COPY drawing2cad-mcp/pyproject.toml drawing2cad-mcp/uv.lock ./
 RUN uv sync --locked --extra cad --no-dev --no-install-project
 COPY drawing2cad-mcp /opt/drawing2cad-mcp
 RUN uv sync --locked --extra cad --no-dev --no-editable \
