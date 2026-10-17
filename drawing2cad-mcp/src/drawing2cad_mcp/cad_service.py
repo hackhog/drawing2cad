@@ -21,7 +21,7 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from . import __version__
 from .cad_tools import CAD_SCHEMAS
-from .part_schema import description_schema, part_validate as validate_description
+from .part_schema import PART_SCHEMA_VERSION, description_schema, part_validate as validate_description
 from .worker_runner import WorkerLimits, WorkerRunner
 
 
@@ -71,7 +71,7 @@ class CadService:
         runtime = self.runner.capabilities()
         return {"enabled": self.settings.enabled, "runtime": runtime, "sandbox_probe": deepcopy(self._probe),
                 "build_code_enabled": bool(self.settings.enabled and self.settings.allow_build_code and self._probe and self._probe.get("status") == "pass"),
-                "part_schema_version": "1.0", "export_profile": "prototype_geometry_step",
+                "part_schema_version": PART_SCHEMA_VERSION, "export_profile": "prototype_geometry_step",
                 "export_profiles": ["ap214", "ap242"],
                 "ap242_construction": "application_specific_adapter",
                 "semantic_pmi": "nominal_diameter_and_linear",

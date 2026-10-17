@@ -99,6 +99,45 @@ def call(service, name, **args):
     return service.call(CTX, name, {"run_id": "plate", "expected_revision": 1, **args})
 
 
+def edge_diagnostic():
+    return {"expected_count": 1, "selected_count": 2, "truncated": False, "selected_edges": [
+        {"geometry": "line", "center": [1, 2, 3], "bbox_min": [0, 2, 3], "bbox_max": [2, 2, 3], "length_mm": 2}
+        for _ in range(2)]}
+
+
+def test_domain_build_preserves_closed_edge_diagnostics(domain, monkeypatch):
+    service, _, _, _, runner = domain
+    details = edge_diagnostic()
+    monkeypatch.setattr(runner, "run", lambda *_args, **_kwargs: {"status": "fail", "error": {
+        "code": "EDGE_SELECTION", "message": "Expected one edge.", "feature_id": "blend", "details": details}})
+    result = call(service, "build_from_description")
+    assert result["build"]["error"]["details"] == details
+    assert result["build"]["error"]["feature_id"] == "blend"
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda d: d.update(path="/data/private"),
+    lambda d: d["selected_edges"][0].update(path="C:/private/file"),
+    lambda d: d["selected_edges"][0].update(geometry="/data/private"),
+    lambda d: d["selected_edges"][0].update(center=[float("nan"), 0, 0]),
+    lambda d: d.update(selected_count=1),
+    lambda d: d.update(truncated="false"),
+    lambda d: d.update(selected_edges=d["selected_edges"] * 40),
+])
+def test_domain_rejects_unknown_private_or_invalid_edge_diagnostics(domain, mutation):
+    service, *_ = domain
+    details = edge_diagnostic()
+    mutation(details)
+    result = service._public({"error": {"code": "EDGE_SELECTION", "message": "Invalid diagnostic.", "details": details}})
+    assert "details" not in result["error"]
+
+
+def test_domain_does_not_publish_details_for_other_errors(domain):
+    service, *_ = domain
+    assert "details" not in service._public({"error": {
+        "code": "KERNEL_OPERATION", "message": "Failure.", "details": edge_diagnostic()}})["error"]
+
+
 def render_and_build(domain):
     service, source, _, spec, _ = domain
     drawing = call(service, "drawing_render", drawing_spec=spec)

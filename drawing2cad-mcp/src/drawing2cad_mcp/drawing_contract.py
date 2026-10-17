@@ -108,9 +108,9 @@ class View(ClosedModel):
 
 
 class Note(ClosedModel):
-    text: Text
+    text: Text = Field(description="Manufacturing instruction with its affected region, such as wall draft or inside floor fillets. Include units and identify exceptions. Text is not a geometry measurement or a substitute for a required radius or angular dimension.")
     position: Point = Field(description=SHEET_POINT_DESCRIPTION)
-    evidence_ids: EvidenceIds
+    evidence_ids: EvidenceIds = Field(description="Source evidence for this instruction. Review the note against the source and the current model measurements; automatic source completeness is not tested.")
 
 
 class Marker(ClosedModel):

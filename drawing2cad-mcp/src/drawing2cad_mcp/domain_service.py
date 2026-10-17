@@ -22,6 +22,7 @@ from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from jsonschema import Draft202012Validator, ValidationError
+from pydantic import ValidationError as ModelValidationError
 
 from . import __version__
 from .cad_service import CadError, CadService
@@ -32,6 +33,7 @@ from .domain_tools import DOMAIN_SCHEMAS
 from .drawing_contract import drawing_schema, drawing_validate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import PdfError, PdfService
+from .part_schema import EdgeSelectionDiagnostic
 from .step import StepError, StepService
 
 
@@ -161,6 +163,12 @@ class DomainService:
                              else "The operation reported an error. Inspect its code and check results."}
                     if isinstance(item.get("feature_id"), str):
                         error["feature_id"] = item["feature_id"]
+                    if error["code"] == "EDGE_SELECTION" and item.get("details") is not None:
+                        try:
+                            error["details"] = EdgeSelectionDiagnostic.model_validate(item["details"]).model_dump(mode="json")
+                        except ModelValidationError:
+                            # Reject the whole diagnostic if it includes private or unsupported data.
+                            pass
                     result[key] = error
                 else:
                     result[key] = self._public(item)

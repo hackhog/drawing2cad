@@ -325,6 +325,133 @@ def _plane_angles(shape, position, direction, tolerance):
     return angles
 
 
+def _sample_fillet_curvature(face, measurement):
+    """Measure a regular fillet section and a small, trimmed neighborhood."""
+    from build123d import Vector
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.GeomAPI import GeomAPI_ProjectPointOnSurf
+    from OCP.GeomLProp import GeomLProp_SLProps
+    from OCP.gp import gp_Dir, gp_Pnt
+
+    report = {"method": "bounded_principal_curvature", "sample_count": 0,
+              "scope": "Five local trimmed-face samples. This does not prove constant radius over the complete face.",
+              "maximum_secondary_curvature_ratio": 0.5,
+              "section_direction_dot_tolerance": 0.0001}
+    if measurement.fillet_section_normal is None:
+        return [], "not_tested", {**report, "reason": "A non-analytic fillet requires fillet_section_normal."}
+    section = tuple(x / math.hypot(*measurement.fillet_section_normal) for x in measurement.fillet_section_normal)
+    surface = BRep_Tool.Surface_s(face.wrapped)
+    bounds = BRepAdaptor_Surface(face.wrapped)
+    projection = GeomAPI_ProjectPointOnSurf(gp_Pnt(*measurement.position), surface,
+        bounds.FirstUParameter(), bounds.LastUParameter(), bounds.FirstVParameter(), bounds.LastVParameter())
+    if projection.NbPoints() == 0:
+        return [], "not_tested", {**report, "reason": "The surface anchor has no bounded projection."}
+    u, v = projection.LowerDistanceParameters()
+
+    def curvature(pu, pv):
+        point = surface.Value(pu, pv)
+        if face.distance_to(Vector(point.X(), point.Y(), point.Z())) > 1e-7:
+            return None
+        props = GeomLProp_SLProps(surface, pu, pv, 2, 1e-9)
+        if not props.IsCurvatureDefined() or props.IsUmbilic():
+            return None
+        major, minor = props.MaxCurvature(), props.MinCurvature()
+        high, low = gp_Dir(), gp_Dir()
+        props.CurvatureDirections(high, low)
+        if abs(major) < abs(minor):
+            major, minor, high, low = minor, major, low, high
+        if not math.isfinite(major) or not math.isfinite(minor) or abs(major) <= 1e-9 or abs(minor) > abs(major) * 0.5:
+            return None
+        return 1 / abs(major), low, props
+
+    anchor = curvature(u, v)
+    if anchor is None:
+        return [], "not_tested", {**report, "reason": "The anchor has no separated, regular fillet curvature."}
+    radius, tangent, props = anchor
+    alignment = abs(sum(a * b for a, b in zip(section, (tangent.X(), tangent.Y(), tangent.Z()))))
+    if alignment < 1 - 1e-4:
+        return [], "fail", {**report, "reason": "The section normal does not match the local fillet spine direction."}
+    distance = min(0.25, radius * 0.1)
+    du_length, dv_length = props.D1U().Magnitude(), props.D1V().Magnitude()
+    if min(du_length, dv_length) <= 1e-9:
+        return [], "not_tested", {**report, "reason": "The local surface parameter directions are singular."}
+    du, dv = distance / du_length, distance / dv_length
+    values = [radius]
+    for pu, pv in ((u - du, v), (u + du, v), (u, v - dv), (u, v + dv)):
+        if not (bounds.FirstUParameter() <= pu <= bounds.LastUParameter() and bounds.FirstVParameter() <= pv <= bounds.LastVParameter()):
+            return [], "not_tested", {**report, "reason": "The curvature neighborhood exceeds the face parameter bounds."}
+        sampled = curvature(pu, pv)
+        if sampled is None:
+            return [], "not_tested", {**report, "reason": "The curvature neighborhood exceeds the trimmed regular fillet region."}
+        values.append(sampled[0])
+    spread = max(values) - min(values)
+    report.update(sample_count=len(values), radius_spread_mm=spread, approximate_sample_spacing_mm=distance)
+    if spread > measurement.tolerance:
+        return [], "not_tested", {**report, "reason": "The sampled radius is not constant within the measurement tolerance."}
+    return values, "pass", report
+
+
+def _draft_or_fillet_values(shape, measurement):
+    """Measure analytic surfaces at a bounded anchor, not their unbounded extensions."""
+    from build123d import Vector
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.GeomAbs import GeomAbs_Plane, GeomAbs_Cone, GeomAbs_Cylinder, GeomAbs_Torus, GeomAbs_Sphere, GeomAbs_BSplineSurface
+    from OCP.BRep import BRep_Tool
+    from OCP.GeomLib import GeomLib_IsPlanarSurface
+    from OCP.ShapeAnalysis import ShapeAnalysis_CanonicalRecognition
+    from OCP.gp import gp_Cylinder
+
+    values, unsupported, sampling = [], False, []
+    tolerance = measurement.spatial_tolerance or 0.01
+    direction = _measurement_direction(measurement)
+
+    def aligned(axis):
+        vector = axis.Direction()
+        return abs(sum(a * b for a, b in zip(direction, (vector.X(), vector.Y(), vector.Z())))) >= 1 - 1e-7
+
+    for face in shape.faces():
+        if face.distance_to(Vector(measurement.position)) > tolerance:
+            continue
+        surface = BRepAdaptor_Surface(face.wrapped)
+        kind = surface.GetType()
+        if measurement.kind == "draft_angle":
+            if kind not in {GeomAbs_Plane, GeomAbs_Cone, GeomAbs_Cylinder} and not GeomLib_IsPlanarSurface(BRep_Tool.Surface_s(face.wrapped), 1e-7).IsPlanar():
+                unsupported = True
+                continue
+            normal = tuple(face.normal_at(Vector(measurement.position)))
+            sine = abs(sum(a * b for a, b in zip(normal, direction)))
+            values.append(math.degrees(math.asin(min(1.0, sine))))
+        elif kind == GeomAbs_Cylinder:
+            if aligned(surface.Cylinder().Axis()):
+                values.append(float(surface.Cylinder().Radius()))
+        elif kind == GeomAbs_Torus:
+            if aligned(surface.Torus().Axis()):
+                values.append(float(surface.Torus().MinorRadius()))
+        elif kind == GeomAbs_Sphere:
+            values.append(float(surface.Sphere().Radius()))
+        elif kind != GeomAbs_Plane:
+            cylinder = gp_Cylinder()
+            if ShapeAnalysis_CanonicalRecognition(face.wrapped).IsCylinder(1e-7, cylinder):
+                if aligned(cylinder.Axis()):
+                    values.append(float(cylinder.Radius()))
+            elif kind != GeomAbs_BSplineSurface:
+                unsupported = True
+            else:
+                try:
+                    sampled, status, report = _sample_fillet_curvature(face, measurement)
+                except MemoryError:
+                    raise
+                except Exception:
+                    sampled, status, report = [], "not_tested", {
+                        "method": "bounded_principal_curvature", "sample_count": 0,
+                        "reason": "The bounded surface projection or curvature calculation failed."}
+                values.extend(sampled)
+                sampling.append({**report, "status": status})
+                unsupported = unsupported or status == "not_tested"
+    return values, unsupported, sampling
+
+
 def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
     """Compare measured geometry with separately supplied drawing measurements."""
     bounds = shape.bounding_box()
@@ -338,6 +465,8 @@ def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
     cones = _cones(shape)
     measurements = []
     for expected in part.measurements:
+        unsupported = False
+        sampling = []
         if expected.kind == "bbox":
             measured = size
             passed = all(abs(a - b) <= expected.tolerance for a, b in zip(measured, expected.expected))
@@ -396,6 +525,9 @@ def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
         elif expected.kind == "plane_angle":
             measured = _plane_angles(shape, expected.position, _measurement_direction(expected), expected.tolerance)
             passed = any(abs(value - expected.expected[0]) <= expected.tolerance for value in measured)
+        elif expected.kind in {"draft_angle", "fillet_radius"}:
+            measured, unsupported, sampling = _draft_or_fillet_values(shape, expected)
+            passed = bool(measured) and all(abs(value - expected.expected[0]) <= expected.tolerance for value in measured) and not any(row["status"] == "fail" for row in sampling)
         elif expected.kind in {"cone_angle", "cone_width"}:
             direction = axis_vector(expected.axis)
             axis_index = {"X": 0, "Y": 1, "Z": 2}[expected.axis[-1]]
@@ -407,6 +539,12 @@ def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
             measured = [item[key] for item in candidates]
             passed = any(abs(value - expected.expected[0]) <= expected.tolerance for value in measured)
         measurements.append({"check": expected.id, "kind": expected.kind, "status": "pass" if passed else "fail", "expected": expected.expected, "actual": measured, "tolerance": expected.tolerance, "evidence_ids": expected.evidence_ids, "basis": expected.basis})
+        if expected.kind in {"draft_angle", "fillet_radius"}:
+            measurements[-1].update(unit="deg" if expected.kind == "draft_angle" else "mm", spatial_tolerance=expected.spatial_tolerance or 0.01)
+            if sampling:
+                measurements[-1]["surface_sampling"] = sampling
+            if unsupported:
+                measurements[-1].update(status="not_tested", reason="The surface measurement could not be completed. Inspect the anchor, supported surface type, and any local sampling report; release is blocked.")
         if expected.kind in {"hole", "outer_diameter"}:
             measurements[-1].update(expected_axial_length=expected.axial_length,
                                     actual_axial_lengths=[item["axial_length"] for item in candidates])

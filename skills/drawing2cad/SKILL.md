@@ -75,6 +75,7 @@ The local-path metric result does not satisfy the complete-service drawing requi
 - Read [drawing2cad-mcp.md](references/drawing2cad-mcp.md) for PDF inputs, images, measurements, and profile boundaries.
 - Use [projection-and-measurement.md](references/projection-and-measurement.md) to assign axes and measure missing values.
 - Use [managed-workflow.md](references/managed-workflow.md) for schema details, revisions, and permitted optional operations.
+- For drafted walls and inside fillets, use [draft-and-fillets.md](references/draft-and-fillets.md) for construction, edge selection, and measurements.
 - Use [verification-loop.md](references/verification-loop.md) for validation, diagnostic previews, and targeted corrections.
 - Use [drawing-delivery.md](references/drawing-delivery.md) for domain drawing delivery and isolated STEP-only tests.
 - Use [validation.md](references/validation.md) and [delivery-and-backends.md](references/delivery-and-backends.md) to distinguish acceptance claims.

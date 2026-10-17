@@ -101,10 +101,14 @@ def main() -> None:
     except SandboxError as error:
         result = {"status": "fail", "error": {"code": "SANDBOX_UNAVAILABLE", "message": str(error)}}
     except Exception as error:
+        from .cad_kernel import CadBuildError
+
         result = {"status": "fail", "error": {"code": getattr(error, "code", "CAD_OPERATION_FAILED"),
                                                "message": str(error)[:2000]}}
         if getattr(error, "feature_id", None) is not None:
             result["error"]["feature_id"] = error.feature_id
+        if isinstance(error, CadBuildError) and error.details is not None:
+            result["error"]["details"] = error.details
     sys.stdout.write(PREFIX + json.dumps(result, allow_nan=False) + "\n")
     sys.stdout.flush()
 

@@ -32,6 +32,8 @@ View origins, view frames, and note positions are absolute sheet coordinates. A 
 Geometry and dimension or uncertainty-marker positions use local view coordinates. Apply `sheet_point = origin + scale * local_point` to check their sheet positions.
 Reserve space for generated view labels, section notes, dimensions, and the sheet title. Check transformed bounds against both the absolute view frame and the sheet margin.
 Supply view geometry, dimensions, manufacturing notes, and uncertainty markers with evidence references.
+For wall draft and inside fillets, apply [draft-and-fillets.md](draft-and-fillets.md).
+Use angular and radius dimensions plus scoped notes. Compare general requirements with the source and final model measurements.
 Before drawing creation, prepare two coverage tables in the run evidence:
 
 - List each required feature and the view or section that shows it. Identify visible edges, hidden edges, centre lines, and cut boundaries.
