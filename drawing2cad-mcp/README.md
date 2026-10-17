@@ -176,6 +176,7 @@ Do not copy construction constants as the only evidence of correct interpretatio
 Missing measurements produce `not_tested`.
 A hole measurement can include source-derived `entry_position`; its signed axis must point into the part.
 The entry check supports connected full cylinders, cones, and planar shoulders at a planar circular opening.
+A stepped bore is one connected cavity. Each of its bores has the outer opening as entry; an internal shoulder is not an entry.
 If this field is absent, `entry_side` is `not_tested`; diameter and depth alone do not prove the entry side.
 Named references update their direct uses. There is no algebraic constraint solver for derived profile coordinates.
 Rebuild and measure a changed description before claiming parameter editability.
