@@ -443,4 +443,3 @@ def resolve(value: Scalar, part: PartDescription) -> float:
     if not math.isfinite(value):
         raise ValueError("A dimension must be finite.")
     return float(value)
-
