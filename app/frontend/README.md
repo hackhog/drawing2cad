@@ -19,7 +19,7 @@ Install npm packages only with exact versions (`package-lock.json`).
 
 ## User interface
 
-A light dashboard in an app window ([ADR 0008](../../docs/adr/0008-demo-ui-light-dashboard.md)) with a guided sequence for the pitch
+A light dashboard that fills the browser window ([ADR 0008](../../docs/adr/0008-demo-ui-light-dashboard.md)) with a guided sequence for the pitch
 ([ADR 0007](../../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md)):
 **1 Drawing → 2 Recognized → 3 Review → 4 3D model**. The UI is React + TypeScript
 ([ADR 0010](../../docs/adr/0010-demo-ui-in-react-with-3d-viewer.md)).

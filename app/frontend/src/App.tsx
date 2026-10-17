@@ -37,7 +37,7 @@ export function App() {
     }
   }, [toast]);
 
-  const { jobs, addFiles, loadModel } = useJobs(onFinished);
+  const { jobs, addFiles, loadModel, clear } = useJobs(onFinished);
   const [shownId, setShownId] = useState<number | null>(null); // null = Seite „Übersicht“
   const [step, setStepState] = useState<Step>(1);
   const [focus, setFocus] = useState<ReviewFlag | null>(null);
@@ -81,62 +81,61 @@ export function App() {
 
   return (
     <div className="shell" data-view={shown ? "drawing" : "overview"} data-step={step} data-has-jobs={jobs.length ? "" : undefined}>
-      <div className="window">
-        <div className="window-bar" aria-hidden="true"><i /><i /><i /></div>
+      <div className="app">
+        <Sidebar
+          jobs={jobs} shownId={shown?.id ?? null} onOverview={() => setShownId(null)} onShow={show}
+          onClear={() => { setShownId(null); clear(); }}
+        />
 
-        <div className="app">
-          <Sidebar jobs={jobs} shownId={shown?.id ?? null} onOverview={() => setShownId(null)} onShow={show} />
+        <main className="main">
+          <header className="head">
+            <div>
+              <h1>{title}</h1>
+              <p className={`updated${live ? " live" : ""}`}>{updated}</p>
+            </div>
+            <div className="actions">
+              {shown && step < 4 && (
+                <button type="button" className="btn ghost" onClick={() => { setFocus(null); setFitKey((k) => k + 1); }}>
+                  <FitIcon />Ganzes Blatt
+                </button>
+              )}
+              <label className={`btn dark upload${over ? " drag" : ""}`} {...drop}>
+                <input
+                  type="file" accept="application/pdf,.pdf" multiple
+                  onChange={(e) => { pdfs([...(e.target.files ?? [])]); e.target.value = ""; }}
+                />
+                <span>{jobs.length ? "+ Weitere PDFs" : "+ PDFs hochladen"}</span>
+              </label>
+            </div>
+          </header>
 
-          <main className="main">
-            <header className="head">
-              <div>
-                <h1>{title}</h1>
-                <p className={`updated${live ? " live" : ""}`}>{updated}</p>
-              </div>
-              <div className="actions">
-                {shown && step < 4 && (
-                  <button type="button" className="btn ghost" onClick={() => { setFocus(null); setFitKey((k) => k + 1); }}>
-                    <FitIcon />Ganzes Blatt
-                  </button>
-                )}
-                <label className={`btn dark upload${over ? " drag" : ""}`} {...drop}>
-                  <input
-                    type="file" accept="application/pdf,.pdf" multiple
-                    onChange={(e) => { pdfs([...(e.target.files ?? [])]); e.target.value = ""; }}
-                  />
-                  <span>{jobs.length ? "+ Weitere PDFs" : "+ PDFs hochladen"}</span>
-                </label>
-              </div>
-            </header>
+          {!shown || !current ? (
+            <Overview jobs={jobs} onShow={show} drop={drop} />
+          ) : (
+            <section className="board" aria-label="Zeichnung">
+              <article className="card sheet-card">
+                <header className="card-head">
+                  <nav className="steps" aria-label="Ablauf">
+                    {STEPS.map(([n, label]) => (
+                      <button key={n} type="button" aria-current={n === step ? "step" : "false"} onClick={() => setStep(n)}>
+                        <b>{n}</b>{label}
+                      </button>
+                    ))}
+                  </nav>
+                </header>
+                {step === 4
+                  ? <ModelPanel model={shown.model} onStep={(f) => void loadModel(shown.id, f)} />
+                  : <SheetViewer key={shown.id} result={current} focus={focus} fitKey={fitKey} dropProps={drop} />}
+                <footer className="story">
+                  <p>{story}</p>
+                  {step < 4 && <button type="button" className="btn dark" onClick={() => setStep((step + 1) as Step)}>Weiter</button>}
+                </footer>
+              </article>
 
-            {!shown || !current ? (
-              <Overview jobs={jobs} onShow={show} drop={drop} />
-            ) : (
-              <section className="board" aria-label="Zeichnung">
-                <article className="card sheet-card">
-                  <header className="card-head">
-                    <nav className="steps" aria-label="Ablauf">
-                      {STEPS.map(([n, label]) => (
-                        <button key={n} type="button" aria-current={n === step ? "step" : "false"} onClick={() => setStep(n)}>
-                          <b>{n}</b>{label}
-                        </button>
-                      ))}
-                    </nav>
-                  </header>
-                  {step === 4
-                    ? <ModelPanel model={shown.model} onStep={(f) => void loadModel(shown.id, f)} />
-                    : <SheetViewer key={shown.id} result={current} focus={focus} fitKey={fitKey} dropProps={drop} />}
-                  <footer className="story">
-                    <p>{story}</p>
-                    {step < 4 && <button type="button" className="btn dark" onClick={() => setStep((step + 1) as Step)}>Weiter</button>}
-                  </footer>
-                </article>
-
-                <FlagList flags={current.review} active={focus} onSelect={(f) => { if (step !== 3) setStepState(3); setFocus(f); }} />
-              </section>
-            )}
-          </main>
-        </div>
+              <FlagList flags={current.review} active={focus} onSelect={(f) => { if (step !== 3) setStepState(3); setFocus(f); }} />
+            </section>
+          )}
+        </main>
       </div>
 
       <Toasts toasts={toasts} />

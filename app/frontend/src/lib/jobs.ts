@@ -99,5 +99,13 @@ export function useJobs(onFinished: (job: Job) => void) {
     }
   }, [patch]);
 
-  return { jobs, addFiles, loadModel };
+  /** Remove all jobs from the list. The sidebar enables this only when no job is waiting or running. */
+  const clear = useCallback(() => {
+    setJobs((all) => {
+      for (const j of all) if (j.model.state === "done") URL.revokeObjectURL(j.model.url);
+      return [];
+    });
+  }, []);
+
+  return { jobs, addFiles, loadModel, clear };
 }
