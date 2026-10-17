@@ -75,6 +75,12 @@ Scalar references update their direct uses. The prototype does not have an algeb
 Derived profile points and edge selectors can require coordinated edits after a dimension change.
 
 Closed profiles can contain straight lines and three-point circular arcs.
+Before a profile extrusion or cut, inspect the coordinate basis in the live `part_schema`.
+Profile points use local coordinates. The feature origin uses global coordinates.
+Use the declared local X, Y, and Z basis to map each profile point into the part.
+Do not infer the two profile axes from the extrusion axis name.
+For example, a positive Y extrusion can map positive local y to negative global Z.
+Check the transformed profile bounds before construction, especially for non-Z and negative-axis features.
 Extrusions support a bounded draft angle. Blind holes can include an explicit drill-tip angle.
 The blind depth is the cylindrical depth; the conical tip extends beyond it.
 

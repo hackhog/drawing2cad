@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal
+from copy import deepcopy
 import math
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -11,6 +12,19 @@ Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")]
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-100000, le=100000, strict=True)]
 Positive = Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False, strict=True)]
 AxisName = Literal["X", "Y", "Z", "-X", "-Y", "-Z"]
+FEATURE_COORDINATE_FRAMES = {
+    "X": {"local_x": [0, 1, 0], "local_y": [0, 0, 1], "local_z": [1, 0, 0]},
+    "-X": {"local_x": [0, 1, 0], "local_y": [0, 0, -1], "local_z": [-1, 0, 0]},
+    "Y": {"local_x": [1, 0, 0], "local_y": [0, 0, -1], "local_z": [0, 1, 0]},
+    "-Y": {"local_x": [1, 0, 0], "local_y": [0, 0, 1], "local_z": [0, -1, 0]},
+    "Z": {"local_x": [1, 0, 0], "local_y": [0, 1, 0], "local_z": [0, 0, 1]},
+    "-Z": {"local_x": [1, 0, 0], "local_y": [0, -1, 0], "local_z": [0, 0, -1]},
+}
+FEATURE_AXIS_DESCRIPTION = (
+    "Signed local Z direction in global coordinates. Read x-feature-coordinate-frames in this schema "
+    "for the local X and Y basis before supplying profile coordinates. For axis Y, local x is global +X "
+    "and local y is global -Z; height or depth extends along global +Y."
+)
 
 
 class ClosedModel(BaseModel):
@@ -80,16 +94,17 @@ class CylinderFeature(Feature):
     diameter: Scalar
     height: Scalar
     origin: Vector3 = (0.0, 0.0, 0.0)
-    axis: AxisName = "Z"
+    axis: AxisName = Field(default="Z", description=FEATURE_AXIS_DESCRIPTION)
 
 
 class ExtrusionFeature(Feature):
     type: Literal["extrusion"]
     operation: Literal["base", "add"]
-    points: Annotated[list[tuple[Scalar, Scalar]], Field(min_length=3, max_length=256)]
+    points: Annotated[list[tuple[Scalar, Scalar]], Field(min_length=3, max_length=256,
+        description="Closed profile points in local (x, y) coordinates. Use the basis selected by axis, not the global XY plane.")]
     height: Scalar
     origin: Vector3 = (0.0, 0.0, 0.0)
-    axis: AxisName = "Z"
+    axis: AxisName = Field(default="Z", description=FEATURE_AXIS_DESCRIPTION)
     taper_angle: Scalar = 0.0
 
 
@@ -110,10 +125,11 @@ class ProfileExtrusionFeature(Feature):
     type: Literal["profile_extrusion"]
     operation: Literal["base", "add"]
     segments: Annotated[list[Annotated[LineSegment | ArcSegment, Field(discriminator="kind")]],
-                        Field(min_length=2, max_length=256)]
+                        Field(min_length=2, max_length=256,
+                              description="Closed profile segments in local (x, y) coordinates. Use the basis selected by axis.")]
     height: Scalar
     origin: Vector3 = (0.0, 0.0, 0.0)
-    axis: AxisName = "Z"
+    axis: AxisName = Field(default="Z", description=FEATURE_AXIS_DESCRIPTION)
     taper_angle: Scalar = 0.0
 
 
@@ -176,7 +192,8 @@ class CylinderCut(ClosedModel):
 
 class PolygonCut(ClosedModel):
     shape: Literal["polygon"]
-    points: Annotated[list[tuple[Scalar, Scalar]], Field(min_length=3, max_length=256)]
+    points: Annotated[list[tuple[Scalar, Scalar]], Field(min_length=3, max_length=256,
+        description="Profile points in local (x, y) coordinates. Use the parent cut feature's axis basis.")]
     depth: Scalar
 
 
@@ -184,7 +201,7 @@ class CutFeature(Feature):
     type: Literal["pocket", "cut"]
     profile: Annotated[BoxCut | CylinderCut | PolygonCut, Field(discriminator="shape")]
     origin: Vector3
-    axis: AxisName = "Z"
+    axis: AxisName = Field(default="Z", description=FEATURE_AXIS_DESCRIPTION)
 
 
 class EdgeSelector(ClosedModel):
@@ -289,7 +306,14 @@ class PartDescription(ClosedModel):
 
 def description_schema() -> dict[str, Any]:
     """Return the public JSON Schema. Array order is feature execution order."""
-    return PartDescription.model_json_schema()
+    schema = PartDescription.model_json_schema()
+    schema["x-feature-coordinate-frames"] = {
+        "origin": "Feature origin is a point in global XYZ coordinates.",
+        "transform": "global_point = origin + x * local_x + y * local_y + z * local_z",
+        "extrusion": "Profile points have local z=0. Positive height or cut depth extends along local_z.",
+        "basis": deepcopy(FEATURE_COORDINATE_FRAMES),
+    }
+    return schema
 
 
 def _pointer(parts: tuple | list, description: Any) -> str:
