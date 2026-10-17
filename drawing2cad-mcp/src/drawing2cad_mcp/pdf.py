@@ -23,9 +23,19 @@ from uuid import uuid4
 from PIL import Image, UnidentifiedImageError
 from pypdf import PdfReader
 
+try:  # Optional: the vector extractor is a separate package (ADR 0009).
+    import drawing_extractor
+    from drawing_extractor.export import to_dict as drawing_to_dict
+except ImportError:
+    drawing_extractor = None
+
 
 class PdfError(ValueError):
     """An invalid PDF request or a failed PDF preparation operation."""
+
+
+class ExtractorUnavailable(PdfError):
+    """The optional drawing_extractor package is not installed."""
 
 
 @dataclass(frozen=True)
@@ -331,3 +341,25 @@ class PdfService:
             }
         finally:
             image.close()
+
+    def extract_drawing(
+        self, path: str | Path, include_strokes: bool = False, stroke_kinds: list[str] | None = None
+    ) -> dict[str, Any]:
+        source = self._load(path)
+        if drawing_extractor is None:
+            raise ExtractorUnavailable("The drawing_extractor package is not installed in the server environment.")
+        # Extract from the hashed snapshot, not from the path, so that the result agrees with source.sha256.
+        with tempfile.TemporaryDirectory(prefix=".pdf-extract-", dir=self._output_directory()) as temp:
+            snapshot = Path(temp) / "source.pdf"
+            snapshot.write_bytes(source.data)
+            try:
+                data = drawing_to_dict(drawing_extractor.extract(snapshot))
+            except Exception as exc:
+                raise PdfError(f"Vector extraction failed: {type(exc).__name__}: {exc}") from exc
+        strokes = data.pop("strokes")
+        if include_strokes:
+            data["strokes"] = [s for s in strokes if stroke_kinds is None or s["kind"] in stroke_kinds]
+        else:  # Stroke ids are most of the payload and refer to nothing without the strokes.
+            for view in data["views"]:
+                view["stroke_count"] = len(view.pop("stroke_ids"))
+        return {**data, "source": source.metadata}

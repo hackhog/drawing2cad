@@ -28,3 +28,5 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# PyMuPDF (SWIG, from the optional drawing_extractor) reports import warnings unrelated to this code.
+filterwarnings = ["ignore:builtin type .* has no __module__ attribute:DeprecationWarning"]
