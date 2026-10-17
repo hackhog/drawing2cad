@@ -46,3 +46,10 @@ def test_piece_on_a_centerline_carrier_that_touches_an_edge_stays_contour():
     strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (48.5, 0)), 0.17, 20), edge]
     classify(strokes)
     assert strokes[4].kind is Kind.CONTOUR
+
+
+def test_long_solid_edge_on_a_centerline_carrier_stays_contour():
+    """A part edge in an aligned view is longer than the dashes of the centerline."""
+    strokes = _centerline_run() + [Stroke(4, Line((45.0, 0), (85.0, 0)), 0.17, 20)]
+    classify(strokes)
+    assert strokes[4].kind is Kind.CONTOUR

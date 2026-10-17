@@ -19,6 +19,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 
+from .contacts import contacts
 from .geometry import Grid, angle_diff, expand, point_segment_distance
 from .model import Arc, Kind, Line, Point, Stroke
 
@@ -370,12 +371,13 @@ def _find_center_marks(strokes: list[Stroke]) -> None:
 
 
 _CENTERLINE_REACH = 30.0  # mm along the carrier to the nearest centerline piece
+_DASH_LIMIT = 1.2  # A continuation is at most this factor longer than the longest centerline piece.
 
 
 def _extend_centerlines(strokes: list[Stroke], grid: Grid) -> None:
-    """Classify a free line on the carrier of a nearby centerline as a centerline piece.
+    """Classify a free dash on the carrier of a nearby centerline as a centerline piece.
     The last dash of a centerline can stand alone, for example where filled dashes end the run.
-    A part edge touches other strokes, so it stays a contour candidate."""
+    A part edge touches or crosses other strokes, or is longer than the dashes; it stays a contour candidate."""
     carriers: dict[tuple, list[tuple[float, float]]] = defaultdict(list)
     for s in _lines(strokes):
         if s.kind is Kind.CENTERLINE:
@@ -389,7 +391,7 @@ def _extend_centerlines(strokes: list[Stroke], grid: Grid) -> None:
             continue
         ang = round(s.geom.angle * 2) / 2 % 180.0
         spans = carriers.get((ang, round(_offset(s.geom, ang) * 10), round(s.width_mm, 3)))
-        if not spans or not all(_is_free_end(e, s, strokes, grid) for e in s.geom.endpoints()):
+        if not spans or s.geom.length > _DASH_LIMIT * max(b - a for a, b in spans) or contacts(s, strokes, grid):
             continue
         lo, hi = sorted((_along(s.geom.p0, ang), _along(s.geom.p1, ang)))
         if min(max(a - hi, lo - b, 0.0) for a, b in spans) <= _CENTERLINE_REACH:

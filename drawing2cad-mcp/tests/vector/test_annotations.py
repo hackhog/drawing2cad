@@ -73,3 +73,40 @@ def test_one_sided_bracket_shape_stays_contour():
     mark_annotations(strokes, [text])
     assert {s.kind for s in strokes} == {Kind.CONTOUR}
     assert text.text == "0,07"
+
+
+def test_separators_joined_at_interior_points_stay_contour():
+    """A part edge can meet a separator candidate at an interior point, not only at its ends."""
+    strokes = [_line(0, (0, 0), (0, 13), 0.34), _line(1, (20, 0), (20, 13), 0.34),
+               _line(2, (0, 6), (20, 6), 0.34)]
+    mark_annotations(strokes, _table_texts())
+    assert {s.kind for s in strokes} == {Kind.CONTOUR}
+
+
+def test_separator_crossed_by_another_line_stays_contour():
+    strokes = [_line(0, (0, 0), (0, 13), 0.34), _line(1, (20, 0), (20, 13), 0.34),
+               _line(2, (-5, 6.5), (5, 6.5), 0.34)]
+    mark_annotations(strokes, _table_texts())
+    assert strokes[0].kind is Kind.CONTOUR
+
+
+def _hexagon(start_id, cx):
+    """A narrow closed outline, 1 mm wide and 3 mm high, from six short segments."""
+    pts = [(cx, 0), (cx + 0.5, 0.75), (cx + 0.5, 2.25), (cx, 3), (cx - 0.5, 2.25), (cx - 0.5, 0.75), (cx, 0)]
+    return [_line(start_id + n, a, b) for n, (a, b) in enumerate(zip(pts, pts[1:]))]
+
+
+def test_closed_narrow_outlines_beside_text_stay_contour():
+    strokes = _hexagon(0, 0.0) + _hexagon(6, 8.0)
+    text = _text(0, (1.0, 0.2, 7.0, 2.9), "6.9")
+    mark_annotations(strokes, [text])
+    assert {s.kind for s in strokes} == {Kind.CONTOUR}
+    assert text.text == "6.9"
+
+
+def test_brackets_that_bulge_toward_the_text_stay_contour():
+    strokes = _bracket(0, 0.4, 0.5) + _bracket(4, 7.6, -0.5)
+    text = _text(0, (1.4, 0.2, 6.6, 2.9), "0,07")
+    mark_annotations(strokes, [text])
+    assert {s.kind for s in strokes} == {Kind.CONTOUR}
+    assert text.text == "0,07"
