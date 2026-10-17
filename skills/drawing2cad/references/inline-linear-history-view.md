@@ -6,7 +6,11 @@ The group is a FreeCAD user interface view. It does not add a construction opera
 
 ## Inline component
 
-Execute this component only on the GUI thread through the FreeCAD proxy of `drawing2cad-mcp`. Supply `doc` and `ordered_ids` explicitly. Do not assume an active selection or active document. First, make a new working copy.
+Use the FreeCAD proxy of `drawing2cad-mcp`. Supply `doc` and `ordered_ids` explicitly. Do not assume an active selection or active document. First, make a new working copy.
+
+`lin4_apply_history` creates native groups without a GUI. Verify this path in the headless server. `lin4_expand_history` is an optional desktop display helper. It requires the GUI thread and is not part of the server workflow.
+
+The default label was made generic. Revalidate the changed code before use. No live CAD test was run during this cleanup.
 
 The component changes only its native group and the group metadata. Object parameters, dependencies, and 3D visibility remain unchanged. Tree expansion is a separate operation that requires the GUI.
 
@@ -14,7 +18,7 @@ The component changes only its native group and the group metadata. Object param
 import re
 
 def lin4_apply_history(doc, ordered_ids, group_name='ConstructionHistory',
-                       group_label='01 Konstruktionshistorie – lineare Schritte'):
+                       group_label='Construction history - linear steps'):
     if not isinstance(ordered_ids, (list, tuple)) or not ordered_ids:
         raise ValueError('LINEAR_HISTORY_EMPTY_ORDER')
     if (not isinstance(group_name, str)
@@ -40,7 +44,7 @@ def lin4_apply_history(doc, ordered_ids, group_name='ConstructionHistory',
         raise ValueError('LINEAR_HISTORY_NAME_COLLISION')
     before = {o.Name: (tuple(x.Name for x in o.OutList),
               o.ViewObject.Visibility if o.ViewObject else None) for o in objects}
-    doc.openTransaction('Lineare Konstruktionsansicht')
+    doc.openTransaction('Linear construction view')
     try:
         if group is None:
             group = doc.addObject('App::DocumentObjectGroup', group_name)
@@ -100,20 +104,16 @@ If the result is `TREE_ITEMS_NOT_READY`, repeat the MCP call after the GUI updat
 
 Save after successful expansion to preserve group and operation states. After the file opens, the document itself can appear collapsed. Use the same GUI component to expand it.
 
-## Checks and recorded evidence
+## Required verification
 
-The isolated local test used a box, cylinder, and `Part::Cut` under FreeCAD 1.1.4. The three original objects were direct children of a native group. Save and reopen preserved the order, group label, and dependencies. The group remained expanded. Its operations remained collapsed.
+Compare all operation IDs and the direct group order with the current operation graph.
+Make sure that geometry, dependencies, and available visibility states remain unchanged.
+Change and restore one permitted parameter under the run test policy.
+Then reopen the saved file and repeat the checks.
+A headless server must complete these checks without the optional tree-expansion helper.
 
-A box length change from 20 to 21 mm changed volume by `100.00000000000045 mm³`. The expected change was `100 mm³`. Restore and reopen each gave a symmetric difference of `0 mm³`. The test used no Python proxy. This verifies the native grouping method. Also test the inline component and each complete model with their actual inputs.
+Record test inputs, expected results, actual results, and tool versions outside this skill.
+This reference contains no part-specific tests or measured case results.
+This view does not replace semantic PMI or adapter capability verification.
 
-Case evidence: `output/cad/Maschinenteil/linear_tree_probe_v4/Native_Group_Persistenz_Pruefung.json` and `Native_Group_Persistenz.FCStd`. These paths identify historical test outputs. They are not generic input paths.
-
-The subsequent test applied the complete inline component to Maschinenteil with 53 original operations. The order of direct group children, all previous dependencies, and all visibility states remained unchanged. After restore and reopen, the geometric difference was 0 mm³.
-
-The first cross-bore radius changed from 1,25 to 1,1 mm. The volume increased by 33,2223422886 mm³. The expected increase was 33,2223423117 mm³. After reopen, a check of the actual Qt tree confirmed an expanded group and 53 collapsed direct operation children.
-
-The first call correctly returned `TREE_ITEMS_NOT_READY`. The next MCP call established the view after the GUI update. Evidence: `output/cad/Maschinenteil/review_20261016/linear_history_v4/Lineare_Historie_Pruefung.json` and `Lineare_Historie.png`. The existing STEP master remained byte-identical. This view is an addition to the native rebuild.
-
-Before delivery, compare all operation IDs and the direct group order for the specified model. Make sure that geometry and visibility are unchanged. Change and restore one parameter. Then reopen the saved file. This view does not replace semantic PMI or the adapter capability check.
-
-Primary sources: [FreeCAD Tree view](https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/Tree_view.md) describes how dependencies appear in the tree. The flat group documented here was also tested with the installed version. [FreeCAD ViewProviderLink.cpp](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/ViewProviderLink.cpp) shows that normal links can inherit children from the linked ViewProvider. Thus, links do not provide a general method to create a flat operation view.
+Primary sources: [FreeCAD Tree view](https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/Tree_view.md) describes dependency display. [FreeCAD ViewProviderLink.cpp](https://github.com/FreeCAD/FreeCAD/blob/main/src/Gui/ViewProviderLink.cpp) shows that normal links can inherit children from the linked ViewProvider. Links do not provide a general method for a flat operation view.

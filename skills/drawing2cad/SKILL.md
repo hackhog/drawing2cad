@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct CAD models from permitted technical drawings through drawing2cad-mcp. Create and verify the dimensioned drawing before the 3D model. Record evidence and uncertainties. Test editable construction and PMI in STEP AP242. Also use this skill for reconstruction from STEP alone, model changes, and adapter tests within a verified capability scope.
 metadata:
-  version: "0.5.1"
+  version: "0.6.0"
 ---
 
 # drawing2cad: a reproducible AP242 master file
@@ -21,6 +21,16 @@ Use [drawing-first.md](references/drawing-first.md) for new designs, repeated bu
 Write all documentation in technical English in accordance with ASD-STE100.
 Use [documentation-language.md](references/documentation-language.md) for project terms and the language review.
 Keep source text, identifiers, verified code, and historical evidence unchanged.
+Keep project data outside the skill package. Supply authorized inputs separately for each run.
+Do not include customer parts, resource links, model data, host snapshots, or historical run results in this skill.
+Archive removed evidence outside the skill. Do not link that archive from the skill.
+
+The production target is a fully headless server through `drawing2cad-mcp`.
+All required phases must work without a FreeCAD GUI session or GUI dispatcher.
+This includes drawing creation and rendering, editable construction, STEP AP242, semantic PMI, and independent validation.
+A web interface can manage jobs, files, and notes. It must not supply a required CAD execution session.
+The current GUI bridge is a development path. It does not meet the production requirement.
+Record headless capability evidence for each phase. Do not report the complete server workflow as implemented without these tests.
 
 Use `drawing2cad-mcp` for PDF preparation and access to FreeCAD tools.
 Before each run, inspect the actual tool catalog and `drawing2cad_status`.
@@ -47,7 +57,7 @@ Then, load only the references necessary for the active phase.
 | Control processes and identify STEP representations or known binding limits | [execution-and-ap242.md](references/execution-and-ap242.md) |
 | Read constructive solid geometry (CSG) and nominal PMI from STEP | [inline-readers.md](references/inline-readers.md) |
 | Export or import a procedural graph with constant-radius fillets | [inline-procedural-adapter.md](references/inline-procedural-adapter.md), [edge-blends-and-thread-pmi.md](references/edge-blends-and-thread-pmi.md) |
-| Find metric coarse threads and typical chamfers | [metric-thread-chamfers.md](references/metric-thread-chamfers.md). The user's source supplies 35 rows, from M1 through M68. |
+| Find metric coarse threads and typical chamfers | [metric-thread-chamfers.md](references/metric-thread-chamfers.md). The general table contains 35 rows, from M1 through M68. |
 | Read semantic text properties and display native PMI | [inline-property-pmi-reader.md](references/inline-property-pmi-reader.md) |
 | Transfer local UI mappings and review data separately from original PMI | [inline-review-envelope.md](references/inline-review-envelope.md). Obey the verified scope of the profile. |
 | Reconstruct a native parameter table and fully constrained rectangular profiles | [inline-editable-ui-adapter.md](references/inline-editable-ui-adapter.md). STEP supplies dimensions; the UI property supplies control mappings. |
@@ -105,20 +115,21 @@ The verified build from identical contract data and a recorded toolchain can be 
 Compare the operation graph, parameters, preserved relations, PMI, markers, and geometry under predefined tolerances.
 Do not promise identical STEP bytes. Timestamps, entity numbers, and serialization can differ.
 
-The skill documents a workflow and tested components. It does not install a universal import or export service.
+The skill documents a workflow and limited adapter components. It does not install a universal import or export service.
+Revalidate modified adapters before use. Removed project tests do not certify the current skill package.
+The remaining readers and construction exporter do not supply a general semantic-PMI authoring service.
+Verify the required PMI export types and geometry associations through a separate adapter test before release.
 A different CAD system requires its own verified adapter.
 Do not promise full EXPRESS conformity, arbitrary geometric dimensioning and tolerancing (GD&T), or all tolerance systems.
 Full relation transfer and automatic PMI or marker updates also require separate evidence.
 
-## Isolated regression cases
+## Separate run data
 
-Load these files only for the identical permitted drawing or an explicitly requested regression test.
-Do not use their numbers, paths, object or face names, PMI counts, or layout as defaults.
-
-- [befestigung-baseline.json](references/befestigung-baseline.json) contains the fixed Befestigung case. Its rib assumption and change-test geometry apply only to that case. Its recorded initial state does not prove export after an edit.
-- [maschinenteil-baseline.json](references/maschinenteil-baseline.json) and [inline-maschinenteil-pmi.md](references/inline-maschinenteil-pmi.md) contain the fixed Maschinenteil case and all presentation polylines. Read those data programmatically. Do not estimate them again from fonts. Approved assumptions for thickness, cross holes, and the simplified thread apply only to that case.
-- [maschinenteil-review-baseline.json](references/maschinenteil-review-baseline.json) contains revision 07 of that case. It includes reconstructed sketch and extrusion controls, and local review markers. It uses the legacy profile `model-contract/1` with explicit UI and review extensions. It does not claim migration to general schema 2. Its code hashes and capabilities apply to the tested adapter revision.
-- The Maschinenteil test in [inline-procedural-adapter.md](references/inline-procedural-adapter.md) proves a construction and geometry cycle within its scope. It does not prove automatic PMI updates or a general return path for review markers.
+The skill contains procedures, adapter interfaces, and general technical references.
+Receive drawings, contracts, geometry IDs, PMI layouts, and expected results as explicit authorized run inputs.
+Keep source evidence and regression results in the run storage outside this package.
+Do not copy part dimensions, assumptions, face names, or output paths into reusable defaults.
+For each adapter revision, record independent capability tests with their actual input and output hashes.
 
 At delivery, link the master file or clearly identified candidate, contract, test report, and optional derived working file.
 State passed tests, remaining assumptions, missing functions, and the next executable action.

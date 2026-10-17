@@ -1,10 +1,10 @@
-# Verified inline readers: adapter components 0.1.0
+# Inline readers: adapter components
 
 These code blocks document inline calls through the FreeCAD proxy of `drawing2cad-mcp`. Do not create script files from them. Define the functions in a fresh Python process. Supply the path, expected representation, and expected PMI count explicitly.
 
 The blocks read STEP and create declarative data. They do not create CAD documents. Use the skill for the native rebuild and its geometric verification.
 
-The execution environment must provide the OCC bindings listed in the process log. Version and test changes to these blocks in a fresh process. This documentation provides a complete starting point. Do not use MCP variables left from earlier calls.
+The execution environment must provide compatible OCC bindings. Record their versions in the run manifest. Test these blocks in a new process with the current adapter inputs. This reference contains no part data or case evidence. Do not use MCP variables left from earlier calls.
 
 ## CSG to neutral records
 
@@ -194,7 +194,7 @@ Build the native model as follows:
 
 ## PMI values, associations, and polylines
 
-The reader supports nominal size, distance, and angle dimensions tested in the reference case. Each dimension has `source_id`, one associated draughting callout, and tessellated polylines.
+The reader implements nominal size, distance, and angle dimensions within the profile below. Each dimension has `source_id`, one associated draughting callout, and tessellated polylines. Verify these functions with permitted inputs before release.
 
 Do not claim a general GD&T, datum, or tolerance implementation. If a contract requires these features, extend the implementation and verify them.
 

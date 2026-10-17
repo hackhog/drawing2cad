@@ -18,6 +18,8 @@
 - Keep model operations and parameters editable. A STEP end body alone does not meet the construction-history or semantic-PMI requirement.
 - Test AP242 content, reconstruction from STEP alone, and changes through import adapters separately.
 - Use only `drawing2cad-mcp` and its FreeCAD proxy for PDF preparation and CAD execution. You can send inline code to the MCP.
+- The production target is a fully headless server. All required phases must work without a FreeCAD GUI session or GUI dispatcher.
+- Test drawing creation and rendering, editable construction, AP242, PMI, reconstruction, and validation on that server. A GUI bridge is a development path only.
 - Do not create ad hoc model scripts, macros, or executable helper files. This restriction does not prohibit authorized development of versioned MCP server code.
 - Use only permitted sources. Do not use verification resources as unreported construction inputs. Keep original resources unchanged.
 - Give suitable independent review tasks to subagents. Run CAD changes to the same document in sequence. Review their results before delivery.
@@ -30,4 +32,6 @@
 - Keep a run manifest. Include input and output hashes, tool versions, drawing and contract revisions, and actual test results.
 - Do not report a historical result as a new test.
 - Maintain skill changes in the project. Compare changed files with the local skill installation, if present.
+- Keep the skill independent of project data. Do not package or link customer parts, resource files, model data, host snapshots, or historical run results.
+- Supply authorized model inputs and validation evidence separately for each run. Keep removed historical evidence outside the skill package.
 - Work instructions specify requirements. Do not state that the MCP enforces a requirement without an implementation and a test.

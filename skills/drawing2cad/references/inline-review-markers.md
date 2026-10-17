@@ -1,4 +1,4 @@
-# Review marker injection: Revision 02, Schema 1
+# Review marker injection: generic layout inputs, Schema 1
 
 The input check validates mm units, the amb3_ namespace, unique IDs, target solids, review classes, and view groups. It also examines finite display and anchor coordinates, RGB values, and the text and source-hash fields used here. It does not provide complete general JSON schema validation. All checks occur before document mutation.
 
@@ -6,7 +6,13 @@ This code is documentation. Execute it only as inline Python through the FreeCAD
 
 `metadata` is the complete `drawing2cad.review-annotations/1` object read from the namespaced AP242 property `drawing2cad.review_annotations.v1`. No external JSON file is necessary for subsequent import.
 
-Markers contain review information. They are not additional original drawing PMI, manufacturing dimensions, or product solids. The 31 original drawing specifications remain separate.
+Markers contain review information. They are not additional original drawing PMI, manufacturing dimensions, or product solids. Keep original drawing specifications separate.
+
+Supply view names and all layout coordinates through metadata. If target points require circular markers, also supply `display.marker_radius_mm` and `display.marker_normal`. These fields specify presentation geometry only. They do not supply product geometry.
+
+This revision removes fixed view groups and case-specific display geometry. Revalidate the modified code before use. No live CAD test was run during this cleanup.
+
+The headless path stores review data and annotation objects. Verify a separate headless render path for visible text and review images. Do not require a desktop view for server completion.
 
 Before changes, the function validates all face anchors and logical construction references. Missing or ambiguous matches stop processing. `FaceN` is stored only as a runtime result.
 
@@ -45,7 +51,7 @@ def amb3_inject_review(doc, root, metadata):
         geometry=item['geometry']; display=item['display']
         if geometry.get('root_logical_id') != root.Name:
             raise ValueError(name+': falscher logischer Zielkoerper')
-        if display.get('view') not in ('front','side','global'):
+        if not isinstance(display.get('view'),str) or re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*',display['view']) is None:
             raise ValueError(name+': ungueltige Reviewansicht')
         finite_vector(display.get('color_rgb'),3,name+' RGB')
         if any(x<0 or x>1 for x in display['color_rgb']):
@@ -56,7 +62,12 @@ def amb3_inject_review(doc, root, metadata):
             raise ValueError(name+': ungueltiger Beschriftungstext')
         if not isinstance(display.get('target_points',[]),list) or not isinstance(display.get('leader_polylines',[]),list):
             raise ValueError(name+': ungueltige Reviewgeometrie')
-        for point in display.get('target_points',[]): finite_vector(point,3,name+' Zielpunkt')
+        for point in display.get('target_points',[]): finite_vector(point,3,name+' target point')
+        if display.get('target_points'):
+            finite_vector([display.get('marker_radius_mm')],1,name+' marker radius')
+            finite_vector(display.get('marker_normal'),3,name+' marker normal')
+            if display['marker_radius_mm']<=0 or sum(x*x for x in display['marker_normal'])<=1e-24:
+                raise ValueError(name+': invalid marker radius or normal')
         for line in display.get('leader_polylines',[]):
             if not isinstance(line,list) or len(line)<2: raise ValueError(name+': ungueltige Leitlinie')
             for point in line: finite_vector(point,3,name+' Leitlinienpunkt')
@@ -113,8 +124,8 @@ def amb3_inject_review(doc, root, metadata):
     top.addProperty('App::PropertyLink','ReviewedBody','Review'); top.ReviewedBody=root
     top.addProperty('App::PropertyString','SourceSHA256','Review'); top.SourceSHA256=metadata['source']['sha256']
     views={}
-    for key in ('front','side','global'):
-        g=doc.addObject('App::DocumentObjectGroup','amb3_'+key)
+    for index,key in enumerate(sorted({item['display']['view'] for item in metadata['entries']}|{'global'}),1):
+        g=doc.addObject('App::DocumentObjectGroup','amb3_View_%03d'%index)
         g.Label='REVIEW - '+key; top.addObject(g); views[key]=g
     def appearance(obj,color,width=3):
         if App.GuiUp:
@@ -141,8 +152,8 @@ def amb3_inject_review(doc, root, metadata):
                 if sum((x-y)**2 for x,y in zip(a,b))>1e-16:
                     lines.append(Part.makeLine(App.Vector(*a),App.Vector(*b)))
         for center in display.get('target_points',[]):
-            # Kleine Ortsmarke in der Vorderansicht; keine konstruktive Geometrie.
-            lines.append(Part.makeCircle(1.25,App.Vector(*center),App.Vector(0,0,1)))
+            # Presentation marker; no construction geometry.
+            lines.append(Part.makeCircle(display['marker_radius_mm'],App.Vector(*center),App.Vector(*display['marker_normal'])))
         if lines:
             leader=doc.addObject('Part::Feature',name+'_leader'); leader.Label=name+' - Review-Verweis'
             leader.Shape=Part.makeCompound(lines); group.addObject(leader); appearance(leader,color,2)
@@ -158,27 +169,30 @@ def amb3_inject_review(doc, root, metadata):
     if App.GuiUp:
         legend.ViewObject.FontSize=16
         legend.ViewObject.TextColor=(0.12,0.12,0.12)
-        views['side'].ViewObject.Visibility=False
     doc.recompute()
     return {'schema':metadata['schema'],'entry_count':len(metadata['entries']),
             'resolved_faces':resolved,'objects_created':len([o for o in doc.Objects if o.Name.startswith('amb3_')]),
             'body_geometry_changed':False}
 ```
 
-Call `amb3_inject_review(doc, doc.getObject('CrossBoreCut3'), metadata)`. The function does not save the document. The caller sets a separate candidate path and repeats geometry and metadata checks.
+Call `amb3_inject_review(doc, root, metadata)`. Obtain `root` from the decoded operation graph. The function does not save the document. Set a separate candidate path and repeat geometry and metadata checks.
 
-For a side view, show `amb3_side` and hide `amb3_front`. For a front view, do the reverse. `amb3_global` contains the legend.
+View groups come from the metadata. Their labels identify the view keys. The `global` group contains the legend. A desktop viewer can select these groups for display. This optional display step does not meet the headless render requirement.
 
 For a normal product STEP export, **exclude** review edges from the object list. Do not export them as additional parts. The declared namespaced property provides persistence. The application rebuilds separate review groups from that property.
 
 This is a documented application extension. It does not claim universal graphical PMI support in external viewers.
 
-## Specific correction in Revision 02
+## Geometry anchors and verification
 
-The native `Face.optimalBoundingBox` documentation was inspected on the installed FreeCAD object: `optimalBoundingBox([useTriangulation = True, useShapeTolerance = False])`. Revision 02 explicitly uses `False, False` on a copy without triangulation.
+The fingerprint function uses `optimalBoundingBox(False, False)` on a copy without triangulation.
+This method excludes display triangulation from the bounds used for anchor matching.
+Verify the installed FreeCAD API before use.
 
-For trimmed toroidal faces, normal `BoundBox` sometimes returns different conservative bounds for identical geometry. The optimal geometric box replaces this display or calculation difference. No numeric limit is relaxed.
+Compare each expected anchor with geometry reconstructed from STEP alone.
+Require exactly one match. Reject displaced anchors and ambiguous matches in separate negative tests.
+Record the largest observed differences and the applicable tolerances in the run report.
+Do not change numeric limits to make a failing input pass.
 
-All 44 anchor references were compared between the original solid and the solid freshly rebuilt from STEP. Only bounding-box values for the ten toroidal faces change from Revision 01. Other fields, review statements, and layout data remain unchanged.
-
-The maximum difference between original and rebuilt optimal boxes was 4,7255e-11 mm. Negative tests still test rejection of displaced and ambiguous anchors. The old revision is retained unchanged.
+This reference supplies no geometry fingerprints, source hashes, measured case results, or fixed target-object names.
+All such data belong to the permitted run inputs and its generated evidence.

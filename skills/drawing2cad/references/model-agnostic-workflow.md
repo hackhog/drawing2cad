@@ -13,6 +13,12 @@ The phases below give the full `new_drawing` workflow.
 Other modes use only applicable phases.
 Do not invent missing evidence retrospectively.
 
+The production workflow must run on a fully headless server through `drawing2cad-mcp`.
+No phase can require an open FreeCAD GUI or a GUI dispatcher.
+Test drawing rendering and PMI presentation separately from geometric computation.
+An optional web client can submit jobs and display server artifacts. It does not execute required CAD phases.
+Existing GUI-based development tests do not prove this deployment.
+
 ## Replaceable components
 
 - **Interpretation:** An LLM or person reads only permitted drawings, collects evidence, and proposes a construction. Origin, construction, and undimensioned details can vary. Record the model identifier and methods as provenance. They do not guarantee quality.
@@ -65,6 +71,7 @@ It is not evidence of a fresh run.
 | `drawing_authoring` / `drawing_render` | Can explicit 2D geometry produce an editable, dimensioned technical sheet and readable rendering before the 3D build? An existing 3D TechDraw export does not prove this method. |
 | `drawing_model_check` | Can model dimensions and required projections and sections be independently compared with the controlling sheet? |
 | `isolated_execution` | Are MCP execution, a fresh process, explicit inputs, and a structured result possible without script files? |
+| `headless_pipeline` | Can every required phase complete on the server without FreeCADGui, a GUI dispatcher, or a display server? Record worker and renderer evidence separately. |
 | `native_build` | Can each specific operation produce an editable native result with its placement, profile, unit, and dependencies? |
 | `constructive_export` / `constructive_import` | Can AP242 store all required operations and topology anchors in an evaluable form? Can they be read from STEP alone? |
 | `relation_transport` | Are formulas and constraints transferred and linked again, or only their evaluated numbers? Do a separate test for each relation type. |
@@ -197,12 +204,14 @@ Do not invent a complete historical contract status.
 
 ## Limits of existing components
 
-The verified references demonstrate selected native operations, constructive STEP representations, nominal numerical PMI, selected text properties, and graphic polylines.
-They do not demonstrate a generic drawing parser, complete constraint-solver transport, or universal unit, orientation, or GD&T support.
+The references document limited adapters for native operations, constructive STEP representations, PMI reading, selected text properties, and graphic polylines.
+Verify the current adapter revision and toolchain before use.
+These references do not provide a general semantic-PMI writer or drawing parser.
+They do not prove complete constraint-solver transport or universal unit, orientation, or GD&T support.
 The general review register required here remains a contract and verification target, including editable, transferable markers.
 Existing case-specific assumption metadata alone do not prove its complete implementation.
 
-Keep existing case evidence.
+Keep run evidence outside the skill package. Supply permitted evidence through the run manifest.
 For new geometry, relations, note types, or marker classes, explicitly extend and test the adapter scope.
 If the reverse adapter is missing, keep the existing master.
 Deliver the candidate with its missing capability identified.

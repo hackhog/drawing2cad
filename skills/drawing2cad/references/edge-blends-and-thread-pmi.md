@@ -1,6 +1,6 @@
 # Constant-radius fillets and thread designations
 
-This extension applies to models with actual fillet operations. It also applies to a thread designation without fully specified thread geometry. The basic requirements in `validation.md` still apply. Use the applicable model contract. Do not transfer dimensions from the Maschinenteil reference case to other drawings.
+This extension applies to models with actual fillet operations. It also applies to a thread designation without fully specified thread geometry. The basic requirements in `validation.md` still apply. Use dimensions only from the authorized model contract.
 
 ## Fillets in the constructive STEP graph
 
@@ -18,9 +18,9 @@ The ordinary STEP geometry import must still return exactly the expected final s
 
 Primary sources: [Constant-radius edge blend](https://www.steptools.com/docs/stp_aim/html/t_solid_with_constant_radius_edge_blend.html), [procedural sequence](https://www.steptools.com/docs/stp_aim/html/t_procedural_shape_representation_sequence.html), [explicit result relationship](https://www.steptools.com/docs/stp_aim/html/t_explicit_procedural_shape_representation_relationship.html).
 
-## M10 as a semantic designation
+## Thread designation as a semantic property
 
-[metric-thread-chamfers.md](metric-thread-chamfers.md) contains the complete table from the user link, with 35 sizes from M1 to M68. It also contains short notes about typical chamfers. Determine exact chamfer widths separately.
+[metric-thread-chamfers.md](metric-thread-chamfers.md) contains a general table with 35 sizes from M1 to M68. It also contains short notes about typical chamfers. Determine exact chamfer widths separately.
 
 If only `M10` is specified and a simplified representation is agreed, create a nominal cylinder. Add a semantic text property linked to its geometry. A suitable standard chain is `SHAPE_ASPECT` → `PROPERTY_DEFINITION` → `PROPERTY_DEFINITION_REPRESENTATION` → `DESCRIPTIVE_REPRESENTATION_ITEM`. The graphical label must refer to the same property.
 
@@ -28,9 +28,9 @@ This designation is not a fully parameterized `THREAD` feature entity. Do not de
 
 An omitted tolerance class is not automatically a blocking uncertainty. First examine standard requirements and application context. Distinguish an idealized nominal profile for visualization from geometry with selected manufacturing limit dimensions. Specify tolerance position, actual thread length, runout, relief, and end chamfer only when evidence supports them. Evidence must come from the drawing, an explicitly applied standard, or a confirmed assumption. A nominal profile with PMI does not prove a specific manufactured fit. For current standard interpretation, examine the applicable edition. ISO 965-1:2026 replaced the 2013 edition. A historical designation reference alone does not validate a complete design to the 2026 edition.
 
-In the Maschinenteil reference case, the user-confirmed representation remains an envelope cylinder with M10 PMI. The new option for detailed geometry does not automatically cancel that decision. The undimensioned end chamfer remains marked as uncertain. Do not generate it from the thread designation.
+Retain an approved simplified thread representation unless the user requests a change. Mark an unspecified end chamfer as uncertain. Do not generate it from the thread designation alone.
 
-Retain confirmed assumptions as assumptions in the master file. Count and validate them separately from original drawing dimensions. General drawing notes require semantic properties with their actual scope. For example, this applies to the note “nicht bemaßte Radien R=1” (undimensioned radii R=1). Do not infer a fillet on every edge from that note.
+Retain confirmed assumptions as assumptions in the master file. Count and validate them separately from original drawing dimensions. General drawing notes require semantic properties with their actual scope. Do not infer a fillet on every edge from a general radius note.
 
 ## Actual thread geometry and an editable thread operation
 

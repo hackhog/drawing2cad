@@ -2,9 +2,11 @@
 
 First, load the parser, geometry, and import functions from `inline-procedural-adapter.md` inline. Also load `read_adapter_properties` from `inline-review-envelope.md`. Then execute the following block inline through the FreeCAD proxy of `drawing2cad-mcp`. No script file is necessary.
 
-Entry point: `hist3_rebuild_editable(step_path, fcstd_path=None, docname="Maschinenteil_Editierbar")`. The STEP file is the only model source. The adapter reads user interface metadata from its named property.
+Entry point: `hist3_rebuild_editable(step_path, fcstd_path=None, docname="AP242NativeRebuild")`. The STEP file is the only model source. The adapter reads user interface metadata from its named property.
 
-In the verified Maschinenteil case, the adapter rebuilds 53 standard operations as native operations. It maps each of six selected rectangular extrusions to a fully dimensioned sketch and `Part::Extrusion`. The 56 independent dimensions in the table come only from STEP operation entities.
+The adapter maps selected rectangular operations to dimensioned sketches and `Part::Extrusion`. Selection and parameter mappings come from STEP metadata. Dimensions come from STEP operation entities. This reference supplies no part names, operation counts, or geometry defaults.
+
+Verify the adapter with the current permitted inputs. Historical case results are not included in this skill. Test reconstruction and parameter changes in a new headless process before release.
 
 The adapter does not rebuild or invent shared bolt-circle, pattern, or position constraints. Positions and axes remain editable through Placement. The result is a reconstructed operation sequence, not the original user history.
 
@@ -163,6 +165,6 @@ def hist3_rebuild_editable(step_path,fcstd_path=None,docname='AP242NativeRebuild
 
 ```
 
-## Fingerprint correction
+## Geometry fingerprints
 
-In both definitions in the procedural reference, replace `bb=e.BoundBox` with `bb=e.copy(True,False).BoundBox`. GUI triangulation can approximate bounding-box extremes. The copy without a mesh uses the geometry. Keep the tolerance and the distance check in both directions between edges unchanged.
+Both definitions in the procedural reference use `bb=e.copy(True,False).BoundBox`. GUI triangulation can approximate bounding-box extremes. The copy without a mesh uses the geometry. Keep the tolerance and the distance check in both directions between edges unchanged.

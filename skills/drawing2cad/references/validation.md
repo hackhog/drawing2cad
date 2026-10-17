@@ -13,6 +13,7 @@ It references that evidence through hashes and versions and separates it from th
 | Group | Evidence |
 |---|---|
 | `source_traceability` | Sources, pages, and hashes are authorized. Used information has evidence or an explicitly identified derivation or assumption. |
+| `headless_pipeline` | All required phases pass on the server without a FreeCAD GUI session, GUI dispatcher, or display server. Worker and rendering evidence are separate. |
 | `drawing_first` | An editable dimensioned technical drawing and inspected sheet rendering exist before the dependent build or design change. Drawing revision, hashes, and phase references are recorded. Apply the mode rules in [drawing-first.md](drawing-first.md). |
 | `drawing_model_consistency` | Relevant model dimensions, projections, and sections were compared with the controlling drawing revision. Export uses this exact build. |
 | `contract_integrity` | Fixed revision and hash, valid data, complete references, acyclic graphs, and recorded decisions. |
@@ -208,12 +209,29 @@ Also deliver the handoff manifest defined in [model-agnostic-workflow.md](model-
 The limits and next step must be understandable without chat history.
 Keep the old master file until its replacement is validated.
 
-## Historical evidence limited to specific cases
+## Headless server acceptance
 
-These numbers apply only to the identical fixtures.
-Do not transfer their geometry, dimensions, or tolerances to new parts.
+Start the complete pipeline without an interactive desktop or an existing FreeCAD process.
+Record `FreeCAD.GuiUp == 0` in each CAD worker and identify the process that receives MCP jobs.
+A headless child behind a required GUI bridge does not meet this requirement.
+An offscreen FreeCAD GUI or Xvfb session is not evidence of GUI-independent execution.
 
-- The previous mm reference case used `1e-7` for nominal values and `1e-5 mm³` for material volume differences.
-- Befestigung: the right hole radius changed from 6 to 5.5 mm through 20 mm of material. The independently calculated volume increase is `pi * (6² - 5.5²) * 20 = 361.2831551628262 mm³`. The tool height of 22 mm is not the material thickness. Then reset the radius. The recorded initial state has no verified authoring re-export.
-- Maschinenteil: integration differed by approximately `0,000556 mm³`, while both directed material differences were zero. Keep the finding and its measurement methods. Do not use it to increase general tolerances.
-- Maschinenteil: the recorded hole-radius re-export proves construction and geometry within its adapter subset. It does not prove automatic PMI updates or complete general relation and marker transport. New UI and review extensions require their own reports.
+Test source preparation, dimensioned drawing creation and rendering, native construction, and model-to-drawing comparison.
+Then test AP242 export, semantic PMI, fresh STEP-only reconstruction, parameter changes, and required visual outputs.
+Inspect server-rendered sheets, PMI, and review markers as actual images.
+Native GUI views remain optional desktop checks. They cannot replace the server-rendering tests.
+If a required renderer is unavailable, report that capability as unverified or unsupported.
+
+Record versions, input and artifact hashes, process boundaries, and each phase result outside the skill package.
+For a Docker deployment, repeat acceptance in the actual container image.
+Host tests alone do not prove container support.
+Inspect runtime file creation. Do not permit ad hoc model scripts or temporary executable payload files.
+Versioned server application code remains permitted.
+
+## External validation inputs
+
+Receive expected dimensions, tolerances, and parameter-change results from the authorized run inputs.
+Define these values before result comparison. Keep customer data and test results outside the skill package.
+For a hole change, calculate the expected volume effect from actual material intersection.
+The cutting tool length can differ from the material thickness.
+Do not increase general tolerances to conceal a discrepancy in one test.

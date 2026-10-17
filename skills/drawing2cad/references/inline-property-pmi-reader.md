@@ -1,6 +1,6 @@
 # Inline reader: numeric PMI and semantic text properties
 
-This verified reader extends the nominal reader. It supports `PROPERTY_DEFINITION` for a thread designation and a general positive radius specification. It preserves STEP geometry references and all presentation polylines. Also compare expected IDs, values, types, references, and note meanings with the model contract. Other semantic properties, tolerances, and datum systems are not generally supported.
+This reader extends the nominal reader. It supports `PROPERTY_DEFINITION` for a thread designation and a general positive radius specification. It preserves STEP geometry references and all presentation polylines. Also compare expected IDs, values, types, references, and note meanings with the model contract. Other semantic properties, tolerances, and datum systems are not generally supported.
 
 Execute the code only in memory through the FreeCAD proxy of `drawing2cad-mcp`. `read_step_pmi_extended(step_path, expected_count)` returns `annotations` and separate `metadata_properties`. The import requires only STEP. It does not require the original model contract or FCStd. Use the contract afterward for an independent check of expected results.
 
@@ -236,64 +236,110 @@ def read_step_pmi_extended(path, expected_count=None):
     return {'annotations':output,'metadata_properties':extra_metadata}
 ```
 
-## Native display
+## Native annotation data and optional desktop display
 
-The following display component does not read a drawing. It transfers polylines and semantic records from the STEP reader into the native document already rebuilt from STEP. Its view groups apply to Maschinenteil. For other models, use the actual stored plane names.
+This component transfers STEP polylines and semantic records into a document rebuilt from STEP.
+View groups use the plane names stored in the STEP annotations.
+Supply optional readable labels through `plane_labels`; the skill contains no part-specific view mapping.
+The caller supplies `root_name` from the decoded operation graph.
 
-After loading a document saved headless, run `touch`, `recompute`, and `Gui.updateGui`. This makes the body render before the screenshot. Native PMI represent a verified nominal state. They are not sketch constraints that update automatically.
+`add_step_pmi_to_native` does not import `FreeCADGui` when `GuiUp=0`.
+Its headless path stores semantic data and graphical geometry in the document.
+This path does not prove visible text, a rendered drawing, or a server preview.
+The server must verify those outputs through a separate headless render path.
+
+`show_step_pmi_view` is an optional desktop helper.
+Supply any additional visible plane keys explicitly.
+Do not use this helper as a dependency of the headless server.
+Native PMI are imported nominal data. They are not sketch constraints that update automatically.
+
+These functions changed to remove case-specific mappings and GUI dependencies from data creation.
+Revalidate both paths with the current permitted inputs. No live CAD test was run during this cleanup.
 
 ```python
-
-def add_step_pmi_to_native(doc, data, source_path, root_name):
- import FreeCAD as App,FreeCADGui as Gui,Part,json,hashlib
+def add_step_pmi_to_native(doc, data, source_path, root_name, plane_labels=None):
+ import FreeCAD as App, Part, json, hashlib
  root=doc.getObject(root_name)
- for obj in doc.Objects:
-  if hasattr(obj,'ViewObject'):obj.ViewObject.Visibility=False
- root.ViewObject.Visibility=True;root.ViewObject.ShapeColor=(0.82,0.84,0.87);root.ViewObject.LineColor=(0.12,0.16,0.20)
- semantic=doc.addObject('App::DocumentObjectGroup','PMI_Semantik');semantic.Label='PMI – '+str(len(data['annotations']))+' Zeichnungsangaben aus STEP'
- labels={'front':'Vorderansicht','side':'Seitenansicht','detail_A':'Detail A','bottom':'Unteransicht mit M10','general_note':'Allgemeine Angabe R1'}
+ if root is None: raise ValueError('Missing native model root')
+ plane_labels={} if plane_labels is None else dict(plane_labels)
+ keys=sorted({item['plane']['name'] for item in data['annotations']})
+ if any(not isinstance(key,str) or not key for key in keys):
+  raise ValueError('Each annotation requires a nonempty plane name')
+ if set(plane_labels)-set(keys): raise ValueError('Unknown plane label key')
+ if App.GuiUp:
+  for obj in doc.Objects:
+   if obj.ViewObject: obj.ViewObject.Visibility=False
+  root.ViewObject.Visibility=True
+  root.ViewObject.ShapeColor=(0.82,0.84,0.87)
+  root.ViewObject.LineColor=(0.12,0.16,0.20)
+ semantic=doc.addObject('App::DocumentObjectGroup','PMISemantics')
+ semantic.Label='PMI - '+str(len(data['annotations']))+' STEP annotations'
  groups={}
- for key,title in labels.items():
-  g=doc.addObject('App::DocumentObjectGroup','PMI_'+key);g.Label='PMI – '+title;groups[key]=g
+ for index,key in enumerate(keys,1):
+  group=doc.addObject('App::DocumentObjectGroup','PMIView_%03d'%index)
+  group.Label='PMI - '+plane_labels.get(key,key)
+  groups[key]=group
  for item in data['annotations']:
-  o=doc.addObject('App::FeaturePython','Semantik_'+item['id']);o.Label=item['id']+' – '+item['literal']
-  fields={'Zeichnungstext':item['literal'],'Semantischer_Typ':item['dimension_kind'] or item['type'],'Nennwert':str(item['value'])+' '+str(item['unit']) if item['value'] is not None else 'Textangabe','Bedeutung':item['meaning'],'STEP_Entity':'#'+str(item['semantic_entity']),'STEP_Geometriebezug':json.dumps(item['geometric_item_entities']),'Status':'Geprüfter STEP-Nominalstand. Nach Geometrieänderungen PMI erneut validieren.'}
-  for prop,val in fields.items():o.addProperty('App::PropertyString',prop,'PMI');setattr(o,prop,val)
-  o.addProperty('App::PropertyLink','Modell','PMI');o.Modell=root
-  o.addProperty('App::PropertyString','STEP_Datensatz','PMI');o.STEP_Datensatz=json.dumps({k:v for k,v in item.items() if k!='polylines'},ensure_ascii=False)
-  semantic.addObject(o)
+  obj=doc.addObject('App::FeaturePython','PMISemantic_'+item['id'])
+  obj.Label=item['id']+' - '+item['literal']
+  fields={'DrawingText':item['literal'],
+          'SemanticType':item['dimension_kind'] or item['type'],
+          'NominalValue':str(item['value'])+' '+str(item['unit']) if item['value'] is not None else 'Text property',
+          'Meaning':item['meaning'],
+          'StepEntity':'#'+str(item['semantic_entity']),
+          'StepGeometryReferences':json.dumps(item['geometric_item_entities']),
+          'Status':'Imported STEP nominal state. Validate PMI before release and after geometry changes.'}
+  for prop,value in fields.items():
+   obj.addProperty('App::PropertyString',prop,'PMI');setattr(obj,prop,value)
+  obj.addProperty('App::PropertyLink','Model','PMI');obj.Model=root
+  obj.addProperty('App::PropertyString','StepRecord','PMI')
+  obj.StepRecord=json.dumps({key:value for key,value in item.items() if key!='polylines'},ensure_ascii=False)
+  semantic.addObject(obj)
   lines=[]
   for rawline in item['polylines']:
    points=[]
    for xyz in rawline:
-    p=App.Vector(*xyz)
-    if not points or (points[-1]-p).Length>1e-9:points.append(p)
-   if len(points)>1:lines.append(Part.makePolygon(points))
-  graphic=doc.addObject('Part::Feature','Grafik_'+item['id']);graphic.Label=item['id']+' – '+item['literal']
-  graphic.Shape=Part.makeCompound(lines)
-  graphic.addProperty('App::PropertyLink','Semantik','PMI');graphic.Semantik=o
-  graphic.ViewObject.LineColor=(0.05,0.65,0.95);graphic.ViewObject.PointColor=(0.05,0.65,0.95);graphic.ViewObject.LineWidth=1.5
+    point=App.Vector(*xyz)
+    if not points or (points[-1]-point).Length>1e-9: points.append(point)
+   if len(points)>1: lines.append(Part.makePolygon(points))
+  if not lines: raise ValueError('Empty graphical PMI: '+item['id'])
+  graphic=doc.addObject('Part::Feature','PMIGraphic_'+item['id'])
+  graphic.Label=obj.Label;graphic.Shape=Part.makeCompound(lines)
+  graphic.addProperty('App::PropertyLink','SemanticRecord','PMI');graphic.SemanticRecord=obj
+  if App.GuiUp:
+   graphic.ViewObject.LineColor=(0.05,0.65,0.95)
+   graphic.ViewObject.PointColor=(0.05,0.65,0.95)
+   graphic.ViewObject.LineWidth=1.5
   groups[item['plane']['name']].addObject(graphic)
- provenance=doc.addObject('App::FeaturePython','AP242_Hauptmodell')
- for prop,val in {'Datei':source_path,'SHA256':hashlib.sha256(open(source_path,'rb').read()).hexdigest(),'Metadaten':json.dumps(data['metadata_properties'],ensure_ascii=False),'Hinweis':'Aus AP242 gelesene PMI. Standard-STEP-Export erhält Konstruktionsfolge und PMI nicht vollständig; Adapter verwenden.'}.items():
-  provenance.addProperty('App::PropertyString',prop,'AP242');setattr(provenance,prop,val)
- root.touch()
- doc.recompute()
- Gui.updateGui()
+ provenance=doc.addObject('App::FeaturePython','AP242Source')
+ with open(source_path,'rb') as stream: source_hash=hashlib.sha256(stream.read()).hexdigest()
+ fields={'SourceFile':source_path,'SHA256':source_hash,
+         'Metadata':json.dumps(data['metadata_properties'],ensure_ascii=False),
+         'Note':'Imported AP242 data. Use a verified adapter to preserve construction and PMI during export.'}
+ for prop,value in fields.items():
+  provenance.addProperty('App::PropertyString',prop,'AP242');setattr(provenance,prop,value)
+ root.touch();doc.recompute()
+ if App.GuiUp:
+  import FreeCADGui as Gui
+  Gui.updateGui()
  return groups
 
-def show_step_pmi_view(doc,data,groups,key):
- import FreeCAD as App,FreeCADGui as Gui
- for k,g in groups.items():
-  visible=k==key or (key=='front' and k=='general_note')
-  g.ViewObject.Visibility=visible
-  for obj in g.Group:obj.ViewObject.Visibility=visible
- item=next(x for x in data['annotations'] if x['plane']['name']==key)
+def show_step_pmi_view(doc,data,groups,key,additional_keys=()):
+ import FreeCAD as App
+ if not App.GuiUp: raise RuntimeError('GUI_UNAVAILABLE')
+ import FreeCADGui as Gui
+ visible_keys={key,*additional_keys}
+ if not visible_keys.issubset(groups): raise ValueError('Unknown PMI plane key')
+ for name,group in groups.items():
+  visible=name in visible_keys
+  group.ViewObject.Visibility=visible
+  for obj in group.Group: obj.ViewObject.Visibility=visible
+ item=next(item for item in data['annotations'] if item['plane']['name']==key)
  z=App.Vector(*item['plane']['normal']);x=App.Vector(*item['plane']['x_axis']);y=z.cross(x)
  rotation=App.Rotation(x,y,z,'ZXY')
- Gui.activeDocument().activeView().setCameraType('Orthographic')
- Gui.activeDocument().activeView().setCameraOrientation(rotation.Q)
- Gui.activeDocument().activeView().fitAll()
+ gui_doc=Gui.getDocument(doc.Name)
+ gui_doc.activeView().setCameraType('Orthographic')
+ gui_doc.activeView().setCameraOrientation(rotation.Q)
+ gui_doc.activeView().fitAll()
  Gui.Selection.clearSelection()
-
 ```
