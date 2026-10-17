@@ -566,7 +566,7 @@ It tests rotation, CropBox/MediaBox, UserUnit, detail pixels, source identity, e
 
 The project skill is at `../skills/drawing2cad`.
 It specifies this interface and the model-independent workflow in `references/drawing2cad-mcp.md`.
-Use `references/drawing-first.md` for technical drawing delivery. Its filename is retained for compatibility; no drawing-first order is required.
+Use `references/drawing-delivery.md` for technical drawing delivery. Drawing and model creation can occur in either order.
 M1 part gates, M2 drawing delivery, and M3 AP242 acceptance have separate scope and test results.
 
 ## Documentation language

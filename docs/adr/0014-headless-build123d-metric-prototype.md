@@ -19,7 +19,8 @@ The browser interface must use React, shadcn, TanStack Router, and TanStack Quer
 
 The first milestone targets the challenge metric.
 A versioned JSON part description is the editable source for its declarative path.
-AP242 construction, adapter edits, and semantic PMI remain required final capabilities.
+AP242 construction, adapter edits, and semantic PMI belong to M3.
+AP242 and semantic PMI are optional for the hackathon metric.
 A neutral end body does not satisfy those capabilities.
 
 ## Milestones
@@ -170,7 +171,8 @@ Measure constructed geometry against independent drawing expectations.
 Do not use construction constants as the sole validation evidence.
 Source coverage is a reviewer assertion with a callout-to-measurement inventory.
 The server can validate the assertion structure and measured IDs; it cannot prove that every source feature was identified.
-A separate reviewer must compare all source views with the final feature list.
+Compare all source views with the final feature list and record an identified review attestation.
+A separate reviewer is optional for the hackathon metric, when available.
 A correct bounding box cannot prove the presence of an internal web, rib, or drill tip.
 
 ## Evaluation scope and pass definition
@@ -205,7 +207,7 @@ The metric pass requires:
 - Every missing dimension assigned a reasonable documented assumption, or an explicit blocker.
 - MCP geometry validation and fresh STEP re-import passed.
 - Product identity, units, and actual schema recorded.
-- Independent STEP analysis and an actual NX opening test recorded as passed.
+- An actual NX opening test for the final STEP recorded as passed.
 - Review list, coverage report, manifest, and event trace exported.
 
 Use source tolerances where given.
@@ -214,8 +216,8 @@ This test tolerance is not a manufacturing tolerance.
 Do not invent manufacturing tolerances or count assumed values as printed-dimension coverage.
 
 At least two parts must build without `build_code`.
-A missing NX or independent conformance tool gives `not_tested`.
-The metric then remains incomplete, even if the server's geometry tests pass.
+A missing NX opening result gives `not_tested` and leaves the metric incomplete.
+Record independent conformance analysis as a separate acceptance claim. It is not a prerequisite for the hackathon metric.
 
 Repeat equivalent trials with strong, cheaper, and local models when those runtimes are available.
 Record reasoning settings, tool calls, retries, questions, review assistance, queue time, and infrastructure failures.

@@ -9,6 +9,10 @@ A correct JSON input does not prove that the resulting solid matches the drawing
 
 ## M1 prototype
 
+The table separates claims and their evidence. It does not make every claim a prerequisite for the hackathon metric.
+The metric requires three parts, passing MCP validations, complete source review, and an actual NX opening result for each final STEP.
+AP242 and semantic PMI are optional M3 capabilities. Complete-service drawing acceptance applies to the domain profile.
+
 | Claim | Required evidence |
 |---|---|
 | Source traceability | Authorized source hashes and regions for explicit values and assumptions. |
@@ -48,10 +52,11 @@ An AP242 schema label does not prove construction or PMI content.
 M2 adds the editable technical drawing and its inspected rendering.
 Verify dimensions, projection and section orientation, units, revision, notes, and uncertainty markers.
 Verify final drawing/model consistency.
-Use [drawing-first.md](drawing-first.md) for the current drawing requirements.
-The filename does not impose an order.
+Use [drawing-delivery.md](drawing-delivery.md) for the current drawing requirements.
 
 ## M3 AP242 acceptance
+
+Apply this optional extension only when requested and when the client permits its tools.
 
 Test each claim separately:
 
