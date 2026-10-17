@@ -31,6 +31,35 @@ def test_ap242_rebuild_edit_and_repeat_from_step_only(tmp_path):
     assert validate_step(repeated["candidate_step"], repeated["description"])["status"] == "pass"
 
 
+def test_thread_length_survives_ap242_replay_without_changing_legacy_payload(tmp_path):
+    description = sample_description()
+    description["schema_version"] = "1.2"
+    description["features"][0]["height"] = 20
+    description["measurements"] = []
+    description["features"].append({"id": "tap", "type": "hole", "position": [5, 5, 20],
+                                    "diameter": 5, "extent": "blind", "depth": 14,
+                                    "thread": {"designation": "M6", "pitch": 1, "length": 9},
+                                    "evidence_ids": ["drawing"]})
+    built = build(description, tmp_path / "first", export_profile="ap242")
+    assert built["status"] == "pass"
+    recipe = read_construction(Path(built["candidate_step"]).read_text())["description"]
+    assert recipe["features"][1]["thread"]["length"] == 9
+    replayed = reconstruct_step(built["candidate_step"], tmp_path / "replayed")
+    assert replayed["status"] == "pass"
+    assert replayed["description"]["features"][1]["thread"]["length"] == 9
+
+    legacy = sample_description()
+    legacy["features"].append({"id": "tap", "type": "hole", "position": [5, 5, 5],
+                               "diameter": 3.3, "extent": "blind", "depth": 3,
+                               "thread": {"designation": "M4", "pitch": 0.7},
+                               "evidence_ids": ["drawing"]})
+    legacy["measurements"] = []
+    legacy_step = build(legacy, tmp_path / "legacy", export_profile="ap242")
+    assert legacy_step["status"] == "pass"
+    legacy_recipe = read_construction(Path(legacy_step["candidate_step"]).read_text())["description"]
+    assert "length" not in legacy_recipe["features"][1]["thread"]
+
+
 def test_parameter_edit_rejects_stale_source_expectations(tmp_path):
     original = build(sample_description(), tmp_path / "first", export_profile="ap242")
     result = reconstruct_step(original["candidate_step"], tmp_path / "edited", {"length": 30})

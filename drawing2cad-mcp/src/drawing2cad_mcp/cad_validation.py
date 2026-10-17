@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 from .adapters.p21 import P21Typed, sth_p21_parse, sth_p21_validate_refs
-from .part_schema import PartDescription, parse_description
+from .part_schema import HoleFeature, PartDescription, parse_description, resolve
 
 
 def axis_vector(axis: str) -> tuple[float, float, float]:
@@ -231,6 +231,44 @@ def _hole_entry_positions(shape, candidates, cylinders, cones, direction, tolera
             continue
         positions.append(position)
     return positions
+
+
+def _thread_attribute_bore_checks(shape, part, holes, cylinders, cones):
+    """Check explicit thread length against the final cylindrical tap-drill bore."""
+    tolerance = 0.01
+    checks = []
+    for feature in part.features:
+        if not isinstance(feature, HoleFeature) or feature.thread is None or feature.thread.length is None:
+            continue
+        direction = axis_vector(feature.axis)
+        position = tuple(resolve(value, part) for value in feature.position)
+        diameter = resolve(feature.diameter, part)
+        depth = resolve(feature.depth, part)
+        length = resolve(feature.thread.length, part)
+        candidates = [item for item in _matching_cylinders(holes, position, direction, tolerance)
+                      if abs(item["diameter"] - diameter) <= tolerance]
+        actual = []
+        passed = False
+        for item in candidates:
+            entries = _hole_entry_positions(shape, [item], cylinders, cones, direction, tolerance)
+            for entry in entries:
+                endpoints = [tuple(item["axis_origin"][index] + value * item["axis_direction"][index]
+                                   for index in range(3)) for value in (item["axial_v_min"], item["axial_v_max"])]
+                offsets = sorted(sum((point[index] - entry[index]) * direction[index] for index in range(3))
+                                 for point in endpoints)
+                bore_depth = offsets[1] - offsets[0]
+                actual.append({"face_index": item["face_index"], "entry_position": entry,
+                               "diameter_mm": item["diameter"], "axial_bounds_from_entry_mm": offsets,
+                               "cylindrical_depth_mm": bore_depth})
+                if (math.dist(entry, position) <= tolerance and abs(offsets[0]) <= tolerance
+                        and abs(offsets[1] - depth) <= tolerance and length <= bore_depth + tolerance):
+                    passed = True
+        checks.append(check("thread_attribute_bore_consistency", passed, feature_id=feature.id,
+                            evidence_ids=feature.evidence_ids, expected_thread_length_mm=length,
+                            expected_cylindrical_depth_mm=depth, expected_tap_drill_diameter_mm=diameter,
+                            actual_bores=actual, tolerance_mm=tolerance,
+                            scope="Checks thread attributes against the final tap-drill bore. It does not check helical geometry or semantic PMI."))
+    return checks
 
 
 def _plane_locations(shape, position, direction, tolerance):
@@ -476,6 +514,7 @@ def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
     holes = [item for item in cylinders if item["concave"]]
     circular_edges = _circular_edges(shape)
     cones = _cones(shape)
+    checks.extend(_thread_attribute_bore_checks(shape, part, holes, cylinders, cones))
     measurements = []
     for expected in part.measurements:
         unsupported = False

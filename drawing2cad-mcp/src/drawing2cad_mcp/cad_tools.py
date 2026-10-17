@@ -59,7 +59,7 @@ CAD_DESCRIPTIONS = {
     "part_read": "Read current part, revision, build state, budget, and events. This call is recorded. Audit reads and report export remain available after the execution budget is reached.",
     "part_update": "Replace the editable JSON part description with an optimistic revision check. Read part_schema for the complete description contract. Invalidate prior builds and releases.",
     "create_base_body": "Replace the first base body or append an additive box, cylinder, polygon, or line-and-arc profile extrusion. Schema 1.1 supports tapered cylinders. Positive taper reduces their radius along the signed axis. Read part_schema for the closed feature contract.",
-    "add_hole": "Append a through, blind, counterbore, countersink, or tap-drill hole with evidence. Thread attributes remain JSON metadata.",
+    "add_hole": "Append a through, blind, counterbore, countersink, or tap-drill hole with evidence. Schema 1.2 permits explicit thread.length on a plain blind hole. The worker checks the attribute against the cylindrical tap-drill bore after construction and STEP re-import.",
     "add_pocket": "Append a bounded box, cylinder, polygon, or line-and-arc profile pocket with evidence. Schema 1.1 supports taper_angle. Positive taper reduces the cutter along its signed local axis. Read part_schema for coordinate rules.",
     "add_cut": "Append a bounded box, cylinder, polygon, or line-and-arc profile material cut with evidence. Schema 1.1 supports taper_angle. Positive taper reduces the cutter along its signed local axis. Read part_schema for coordinate rules.",
     "add_chamfer": "Append a chamfer using a geometric edge-center region and an exact expected edge count.",
