@@ -1,10 +1,11 @@
 """Part contracts reject unsupported and unresolved construction inputs."""
 
 from copy import deepcopy
+from typing import get_args
 
 import pytest
 
-from drawing2cad_mcp.part_schema import description_schema, parse_description, part_validate, resolve
+from drawing2cad_mcp.part_schema import Measurement, description_schema, parse_description, part_validate, resolve
 
 
 def sample_description():
@@ -64,6 +65,31 @@ def test_schema_closes_objects_and_bounds_features():
     assert schema["additionalProperties"] is False
     assert schema["properties"]["features"]["maxItems"] == 500
     assert all(item.get("additionalProperties") is False for item in schema["$defs"].values())
+
+
+def test_public_measurement_examples_cover_and_validate_every_kind():
+    examples = description_schema()["x-measurement-guidance"]["examples"]
+    kinds = set(get_args(Measurement.model_fields["kind"].annotation))
+    assert set(examples) == kinds
+    for kind, example in examples.items():
+        description = sample_description()
+        description["schema_version"] = "1.1"
+        description["measurements"] = [deepcopy(example)]
+        result = part_validate(description)
+        assert result["status"] == "pass", (kind, result["defects"])
+
+
+def test_measurement_examples_guidance_rejects_invalid_contracts():
+    examples = description_schema()["x-measurement-guidance"]["examples"]
+    for kind, change in (("bbox", lambda item: item.update(expected=[10.0, 20.0])),
+                         ("volume", lambda item: item.update(direction=[0.0, 0.0, 1.0])),
+                         ("arc_radius", lambda item: item.pop("position"))):
+        description = sample_description()
+        description["schema_version"] = "1.1"
+        measurement = deepcopy(examples[kind])
+        change(measurement)
+        description["measurements"] = [measurement]
+        assert part_validate(description)["status"] == "fail"
 
 
 def test_normalized_source_region_has_unit_interval_bounds():
