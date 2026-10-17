@@ -1,0 +1,241 @@
+"""Agent runs through the web API and the shared domain service (ADR 0018). No model is called."""
+
+import io
+import re
+import socket
+import threading
+import time
+import zipfile
+
+import httpx2
+import pytest
+import uvicorn
+from fastapi.testclient import TestClient
+from pypdf import PdfWriter
+
+from drawing_demo import api
+from drawing_demo.agent import runner as runner_module
+from drawing_demo.agent.mapping import artifact_view, part_view, phase_for, review_view, sheet_region
+
+SHA = "a" * 64
+
+
+def description(source_id="drawing", source_sha256=SHA):
+    source = {"source_id": source_id, "source_sha256": source_sha256, "page": 1, "coordinate_system": "normalized_displayed"}
+    return {
+        "schema_version": "1.0", "name": "Plate", "units": "mm", "coordinate_system": "right_handed_xyz",
+        "evidence": [
+            {"id": "e_len", "status": "explicit", "reason": "Printed 10.", "source": {**source, "view": "front", "region": [0.1, 0.1, 0.2, 0.2]}},
+            {"id": "e_t", "status": "assumed", "reason": "Thickness not printed.", "source": {**source, "view": "side", "region": [0.5, 0.5, 0.6, 0.6]}},
+        ],
+        "parameters": [{"name": "length", "value": 10, "unit": "mm", "evidence_ids": ["e_len"]},
+                       {"name": "thickness", "value": 5, "unit": "mm", "evidence_ids": ["e_t"]}],
+        "features": [{"id": "base", "type": "box", "operation": "base", "length": {"parameter": "length"}, "width": 20,
+                      "height": {"parameter": "thickness"}, "evidence_ids": ["e_len", "e_t"]}],
+        "review_flags": [{"id": "f_edge", "target_id": "base", "status": "open", "reason": "Edge radius unclear.", "evidence_ids": ["e_t"]}],
+    }
+
+
+def pdf_bytes():
+    writer = PdfWriter()
+    writer.add_blank_page(width=300, height=200)
+    stream = io.BytesIO()
+    writer.write(stream)
+    return stream.getvalue()
+
+
+def test_phase_follows_the_tool_sequence():
+    assert phase_for("pdf_render_page", "queued") == "analyzing"
+    assert phase_for("build_from_description", "analyzing") == "modeling"
+    assert phase_for("drawing_render", "modeling") == "drawing"
+    assert phase_for("export_step", "drawing") == "validating"
+    assert phase_for("part_export_review", "modeling") == "modeling"
+    assert phase_for("cad_worker_probe", "modeling") == "modeling"
+    assert phase_for("part_schema", "analyzing") == "analyzing"
+
+
+def test_source_regions_become_sheet_millimeters():
+    assert sheet_region({"region": [0.1, 0.2, 0.3, 0.4], "coordinate_system": "normalized_displayed"}, (200, 100)) == [20, 20, 60, 40]
+    assert sheet_region({"region": [72, 0, 144, 72]}, (200, 100)) == pytest.approx([25.4, 0, 50.8, 25.4])
+    assert sheet_region({"region": [1, 1, 2, 2], "coordinate_system": "pixels"}, (200, 100)) is None
+
+
+def test_part_view_lists_parameters_with_origin_and_operations():
+    part = part_view({"revision": 3, "description": description()})
+    assert part["revision"] == 3
+    assert [(p["name"], p["origin"], p["feature"]) for p in part["parameters"]] == [("length", "source", "base"), ("thickness", "assumed", "base")]
+    assert part["operations"] == [{"index": 1, "kind": "box", "label": "base", "parameters": ["length", "thickness"]}]
+
+
+def test_review_keeps_assumptions_flags_and_untested_checks_apart():
+    from drawing2cad_mcp.part_schema import part_validate
+    state = {"description": description(), "build": {"status": "pass", "validation": {"checks": [
+        {"check": "step_reimport", "status": "pass"}, {"check": "target_cad_open", "status": "skipped"}]}}}
+    review = review_view(state, part_validate(state["description"])["review_items"], (200, 100), released=False)
+    assert review["release_state"] == "blocked"
+    assert [a["id"] for a in review["assumptions"]] == ["e_t"]
+    assert review["assumptions"][0]["source_region"] == [100, 50, 120, 60]
+    assert [u["id"] for u in review["uncertainties"]] == ["f_edge"]
+    assert [v["status"] for v in review["validation"]] == ["pass", "not_tested"]
+
+
+@pytest.mark.parametrize(("role", "media_type", "expected"), [
+    ("released_step", "model/step", "step"), ("technical_drawing", "application/pdf", "drawing_pdf"),
+    ("technical_drawing", "image/vnd.dxf", "drawing_dxf"), ("run_manifest", "application/json", "manifest"),
+    ("part_description", "application/json", "part_description"), ("run_trace", "application/json", "trace"),
+    ("domain_run_events", "application/json", "events"), ("drawing_report", "application/json", "report"),
+    ("source_preview", "image/png", None),
+])
+def test_only_delivered_domain_artifacts_are_shown(role, media_type, expected):
+    artifact = {"artifact_id": "art_" + "1" * 32, "role": role, "media_type": media_type, "filename": "f",
+                "sha256": SHA, "size_bytes": 3, "revision": 2}
+    view = artifact_view(artifact, "b" * 64)
+    assert (view and view["role"]) == expected
+    if view:
+        assert view["model_revision"] == 2 and view["byte_count"] == 3 and view["source_sha256"] == "b" * 64
+
+
+@pytest.fixture
+def environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
+    skill = tmp_path / "SKILL.md"
+    skill.write_text("skill")
+    monkeypatch.setenv("DRAWING2CAD_SKILL_PATH", str(skill))
+    for name in ("BASE_URL", "MODEL", "API_KEY"):
+        monkeypatch.delenv("DRAWING2CAD_AGENT_" + name, raising=False)
+    return monkeypatch
+
+
+def with_model_endpoint(monkeypatch):
+    for name, value in (("BASE_URL", "https://example.test/v1"), ("MODEL", "m"), ("API_KEY", "k")):
+        monkeypatch.setenv("DRAWING2CAD_AGENT_" + name, value)
+
+
+def upload(client):
+    res = client.post("/api/sources", files={"file": ("Plate_dwg.pdf", pdf_bytes(), "application/pdf")})
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def test_runs_are_unavailable_without_model_endpoint(environment):
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        assert client.get("/api/capabilities").json()["runs"] is False
+        res = client.post(f"/api/sources/{source['source_id']}/runs")
+        assert res.status_code == 503 and res.json()["detail"]["code"] == "CAPABILITY_UNAVAILABLE"
+
+
+def test_a_run_is_queued_with_a_model_endpoint(environment):
+    with_model_endpoint(environment)
+    submitted = []
+    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id: submitted.append(run_id))
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        assert client.get("/api/capabilities").json()["runs"] is True
+        res = client.post(f"/api/sources/{source['source_id']}/runs")
+        assert res.status_code == 201
+        run = res.json()
+        assert run["phase"] == "queued" and run["part"] is None and submitted == [run["run_id"]]
+        assert [r["run_id"] for r in client.get(f"/api/sources/{source['source_id']}/runs").json()] == [run["run_id"]]
+        assert client.get(f"/api/runs/{run['run_id']}").json()["job"]["status"] == "queued"
+
+
+@pytest.mark.parametrize("path", ["/api/runs/run_" + "0" * 32, "/api/runs/..%2Fsources", "/api/sources/src_zz/analysis",
+                                  "/api/sources/src_" + "0" * 32, "/api/artifacts/art_" + "0" * 32 + "/content",
+                                  "/api/artifacts/../../etc/passwd/content"])
+def test_unknown_or_malformed_ids_are_not_found(environment, path):
+    with TestClient(api.create_app()) as client:
+        assert client.get(path).status_code == 404
+
+
+def test_artifact_download_reads_the_domain_store(environment):
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        backend = client.app.state.services.backend
+        rendered = backend.call("pdf_render_page", source_id=source["source_id"], include_image=False)
+        artifact = rendered["artifact"]
+        res = client.get(f"/api/artifacts/{artifact['artifact_id']}/content")
+        assert res.status_code == 200 and res.content.startswith(b"\x89PNG")
+        assert res.headers["content-type"] == "image/png" and artifact["filename"] in res.headers["content-disposition"]
+
+
+def test_run_files_list_only_the_record_and_trace_of_the_run(environment):
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        jobs = client.app.state.services.jobs
+        run_id = jobs.add(source["source_id"])["run_id"]
+        (jobs.directory(run_id) / "trace" / "001-model-request.json").write_text("{}")
+        listing = client.get(f"/api/runs/{run_id}/files").json()
+        paths = [f["path"] for f in listing["files"]]
+        assert paths == ["run.json", "trace/001-model-request.json"]
+        opened = client.get(listing["files"][1]["url"])
+        assert opened.text == "{}" and opened.headers["content-type"].startswith("text/plain")
+        assert opened.headers["content-disposition"].startswith("inline")
+        with zipfile.ZipFile(io.BytesIO(client.get(listing["archive_url"]).content)) as archive:
+            assert archive.namelist() == [f"{run_id}/{p}" for p in paths]
+        assert client.get(f"/api/runs/{run_id}/files/../../domain").status_code == 404
+        assert client.get(f"/api/runs/{run_id}/files/trace%2F..%2F..%2F..%2Fdomain").status_code == 404
+
+
+def test_a_restart_fails_unfinished_runs(environment):
+    with TestClient(api.create_app()) as client:
+        run = client.app.state.services.jobs.add(upload(client)["source_id"])
+    with TestClient(api.create_app()) as client:
+        assert client.get(f"/api/runs/{run['run_id']}").json()["error"]["code"] == "RUN_INTERRUPTED"
+
+
+class Server(uvicorn.Server):
+    def install_signal_handlers(self):
+        pass  # Keep the signal handlers of the test runner.
+
+
+def scripted_model(plan, payload, timeout):
+    """Create a part through the real MCP endpoint, then answer. The prompt names the source and run prefix."""
+    system = payload["messages"][0]["content"]
+    source_id, digest = re.search(r"source ID (src_[0-9a-f]{32}) \(SHA-256 ([0-9a-f]{64})\)", system).groups()
+    prefix = re.search(r"run IDs that start with (web-[0-9a-f]+)-", system).group(1)
+    if len(payload["messages"]) > 2:
+        return {"message": {"role": "assistant", "content": "Report: part created, not built."}}
+    calls = [
+        {"function": {"name": "pdf_info", "arguments": {"source_id": source_id}}},
+        {"function": {"name": "part_create", "arguments": {
+            "run_id": f"{prefix}-plate", "description": description(source_id, digest),
+            "sources": [{"source_id": source_id, "sha256": digest, "role": "construction"}]}}},
+    ]
+    return {"message": {"role": "assistant", "content": "", "tool_calls": calls}}
+
+
+def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
+    with_model_endpoint(environment)
+    environment.setattr(runner_module, "make_model_call", lambda settings: scripted_model)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        environment.setenv("DRAWING2CAD_MCP_URL", f"http://127.0.0.1:{port}/mcp")
+        server = Server(uvicorn.Config(api.create_app(), log_config=None, access_log=False))
+        thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{port}"
+            with httpx2.Client(base_url=base, timeout=30, trust_env=False) as client:
+                deadline = time.monotonic() + 10
+                while not server.started and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                source = upload(client)
+                run_id = client.post(f"/api/sources/{source['source_id']}/runs").json()["run_id"]
+                deadline = time.monotonic() + 60
+                while (run := client.get(f"/api/runs/{run_id}").json())["job"]["status"] in ("queued", "running"):
+                    assert time.monotonic() < deadline, run
+                    time.sleep(0.2)
+                files = [f["path"] for f in client.get(f"/api/runs/{run_id}/files").json()["files"]]
+        finally:
+            server.should_exit = True
+            thread.join(10)
+    # The part exists in the domain store, but without a build there is no model to deliver.
+    assert run["error"]["code"] == "AGENT_NO_MODEL", run
+    # The run failed while modeling; the report is the run note, not the error message.
+    assert run["failed_phase"] == "modeling" and "Report" not in run["error"]["message"]
+    assert run["part"]["revision"] == 1 and [p["name"] for p in run["part"]["parameters"]] == ["length", "thickness"]
+    assert run["agent_report"] == "Report: part created, not built."
+    assert run["review"]["release_state"] == "draft" and run["artifacts"] == []
+    assert "summary.json" in files and "trace/trace.jsonl" in files

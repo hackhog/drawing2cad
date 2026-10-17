@@ -77,9 +77,10 @@ The UI includes its font and libraries. It does not use a CDN.
 
 The API supplies each upload to `PdfService.extract_drawing` and `PdfService.render_page`.
 Both operations use one temporary source file.
-The API compares their source hashes before it returns a result.
-It removes the source file and render artifacts when the request ends.
-The response includes source and render hashes without temporary server paths.
+The API compares their source hashes before it stores the source and its analysis.
+It removes the temporary file and render artifacts when the request ends.
+The stored source stays in the data directory until a user deletes it; agent runs read it there.
+Responses include source and render hashes and opaque IDs, without server paths.
 
 The current analysis uses the first PDF page and the BCT/NX drawing profile.
 Pages must be unrotated, with matching CropBox and MediaBox coordinates.
@@ -93,28 +94,18 @@ The response gives the image scale in pixels per millimeter.
 PDF size, rendering time, and image pixel limits apply through the shared service.
 The PDF upload limit is 20 MiB. The STEP upload limit is 50 MiB.
 
-## API
+## API and agent runs
 
-| Method | Path | Response |
-|---|---|---|
-| `GET` | `/api/health` | Status and MCP package version |
-| `POST` | `/api/extract` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |
-| `POST` | `/api/model` | GLB with media type `model/gltf-binary` |
-
-Both upload endpoints accept multipart form data in the `file` field.
-Errors use status 413 for excess size, 415 for an incorrect format, and 422 for processing failures.
-A PDF hash mismatch also returns status 422.
-The existing drawing response remains compatible with the React viewer.
-
-The STEP viewer uses `cascadio` for display conversion only.
-It does not create STEP data or verify AP242, editable construction, or semantic PMI.
-The demo supplies PDF analysis and STEP display; it does not execute CAD construction.
-Use the headless build123d worker through `drawing2cad-mcp` for model production and separate CAD validation.
-The complete service must also deliver a technical drawing. Drawing and model creation can occur in either order.
+See [backend/README.md](backend/README.md) for the endpoints and configuration.
+The browser uploads PDFs to `/api/sources`. The backend transfers each source to the shared domain service.
+"Lauf starten" queues an agent run ([ADR 0018](../docs/adr/0018-agent-runner-in-the-web-backend.md)):
+the agent builds the model only through the MCP endpoint of the same service, and step 4 shows the released model.
+Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values; without `.env`, runs show as unavailable.
 
 ## Structure and validation
 
-- `backend/src/drawing_demo/api.py`: upload limits, shared PDF service calls, and STEP display conversion.
+- `backend/src/drawing_demo/api.py`: web routes on the shared domain service, and STEP display conversion.
+- `backend/src/drawing_demo/service.py`: the one domain service of the backend and its mounted MCP endpoint.
 - `backend/src/drawing_demo/review.py`: review flags derived from drawing data.
 - `backend/Dockerfile`: Python runtime with the MCP package and Poppler.
 - `frontend/`: React and TypeScript UI, nginx configuration, and frontend Dockerfile.
@@ -122,7 +113,7 @@ The complete service must also deliver a technical drawing. Drawing and model cr
 
 Run `uv run pytest` in `backend/` for API and review tests.
 Sample-based tests are skipped when their inputs are absent.
-Synthetic tests verify the shared service boundary, hash agreement, and temporary-file cleanup.
+Synthetic tests verify the shared service boundary, path-free records, and one agent run through the mounted MCP endpoint.
 Run `npm test` and `npm run build` in `frontend/` for the unit tests, the type check, and the build.
 Run `docker compose build` at the repository root for both container builds.
 These commands describe the test procedure. They do not assert a completed test run.

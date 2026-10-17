@@ -1,6 +1,6 @@
 // The one interface between the UI and a service. Components and routes use only this interface.
-// `legacy` uses the current demo endpoints; `fixture` is a simulated service for UI work before #24 is available.
-import type { Capabilities, Run, RunNote, Source } from "./contract";
+// `http` uses the web backend (app/backend); `fixture` is a simulated service for UI work without a backend.
+import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
 import type { ExtractResult } from "./drawing";
 
 export interface ParameterChange { name: string; value: number }
@@ -11,7 +11,6 @@ export interface WebApi {
   getSource(sourceId: string): Promise<Source>;
   /** Upload PDF bytes. The service returns the source identity; the browser assumes no local path. */
   uploadSource(file: File, onProgress: (fraction: number) => void): Promise<Source>;
-  deleteSource(sourceId: string): Promise<void>;
   /** Drawing analysis of a source: strokes, views, texts, and review flags. */
   getAnalysis(sourceId: string): Promise<ExtractResult>;
   listRuns(sourceId: string): Promise<Run[]>;
@@ -21,20 +20,22 @@ export interface WebApi {
   changeParameters(runId: string, expectedRevision: number, changes: ParameterChange[]): Promise<Run>;
   listNotes(runId: string): Promise<RunNote[]>;
   addNote(runId: string, expectedRevision: number, text: string): Promise<RunNote>;
+  /** Diagnostic files of a run, for inspection in a browser tab. */
+  listRunFiles(runId: string): Promise<RunFiles>;
   /** Bounded artifact content by opaque ID. */
   readArtifact(artifactId: string): Promise<Blob>;
   /** Display-only STEP to GLB conversion for a STEP file that the user supplies. */
   stepPreview(file: File): Promise<Blob>;
 }
 
-export type ApiMode = "legacy" | "fixture";
+export type ApiMode = "http" | "fixture";
 
-// `vite --mode fixture` (npm run dev:fixture) selects the simulated service; every other mode uses the current backend.
-export const API_MODE: ApiMode = import.meta.env.MODE === "fixture" ? "fixture" : "legacy";
+// `vite --mode fixture` (npm run dev:fixture) selects the simulated service; every other mode uses the web backend.
+export const API_MODE: ApiMode = import.meta.env.MODE === "fixture" ? "fixture" : "http";
 
 export async function createApi(mode: ApiMode = API_MODE): Promise<WebApi> {
-  // Load only the selected adapter, so the fixture data is not in the legacy bundle.
+  // Load only the selected adapter, so the fixture data is not in the production bundle.
   return mode === "fixture"
     ? new (await import("./fixtureApi")).FixtureApi()
-    : new (await import("./legacyApi")).LegacyApi();
+    : new (await import("./httpApi")).HttpApi();
 }

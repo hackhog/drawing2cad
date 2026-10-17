@@ -46,7 +46,7 @@ export interface Part {
   capabilities: { parameter_edit: boolean };
 }
 
-export type ArtifactRole = "drawing_pdf" | "drawing_dxf" | "step" | "model_preview" | "manifest";
+export type ArtifactRole = "drawing_pdf" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report";
 
 /** An output file. Content is read by `artifact_id` only. */
 export interface Artifact {
@@ -58,6 +58,18 @@ export interface Artifact {
   byte_count: number;
   source_sha256: string;
   model_revision: number;
+}
+
+/** A diagnostic file of a run: trace, run record, or MCP part state. The service supplies root-relative URLs. */
+export interface RunFile {
+  path: string;
+  byte_count: number;
+  url: string;
+}
+
+export interface RunFiles {
+  files: RunFile[];
+  archive_url: string | null;
 }
 
 export interface Assumption {
@@ -110,12 +122,16 @@ export interface Run {
   run_id: string;
   source_id: string;
   phase: RunPhase;
+  /** The phase in which a failed run stopped. */
+  failed_phase?: RunPhase | null;
   job: Job;
   part: Part | null;
   artifacts: Artifact[];
   review: Review | null;
   error: ServiceError | null;
   simulated: boolean;
+  /** Final text of the agent conversation, stored as the note of its part run (ADR 0018). */
+  agent_report?: string;
 }
 
 export interface ServiceError {

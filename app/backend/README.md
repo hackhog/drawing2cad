@@ -1,10 +1,11 @@
 # drawing-demo backend
 
-This service supplies the demo HTTP API ([ADR 0012](../../docs/adr/0012-demo-app-as-frontend-and-backend-container.md)).
-It uses `drawing2cad_mcp.pdf.PdfService` for drawing analysis and page rendering.
-It derives review flags and converts uploaded STEP files to GLB for display.
-The frontend container serves the UI and forwards `/api` requests to this service.
-The backend does not serve static UI files or an MCP protocol endpoint.
+This service supplies the web API ([ADR 0012](../../docs/adr/0012-demo-app-as-frontend-and-backend-container.md), [ADR 0018](../../docs/adr/0018-agent-runner-in-the-web-backend.md)).
+It creates one shared domain service (`drawing2cad_mcp.server.Application`, domain profile) for the process.
+Web routes call this service. The backend also mounts its MCP endpoint at `/mcp` for agent runs.
+It derives review flags and converts STEP files to GLB for display.
+The frontend container serves the UI and forwards only `/api` requests to this service.
+The `/mcp` endpoint accepts loopback hosts only. The backend does not serve static UI files.
 
 ## Build, test, and run
 
@@ -33,28 +34,63 @@ uv sync --reinstall-package drawing2cad-mcp
 | Method | Path | Response |
 |---|---|---|
 | `GET` | `/api/health` | Status and `drawing2cad_mcp_version` |
-| `POST` | `/api/extract` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |
-| `POST` | `/api/model` | GLB with media type `model/gltf-binary`, generated through `cascadio` |
+| `GET` | `/api/capabilities` | Available functions; `runs` is true only with a configured model endpoint |
+| `POST` | `/api/sources` | Upload a PDF (multipart field `file`) to the domain service; returns the source record |
+| `GET` | `/api/sources`, `/api/sources/{id}` | Source records: opaque ID, filename, size, SHA-256 |
+| `GET` | `/api/sources/{id}/analysis` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |
+| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run (503 without model endpoint) |
+| `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
+| `GET` | `/api/runs/{id}/files`, `/api/runs/{id}/archive` | Run record and agent trace, as single files or a ZIP archive |
+| `GET` | `/api/artifacts/{id}/content` | Artifact content by opaque ID, verified against its SHA-256 |
+| `POST` | `/api/model` | GLB for a STEP file that the user supplies (display only) |
 
-Both upload endpoints accept multipart form data in the `file` field.
 The PDF upload limit is 20 MiB. The STEP upload limit is 50 MiB.
-Errors use status 413 for excess size, 415 for an incorrect format, and 422 for processing failures.
-A disagreement between the analysis and render source hashes also returns status 422.
+Errors use status 413 for excess size, 415 for an incorrect format, 422 for processing failures, and 404 for unknown or malformed IDs.
+Structured errors have `code`, `message`, `field`, and `recovery` in `detail`. A domain error keeps its code.
+A disagreement between the analysis and render source hashes returns status 422.
 
-The API retains no uploaded files after the request.
-It uses one temporary source file for analysis and rendering, compares the source hashes, and removes all request artifacts.
-Returned provenance contains hashes without temporary server paths.
+The domain store is in the data directory (`DRAWING2CAD_DATA_DIR`, default `.data`). It has no deletion of sources.
+The backend keeps the analysis of up to 32 sources in memory, so a page is not rendered again for each request.
+Returned records contain hashes and opaque IDs, never server paths.
 
 The analysis uses page 1 of the BCT/NX profile.
 It supplies candidate text and sheet geometry, not verified part dimensions or general OCR.
 See [ADR 0013](../../docs/adr/0013-vector-analysis-in-mcp.md) for the analysis limits.
 The STEP conversion is for display only. It does not verify AP242, editable construction, or semantic PMI.
 
+## Agent runs
+
+See [ADR 0018](../../docs/adr/0018-agent-runner-in-the-web-backend.md).
+A run executes one bounded agent conversation (`drive()` from `drawing2cad_mcp.local_model_client`) in a background thread.
+The agent connects to the mounted `/mcp` endpoint and can call only its permitted tools, with the uploaded source ID as its only input.
+The runner stores the final agent report as the note of the part run.
+Part state, review, artifacts, and report come from the domain service for each request.
+A built model without release is a finished run with release state `blocked`. Only a released STEP is an artifact.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `DRAWING2CAD_AGENT_BASE_URL` | for runs | OpenAI-compatible base URL, for example `https://<resource>.cognitiveservices.azure.com/openai/v1` |
+| `DRAWING2CAD_AGENT_MODEL` | for runs | Model or deployment name; it must support function tools on Chat Completions |
+| `DRAWING2CAD_AGENT_API_KEY` | for runs | API key; never in Git |
+| `DRAWING2CAD_AGENT_API_KEY_HEADER` | no | `Authorization` (Bearer, default) or `api-key` (Azure AI Foundry) |
+| `DRAWING2CAD_AGENT_REASONING_EFFORT` | no | Sent as `reasoning_effort` |
+| `DRAWING2CAD_DATA_DIR` | no | Data directory; `/data` in the container |
+| `DRAWING2CAD_SKILL_PATH` | no | Skill file for the agent; the image sets it |
+| `DRAWING2CAD_MCP_URL` | no | MCP endpoint for agent runs; default `http://127.0.0.1:$PORT/mcp` |
+| `DRAWING2CAD_HTTP_TOKEN` | no | Bearer token for `/mcp`; the runner sends it |
+| `DRAWING2CAD_CAD_ENABLED` | no | `1` (default) enables CAD operations of the domain service |
+
+CAD execution requires the Linux sandbox of the MCP worker. Use Docker Compose for agent runs on macOS or Windows.
+Tests use a scripted model and do not call a model endpoint.
+
 ## Structure
 
-- `src/drawing_demo/api.py`: upload processing, shared PDF service calls, and STEP display conversion.
+- `src/drawing_demo/api.py`: HTTP routes, analysis through the domain service, and STEP display conversion.
+- `src/drawing_demo/service.py`: the domain service of the process, its MCP endpoint, uploads, and verified artifact reads.
+- `src/drawing_demo/jobs.py`: web run records (job state, agent trace, domain part run ID).
+- `src/drawing_demo/agent/`: model adapter (`model.py`), runner (`runner.py`), and mapping of domain results to the contract (`mapping.py`).
 - `src/drawing_demo/review.py`: review flags from service results.
-- `Dockerfile`: Python runtime with the MCP package and Poppler.
+- `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill.
 
 The Docker build context is the repository root because the MCP package is a path dependency.
 The image excludes input drawings and local configuration.

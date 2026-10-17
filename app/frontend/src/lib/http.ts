@@ -7,6 +7,7 @@ const CODE_BY_STATUS: Record<number, string> = {
   413: "UPLOAD_TOO_LARGE",
   415: "UNSUPPORTED_MEDIA_TYPE",
   422: "PROCESSING_FAILED",
+  503: "CAPABILITY_UNAVAILABLE",
 };
 
 export function failure(status: number, body: string, statusText: string): ApiFailure {
@@ -53,4 +54,23 @@ export function uploadFile<T>(
 export async function sha256Hex(data: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Request JSON (or nothing for 204) from a relative /api path. Errors become ApiFailure with a stable code. */
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try { res = await fetch(path, init); } catch {
+    throw new ApiFailure({ code: "NETWORK_ERROR", message: "Server nicht erreichbar." });
+  }
+  if (!res.ok) throw failure(res.status, await res.text(), res.statusText);
+  return (res.status === 204 ? undefined : await res.json()) as T;
+}
+
+export async function requestBlob(path: string): Promise<Blob> {
+  let res: Response;
+  try { res = await fetch(path); } catch {
+    throw new ApiFailure({ code: "NETWORK_ERROR", message: "Server nicht erreichbar." });
+  }
+  if (!res.ok) throw failure(res.status, await res.text(), res.statusText);
+  return res.blob();
 }

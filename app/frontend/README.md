@@ -36,7 +36,7 @@ All components use the `WebApi` interface in `src/lib/webApi.ts`. The Vite mode 
 
 | Vite mode | Adapter | Behavior |
 |---|---|---|
-| `development`, `production` | `legacyApi.ts` | Current backend (`/api/extract`, `/api/model`). Sources stay in browser memory until reload. Runs, notes, and downloads show as unavailable. |
+| `development`, `production` | `httpApi.ts` | Web backend: stored sources, analysis, agent runs, artifacts, and STEP display. Parameter edits and notes show as unavailable. |
 | `fixture` (`npm run dev:fixture`) | `fixtureApi.ts` | Simulated service with synthetic data (`fixtures.ts`). A banner and a "Simuliert" badge mark all results. |
 
 The fixture adapter imitates job phases, revisions, stale artifacts, revision conflicts, and unknown IDs.
@@ -44,7 +44,7 @@ An uploaded filename that contains `fail` simulates a failed STEP re-import.
 The fixture does not analyze the uploaded PDF, and its results are not acceptance evidence.
 
 `src/lib/contract.ts` holds provisional types for the shared contract of #24.
-When #24 publishes its schemas, update these types and add an adapter for the real HTTP API.
+When #24 publishes its schemas, update these types and the HTTP adapter.
 
 ## User interface
 
