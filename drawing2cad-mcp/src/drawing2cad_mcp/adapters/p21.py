@@ -252,4 +252,3 @@ def sth_p21_record(ident,typ,args):
         if not isinstance(args,(list,tuple)):raise ValueError('Entity args must be a sequence')
         rhs=typ.upper()+sth_p21_dump(args)
     return '#'+str(ident)+'='+rhs+';'
-

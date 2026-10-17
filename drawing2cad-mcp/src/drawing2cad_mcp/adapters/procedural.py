@@ -139,4 +139,3 @@ def decode_procedural(text, records=None):
         todo.extend(op[k] for k in ('base','tool') if k in op)
     if needed!=set(names):raise ValueError('Disconnected construction operations')
     return {'text':text,'records':records,'operations':operations,'root':operations[-1]['id'],'sha256':hashlib.sha256(text.encode()).hexdigest(),'units':'mm','main_representation':int(links[0][3])}
-
