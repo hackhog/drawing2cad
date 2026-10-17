@@ -184,7 +184,7 @@ class Application:
                     "ocr_supported": False, "coordinate_system": "normalized_displayed_cropbox_top_left",
                     "page_numbering": "one_based"},
             "drawing_analysis": {"available": True, "engine": "drawing2cad_mcp.vector",
-                                 "schema_version": SCHEMA_VERSION, "profile": "bct_nx_a3",
+                                 "schema_version": SCHEMA_VERSION, "profiles": ["bct_a3", "cax_a3", "a4_portrait"], "profile_selection": "detected_per_page",
                                  "page": "selected_one_based", "execution": "isolated_process",
                                  "timeout_seconds": self.settings.pdf.timeout_seconds},
         }
