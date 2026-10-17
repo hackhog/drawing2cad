@@ -6,13 +6,12 @@ from fastapi.testclient import TestClient
 
 from drawing_demo.api import app
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 # Team-Repo: resources/Drawing2CAD, lokale Arbeitskopie: data/samples
 SAMPLE_DIR = next((p for p in (ROOT / "resources" / "Drawing2CAD", ROOT / "data" / "samples") if p.is_dir()), ROOT / "data" / "samples")
 SAMPLES = sorted(SAMPLE_DIR.glob("*/*_dwg.pdf"))
 EXPECTED = ROOT / "extractor" / "out"
 STEPS = sorted(SAMPLE_DIR.glob("*/*.stp"))
-UI_BUILT = (Path(__file__).resolve().parents[1] / "src" / "drawing_demo" / "static" / "index.html").exists()
 
 client = TestClient(app)
 
@@ -21,11 +20,9 @@ def test_health():
     assert client.get("/api/health").json()["status"] == "ok"
 
 
-@pytest.mark.skipif(not UI_BUILT, reason="Oberfläche nicht gebaut (cd web && npm ci && npm run build)")
-def test_ui_is_served():
-    res = client.get("/")
-    assert res.status_code == 200
-    assert "Drawing2CAD" in res.text
+def test_api_does_not_serve_ui():
+    # Die Oberfläche liefert der Frontend-Container aus (ADR 0012)
+    assert client.get("/").status_code == 404
 
 
 def test_rejects_non_pdf():

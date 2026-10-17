@@ -31,7 +31,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-drawing-extractor = { path = "../extractor", editable = false }
+drawing-extractor = { path = "../../extractor", editable = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

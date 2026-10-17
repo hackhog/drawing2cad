@@ -1,4 +1,4 @@
-"""HTTP-API und Auslieferung der Oberfläche.
+"""HTTP-API. Die Oberfläche liefert der Frontend-Container aus (ADR 0012).
 
 Hochgeladene PDFs werden nur in einem temporären Ordner verarbeitet und danach gelöscht
 (hochgeladen werden Kundenzeichnungen). Es gibt keinen Zustand zwischen Anfragen.
@@ -16,7 +16,6 @@ import pymupdf
 from drawing_extractor import extract
 from drawing_extractor.export import SCHEMA_VERSION, to_dict
 from fastapi import FastAPI, HTTPException, Response, UploadFile
-from fastapi.staticfiles import StaticFiles
 
 from .review import review_flags
 
@@ -26,7 +25,6 @@ MAX_STEP_BYTES = 50 * 1024 * 1024
 STEP_TOL_LINEAR = 0.05
 STEP_TOL_ANGULAR = 0.3
 PAGE_PX_PER_MM = 4.0
-STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Drawing2CAD Demo", version="0.1.0")
 
@@ -90,7 +88,3 @@ def _render_page(pdf: Path) -> bytes:
         pix = doc[0].get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), colorspace=pymupdf.csGRAY)
         return pix.tobytes("png")
 
-
-# Zuletzt einhängen, damit /api/* Vorrang hat. static/ ist die Build-Ausgabe von web/ (ADR 0010); ohne Build
-# (z. B. API-Tests ohne Node) startet die API trotzdem, nur die Oberfläche fehlt.
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True, check_dir=False), name="ui")

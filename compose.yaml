@@ -1,12 +1,23 @@
-# Lokale Demo: docker compose up --build  →  http://localhost:8000
+# Lokale Demo: docker compose up --build  →  http://localhost:8000  (ADR 0012)
 services:
-  app:
+  backend:
     build:
-      context: .
-      dockerfile: app/Dockerfile
-    image: drawing2cad-app:local
-    ports:
-      - "127.0.0.1:8000:8000"   # nur vom eigenen Rechner erreichbar
+      context: .                # Projekt-Root, der Extraktor ist eine Pfad-Abhängigkeit
+      dockerfile: app/backend/Dockerfile
+    image: drawing2cad-backend:local
+    # kein Port nach außen: nur das Frontend spricht mit der API
     read_only: true
     tmpfs:
       - /tmp                    # hochgeladene PDFs liegen nur hier und nur während der Anfrage
+
+  frontend:
+    build: app/frontend
+    image: drawing2cad-frontend:local
+    ports:
+      - "127.0.0.1:8000:8080"   # nur vom eigenen Rechner erreichbar
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp                    # nginx: PID-Datei und Zwischenspeicher für Uploads
