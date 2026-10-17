@@ -38,7 +38,7 @@ from .step import StepError, StepService
 LOG = logging.getLogger(__name__)
 # Host paths in worker messages: Windows drive paths and common POSIX roots.
 # JSON Pointers such as /features/0/diameter do not match.
-_HOST_PATH = re.compile(r"(?:\b[A-Za-z]:[\\/]|(?<![\w.])/(?:tmp|opt|usr|home|data|var|root|srv|mnt|etc|proc|inputs|app|Users)/)[^\s'\"<>|,;)]*")
+_HOST_PATH = re.compile(r"(?:\b[A-Za-z]:[\\/]|(?<![\w.])/(?:tmp|opt|usr|home|data|var|root|srv|mnt|etc|proc|inputs|app|Users|private|Volumes|Library|System|workspace)/)[^\s'\"<>|,;)]*")
 # Read-only run operations. During an active operation they return a consistent snapshot without the run lock.
 SNAPSHOT_READS = frozenset({"part_read", "drawing_read", "drawing_validate", "notes_read"})
 MAX_PUBLIC_MESSAGE = 4000
@@ -138,7 +138,9 @@ class DomainService:
 
     def _redact(self, text):
         """Return a bounded message without storage roots or other host paths."""
-        for root in (self.store.root, self.settings.pdf.output_root):
+        # Resolved roots can differ from configured ones, e.g. /private/var and /var on macOS. Longest first.
+        roots = {path for root in (self.store.root, self.settings.pdf.output_root) for path in (root, root.resolve())}
+        for root in sorted(roots, key=lambda path: len(str(path)), reverse=True):
             text = text.replace(str(root), "[private storage]").replace(root.as_posix(), "[private storage]")
         return _HOST_PATH.sub("[path]", text)[:MAX_PUBLIC_MESSAGE]
 

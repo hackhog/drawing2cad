@@ -381,6 +381,21 @@ def test_worker_error_details_cannot_expose_external_server_paths(domain):
     assert "C:/Users/private" not in json.dumps(public)
 
 
+def test_pdf_diagnostic_log_has_no_macos_or_resolved_storage_paths(domain, monkeypatch, caplog):
+    service, source, *_ = domain
+    private = (str(service.store.root.resolve()), "/private/var/folders/x", "/Volumes/share")
+
+    def fail(**_):
+        raise PdfError("Vector analysis failed: cannot read " + ", ".join(f"{path}/a.pdf" for path in private))
+
+    monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", fail)
+    with pytest.raises(DomainError):
+        service.call(CTX, "drawing_extract", {"source_id": source["source_id"]})
+    assert "Vector analysis failed" in caplog.text
+    for path in private:
+        assert path not in caplog.text
+
+
 def test_export_trace_hashes_match_public_payloads(domain):
     service, *_ = domain
     exported = call(service, "part_export_review")
