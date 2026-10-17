@@ -35,3 +35,9 @@
 - Keep the skill independent of project data. Do not package or link customer parts, resource files, model data, host snapshots, or historical run results.
 - Supply authorized model inputs and validation evidence separately for each run. Keep removed historical evidence outside the skill package.
 - Work instructions specify requirements. Do not state that the MCP enforces a requirement without an implementation and a test.
+
+## Architecture diagram
+
+- The source of the README image is `docs/diagrams/drawing2cad-overview.json` ([ADR 0011](docs/adr/0011-diagrams-in-readme-checked-by-ci.md)).
+- Do not edit the HTML or the SVGs in `docs/diagrams/` by hand. Change the JSON, run `npm run diagrams --prefix tools/diagrams`, and commit all files in `docs/diagrams/`.
+- If the architecture changes (new component, new interface, new client), update the overview in the same PR.

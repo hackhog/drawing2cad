@@ -1,0 +1,33 @@
+# Checks that the diagrams in docs/diagrams agree with their JSON source and that the SVGs
+# in the README come from the committed HTML (ADR 0011).
+# Build locally with "npm run diagrams --prefix tools/diagrams" (archify is a local skill).
+# This workflow only checks. It does not build, commit, or deploy.
+name: Diagrams up to date
+
+on:
+  pull_request:
+    paths:
+      - 'docs/diagrams/**'
+      - 'tools/diagrams/**'
+      - '.github/workflows/diagrams.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/diagrams/**'
+      - 'tools/diagrams/**'
+      - '.github/workflows/diagrams.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagrams-up-to-date:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Google Chrome is preinstalled on ubuntu-latest (channel "chrome")
+      - run: npm ci --prefix tools/diagrams
+      - run: npm run check --prefix tools/diagrams
