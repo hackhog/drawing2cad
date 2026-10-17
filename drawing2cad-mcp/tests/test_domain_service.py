@@ -418,7 +418,7 @@ def test_domain_schema_errors_do_not_echo_private_input(domain):
         service.call(CTX, "part_read", {"run_id": str(service.store.root)})
     assert str(service.store.root) not in error.value.message
     assert service.store.root.as_posix() not in error.value.message
-    # A forward-slash value checks the same rule independent of the platform.
+    # A value with forward slashes gives the same check on each platform.
     with pytest.raises(DomainError) as error:
         service.call(CTX, "part_read", {"run_id": "/srv/private-customer/secret"})
     assert "secret" not in error.value.message

@@ -32,3 +32,14 @@ def test_required_and_additional_properties_do_not_repeat_input_names():
     assert "run_id" in missing
     _, extra = describe(_error(schema, {"run_id": "a", PRIVATE: 1}))
     assert "secret" not in extra
+
+
+def test_root_pointer_is_empty_and_combinators_name_their_rule():
+    target, message = describe(_error({"type": "object"}, PRIVATE))
+    assert target == "" and "argument root" in message and "secret" not in message
+    one = {"type": "object", "properties": {"x": {"oneOf": [{"type": "string"}, {"minLength": 1}]}}}
+    target, message = describe(_error(one, {"x": "secret value"}))
+    assert target == "/x" and "'oneOf'" in message and "exactly one" in message and "secret" not in message
+    any_of = {"type": "object", "properties": {"x": {"anyOf": [{"type": "integer"}, {"type": "boolean"}]}}}
+    _, message = describe(_error(any_of, {"x": PRIVATE}))
+    assert "'anyOf'" in message and "at least one" in message and "secret" not in message
