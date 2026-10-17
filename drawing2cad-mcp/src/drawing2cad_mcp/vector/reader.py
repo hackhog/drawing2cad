@@ -101,9 +101,10 @@ def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[flo
             box = (r.x0 * PT_TO_MM, r.y0 * PT_TO_MM, r.x1 * PT_TO_MM, r.y1 * PT_TO_MM)
             if in_drawing_area(box):
                 contours = _contours(d["items"])
-                if not contours or any(item[0] not in {"l", "re", "qu"} for item in d["items"]):
-                    raise ValueError("The filled path contains unsupported glyph geometry.")
-                glyphs.append(Glyph(box, contours))
+                # Glyph outlines are polygons (ADR 0004). A filled path with curves is a
+                # symbol, such as the origin dot of an ordinate dimension, and not text.
+                if contours and all(item[0] in {"l", "re", "qu"} for item in d["items"]):
+                    glyphs.append(Glyph(box, contours))
             continue
         width = (d.get("width") or 0.0) * PT_TO_MM
         for item in d["items"]:

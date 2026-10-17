@@ -84,12 +84,14 @@ def test_pdf_handle_closes_after_read_or_error(tmp_path, monkeypatch, fail):
     assert documents[0].is_closed
 
 
-def test_unsupported_filled_curve_fails_explicitly(tmp_path):
+def test_filled_curve_is_a_symbol_and_not_a_glyph(tmp_path):
     path = tmp_path / "filled-curve.pdf"
     with pymupdf.open() as document:
         page = document.new_page(width=420 / PT_TO_MM, height=297 / PT_TO_MM)
         page.draw_circle((150, 150), 2, color=None, fill=(0, 0, 0))
+        page.draw_rect((200, 150, 203, 154), color=None, fill=(0, 0, 0))
         document.save(path)
 
-    with pytest.raises(ValueError, match="unsupported glyph geometry"):
-        reader.read_pdf(path)
+    _, glyphs, _, _ = reader.read_pdf(path)
+    assert len(glyphs) == 1
+    assert glyphs[0].bbox[0] == pytest.approx(200 * PT_TO_MM)
