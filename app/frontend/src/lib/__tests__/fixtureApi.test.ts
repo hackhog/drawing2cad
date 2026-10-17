@@ -84,7 +84,7 @@ describe("parameter change", () => {
     expect(changed.part?.revision).toBe(2);
     expect(changed.part?.parameters.find((p) => p.name === "length")).toMatchObject({ value: 140, origin: "user" });
     expect(changed.review?.release_state).toBe("stale");
-    expect(changed.artifacts.every((a) => !isReleased(changed, a))).toBe(true);
+    expect(changed.artifacts.every((a) => !isReleased(delivery(changed), changed, a))).toBe(true);
     advance(1000);
     const regenerated = await api.getRun(run.run_id);
     expect(regenerated.review?.release_state).toBe("released");
@@ -113,6 +113,18 @@ describe("parameter change", () => {
     advance(1000);
     const next = await api.getRun(run.run_id);
     expect(next.review?.assumptions.map((a) => a.parameter)).not.toContain("thickness");
+  });
+});
+
+describe("concurrent reads", () => {
+  it("create the outputs of a finished revision once", async () => {
+    const { api, advance } = setup();
+    const source = await api.uploadSource(pdf(), () => {});
+    const run = await api.createRun(source.source_id);
+    advance(1000);
+    const [a, b] = await Promise.all([api.getRun(run.run_id), api.getRun(run.run_id)]);
+    expect(a.artifacts.map((x) => x.artifact_id)).toEqual(b.artifacts.map((x) => x.artifact_id));
+    for (const artifact of a.artifacts) await expect(api.readArtifact(artifact.artifact_id)).resolves.toBeInstanceOf(Blob);
   });
 });
 

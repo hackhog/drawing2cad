@@ -19,6 +19,7 @@ import { recoveryFor } from "@/lib/errors";
 import { bytes, explainedShare, fmt, partName, pct } from "@/lib/format";
 import { analysisQuery, keys, sourcesQuery } from "@/lib/queries";
 import { analysisStatus, uploadStatus } from "@/lib/status";
+import { clearStepPreview } from "@/lib/stepPreviews";
 import { isPdf, useUploads, type Upload } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
@@ -154,7 +155,11 @@ function SourceRow({ source, analysis, failed }: { source: Source; analysis: Ext
   const queryClient = useQueryClient();
   const remove = useMutation({
     mutationFn: () => api.deleteSource(source.source_id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.sources }),
+    onSuccess: () => {
+      clearStepPreview(source.source_id);
+      queryClient.removeQueries({ queryKey: keys.analysis(source.source_id) });
+      return queryClient.invalidateQueries({ queryKey: keys.sources });
+    },
     onError: (err) => toast.error("Entfernen fehlgeschlagen", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const [tone, label] = analysisStatus(analysis, failed);

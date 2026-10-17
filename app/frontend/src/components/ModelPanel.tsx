@@ -1,19 +1,14 @@
 // Display a STEP file that the user supplies, after server conversion to GLB. Display only, no CAD result.
 import { Component, lazy, Suspense, useState, type ReactNode } from "react";
 import { dropTarget } from "@/lib/drop";
+import type { ModelState } from "@/lib/stepPreviews";
 import { cn } from "@/lib/utils";
+import { VIEWER_FRAME } from "./viewerFrame";
 
 const ModelViewer = lazy(() => import("./ModelViewer"));
 
 const isStep = (f: File) => /\.(stp|step)$/i.test(f.name);
 
-export type ModelState =
-  | { state: "idle" }
-  | { state: "run"; name: string }
-  | { state: "done"; name: string; url: string }
-  | { state: "error"; name: string; error: string };
-
-const FRAME = "relative min-h-[260px] flex-1 overflow-hidden rounded-lg border bg-[#fbfbfc] max-[1000px]:h-[60vh] max-[1000px]:flex-none";
 const CENTER = "absolute inset-0 grid place-items-center content-center gap-2.5 p-6 text-center text-sm font-medium text-muted-foreground";
 
 /** Keep a failed 3D view (for example, no WebGL in the browser) inside its frame. */
@@ -34,7 +29,7 @@ class ViewerBoundary extends Component<{ children: ReactNode }, { error: string 
 /** 3D view of a GLB URL, with a name label. */
 export function ModelFrame({ url, name }: { url: string; name: string }) {
   return (
-    <div className={FRAME}>
+    <div className={VIEWER_FRAME}>
       <ViewerBoundary>
         <Suspense fallback={<p className={CENTER}>3D-Ansicht wird geladen …</p>}>
           <ModelViewer url={url} />
@@ -45,21 +40,25 @@ export function ModelFrame({ url, name }: { url: string; name: string }) {
   );
 }
 
+/** Drop or select a STEP file. A dropped file also replaces a model that is already shown. */
 export function ModelPanel({ model, onStep }: { model: ModelState; onStep: (step: File) => void }) {
   const [over, setOver] = useState(false);
   const take = (files: File[]) => { const step = files.find(isStep); if (step) onStep(step); };
 
-  if (model.state === "done") return <ModelFrame url={model.url} name={model.name} />;
   return (
-    <div className={FRAME} {...dropTarget(take, setOver)}>
-      <label className={cn(CENTER, "cursor-pointer", over && "bg-highlight-bg")}>
-        {model.state === "run" ? <span>{model.name} wird umgewandelt …</span> : <span>STEP-Datei des Modells hierher ziehen oder klicken</span>}
-        {model.state === "error" && <span className="text-flag">{model.name}: {model.error}</span>}
-        <small className="max-w-[420px] text-xs font-normal text-faint">
-          STEP-Datei zur 3D-Vorschau. Der Server wandelt sie in GLB um; die Datei wird nicht dauerhaft gespeichert.
-        </small>
-        <input type="file" accept=".stp,.step" hidden onChange={(e) => { take([...(e.target.files ?? [])]); e.target.value = ""; }} />
-      </label>
+    <div className={cn("flex min-h-0 flex-1 flex-col", over && "[&>div]:ring-4 [&>div]:ring-highlight-bg")} {...dropTarget(take, setOver)}>
+      {model.state === "done" ? <ModelFrame url={model.url} name={model.name} /> : (
+        <div className={VIEWER_FRAME}>
+          <label className={cn(CENTER, "cursor-pointer", over && "bg-highlight-bg")}>
+            {model.state === "run" ? <span>{model.name} wird umgewandelt …</span> : <span>STEP-Datei des Modells hierher ziehen oder klicken</span>}
+            {model.state === "error" && <span className="text-flag">{model.name}: {model.error}</span>}
+            <small className="max-w-[420px] text-xs font-normal text-faint">
+              STEP-Datei zur 3D-Vorschau. Der Server wandelt sie in GLB um; die Datei wird nicht dauerhaft gespeichert.
+            </small>
+            <input type="file" accept=".stp,.step" hidden onChange={(e) => { take([...(e.target.files ?? [])]); e.target.value = ""; }} />
+          </label>
+        </div>
+      )}
     </div>
   );
 }

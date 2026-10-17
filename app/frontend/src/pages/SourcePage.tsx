@@ -6,19 +6,23 @@ import { ChevronRight, Maximize, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { FlagList } from "@/components/FlagList";
-import { ModelPanel, type ModelState } from "@/components/ModelPanel";
+import { ModelPanel } from "@/components/ModelPanel";
 import { PageHeader } from "@/components/PageHeader";
 import { SheetViewer } from "@/components/SheetViewer";
 import { StatusBadge } from "@/components/Status";
 import { UploadButton } from "@/components/UploadButton";
+import { VIEWER_FRAME } from "@/components/viewerFrame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useApi } from "@/lib/apiContext";
 import type { ReviewFlag } from "@/lib/drawing";
+import { dropTarget } from "@/lib/drop";
 import { recoveryFor } from "@/lib/errors";
 import { explainedShare, partName, pct, shortHash, time } from "@/lib/format";
 import { analysisQuery, capabilitiesQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
 import { runStatus } from "@/lib/status";
+import { setStepPreview, useStepPreview } from "@/lib/stepPreviews";
+import { isPdf, useUploads } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
 export type Step = 1 | 2 | 3 | 4;
@@ -27,17 +31,27 @@ const STEPS: [Step, string][] = [[1, "Zeichnung"], [2, "Erkannt"], [3, "Prüfen"
 const route = getRouteApi("/sources/$sourceId");
 
 export function SourcePage() {
-  const api = useApi();
   const { sourceId } = route.useParams();
+  // A new key per source resets the selected flag and the zoom when the user opens another drawing.
+  return <SourceView key={sourceId} sourceId={sourceId} />;
+}
+
+/** `null` = default (step 3 starts at the first located flag), "sheet" = the full sheet. */
+type Pick = ReviewFlag | "sheet" | null;
+
+function SourceView({ sourceId }: { sourceId: string }) {
+  const api = useApi();
   const { step = 1 } = route.useSearch();
   const navigate = useNavigate({ from: "/sources/$sourceId" });
+  const { addFiles } = useUploads();
   const { data: source } = useSuspenseQuery(sourceQuery(api, sourceId));
   const { data: result } = useSuspenseQuery(analysisQuery(api, sourceId));
-  const [picked, setPicked] = useState<ReviewFlag | null>(null);
+  const [picked, setPicked] = useState<Pick>(null);
   const [fitKey, setFitKey] = useState(0);
+  const drop = dropTarget((files) => addFiles(files.filter(isPdf)), () => {});
 
-  // Step 3 starts at the first flag with a location; the other steps show the full sheet.
-  const focus = step === 3 ? picked ?? result.review.find((f) => f.bbox) ?? null : null;
+  const focus = step !== 3 || picked === "sheet" ? null : picked ?? result.review.find((f) => f.bbox) ?? null;
+  const fitSheet = () => { setPicked("sheet"); setFitKey((k) => k + 1); };
   const setStep = (next: Step) => {
     setPicked(null);
     setFitKey((k) => k + 1);
@@ -59,7 +73,7 @@ export function SourcePage() {
         subtitle={`Hochgeladen ${time(source.created_at)} · ${pct(explainedShare(result).share)} erklärt · SHA-256 ${shortHash(source.sha256)}`}
         actions={<>
           {step < 4 && (
-            <Button variant="outline" size="sm" className="rounded-full" onClick={() => { setPicked(null); setFitKey((k) => k + 1); }}>
+            <Button variant="outline" size="sm" className="rounded-full" onClick={fitSheet}>
               <Maximize />Ganzes Blatt
             </Button>
           )}
@@ -80,7 +94,7 @@ export function SourcePage() {
           </nav>
           {step === 4
             ? <StepModel sourceId={sourceId} />
-            : <SheetViewer key={sourceId} result={result} focus={focus} fitKey={fitKey} step={step} />}
+            : <SheetViewer result={result} focus={focus} fitKey={fitKey} step={step} dropProps={drop} />}
           <footer className="mt-3 flex items-center justify-between gap-4">
             <p className="text-[13.5px]">{story}</p>
             {step < 4 && <Button size="sm" className="rounded-full" onClick={() => setStep((step + 1) as Step)}>Weiter</Button>}
@@ -102,25 +116,19 @@ export function SourcePage() {
 /** Step 4: a STEP preview that the user supplies (legacy service), or a pointer to the CAD run. */
 function StepModel({ sourceId }: { sourceId: string }) {
   const api = useApi();
-  const queryClient = useQueryClient();
   const { data: caps } = useQuery(capabilitiesQuery(api));
-  // The preview state stays in the query cache, so each drawing keeps its model while the user navigates.
-  const key = ["stepPreview", sourceId];
-  const { data: model = { state: "idle" } } = useQuery<ModelState>({ queryKey: key, queryFn: () => ({ state: "idle" }), staleTime: Infinity, gcTime: Infinity });
-  const set = (next: ModelState) => queryClient.setQueryData(key, next);
+  // Each drawing keeps its preview while the user navigates; the store frees replaced GLB URLs.
+  const model = useStepPreview(sourceId);
   const convert = useMutation({
     mutationFn: (file: File) => api.stepPreview(file),
-    onMutate: (file) => {
-      if (model.state === "done") URL.revokeObjectURL(model.url);
-      set({ state: "run", name: file.name });
-    },
-    onSuccess: (glb, file) => set({ state: "done", name: file.name, url: URL.createObjectURL(glb) }),
-    onError: (err, file) => set({ state: "error", name: file.name, error: `${err.message} ${recoveryFor(err)}` }),
+    onMutate: (file) => setStepPreview(sourceId, { state: "run", name: file.name }),
+    onSuccess: (glb, file) => setStepPreview(sourceId, { state: "done", name: file.name, url: URL.createObjectURL(glb) }),
+    onError: (err, file) => setStepPreview(sourceId, { state: "error", name: file.name, error: `${err.message} ${recoveryFor(err)}` }),
   });
 
   if (caps?.step_preview_upload) return <ModelPanel model={model} onStep={(f) => convert.mutate(f)} />;
   return (
-    <div className="grid min-h-[260px] flex-1 place-items-center rounded-lg border bg-[#fbfbfc] p-6 text-center text-muted-foreground">
+    <div className={cn(VIEWER_FRAME, "grid place-items-center p-6 text-center text-muted-foreground")}>
       <p className="max-w-sm">Das 3D-Modell entsteht in einem CAD-Lauf. Lauf rechts starten oder öffnen; die Vorschau zeigt dort die geprüfte Revision.</p>
     </div>
   );

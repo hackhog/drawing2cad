@@ -36,8 +36,9 @@ export function ArtifactsPanel({ run }: { run: Run }) {
     mutationFn: async (a: Artifact) => save(await api.readArtifact(a.artifact_id), a.filename),
     onError: (err) => toast.error("Download fehlgeschlagen", { description: `${err.message} ${recoveryFor(err)}` }),
   });
-  const preview = run.artifacts.find((a) => a.role === "model_preview" && isReleased(run, a));
-  const drawing = run.artifacts.find((a) => a.role === "drawing_pdf" && isReleased(run, a));
+  const released = (a: Artifact) => isReleased(state, run, a);
+  const preview = run.artifacts.find((a) => a.role === "model_preview" && released(a));
+  const drawing = run.artifacts.find((a) => a.role === "drawing_pdf" && released(a));
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,7 +56,7 @@ export function ArtifactsPanel({ run }: { run: Run }) {
       <ul className="flex flex-col gap-1.5">
         {!run.artifacts.length && <li className="text-muted-foreground">Noch keine Ergebnisse.</li>}
         {run.artifacts.map((a) => {
-          const released = isReleased(run, a);
+          const ok = released(a);
           const stale = a.model_revision !== revision;
           return (
             <li key={a.artifact_id} className="flex items-center gap-3 rounded-md border px-3 py-2 data-[stale]:opacity-60" data-stale={stale || undefined}>
@@ -66,8 +67,8 @@ export function ArtifactsPanel({ run }: { run: Run }) {
                 </span>
               </div>
               <span className="text-[11px] text-muted-foreground">Rev. {a.model_revision}</span>
-              <StatusBadge tone={released ? "done" : stale ? "flag" : "error"}>{released ? "freigegeben" : stale ? "veraltet" : "gesperrt"}</StatusBadge>
-              <Button variant="outline" size="sm" disabled={!released || !caps?.downloads || download.isPending}
+              <StatusBadge tone={ok ? "done" : stale ? "flag" : "error"}>{ok ? "freigegeben" : stale ? "veraltet" : "gesperrt"}</StatusBadge>
+              <Button variant="outline" size="sm" disabled={!ok || !caps?.downloads || download.isPending}
                 aria-label={`${a.filename} herunterladen`} onClick={() => download.mutate(a)}>
                 <Download />
               </Button>
@@ -97,7 +98,7 @@ const Preview = ({ title, children }: { title: string; children: React.ReactNode
 );
 
 const Empty = ({ text }: { text: string }) => (
-  <div className="grid flex-1 place-items-center rounded-lg border bg-[#fbfbfc] p-6 text-center text-xs text-muted-foreground">{text}</div>
+  <div className="grid flex-1 place-items-center rounded-lg border bg-viewer p-6 text-center text-xs text-muted-foreground">{text}</div>
 );
 
 /** Load artifact content by ID into an object URL for the duration of the view. */

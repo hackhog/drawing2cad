@@ -40,7 +40,8 @@ export function Sidebar() {
           const [tone, label] = analysisStatus(analyses[i]?.data, analyses[i]?.isError ?? false);
           return (
             <li key={source.source_id}>
-              <Link to="/sources/$sourceId" params={{ sourceId: source.source_id }} title={source.filename} className={cn(ITEM, CURRENT)}>
+              <Link to="/sources/$sourceId" params={{ sourceId: source.source_id }} search={(prev) => ({ step: "step" in prev ? prev.step : undefined })}
+                title={source.filename} className={cn(ITEM, CURRENT)}>
                 <StatusDot tone={tone} />
                 <span className="min-w-0 flex-1 truncate font-medium text-card-foreground">{partName(source.filename)}</span>
                 <small className="text-[11px] text-muted-foreground">{label}</small>

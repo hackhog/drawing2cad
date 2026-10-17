@@ -5,15 +5,17 @@ import type { Box, ExtractResult, ReviewFlag, StrokeKind } from "@/lib/drawing";
 import { boxToViewBox, strokePath } from "@/lib/geometry";
 import { KINDS, OFF_BY_DEFAULT } from "@/lib/kinds";
 import { cn } from "@/lib/utils";
+import { VIEWER_FRAME } from "./viewerFrame";
 
 interface Props {
   result: ExtractResult;
   focus: ReviewFlag | null;
   fitKey: number; // jede Änderung = zurück aufs ganze Blatt
   step: 1 | 2 | 3; // 1 = Originalblatt, 2 = Strichklassen, 3 = Prüfen
+  dropProps: object; // PDFs dropped onto the sheet start an upload
 }
 
-export function SheetViewer({ result, focus, fitKey, step }: Props) {
+export function SheetViewer({ result, focus, fitKey, step, dropProps }: Props) {
   const d = result.drawing;
   const [w, h] = d.sheet_size_mm;
   const sheetBox: Box = useMemo(() => boxToViewBox([0, 0, w, h], 4), [w, h]);
@@ -105,7 +107,7 @@ export function SheetViewer({ result, focus, fitKey, step }: Props) {
           ))}
         </div>
       )}
-      <div data-step={step} className={cn("sheet relative min-h-[260px] flex-1 overflow-hidden rounded-lg border bg-[#fbfbfc]", "max-[1000px]:h-[60vh] max-[1000px]:flex-none")}>
+      <div data-step={step} className={cn("sheet", VIEWER_FRAME)} {...dropProps}>
         <svg
           ref={svgRef} xmlns="http://www.w3.org/2000/svg" viewBox={viewBox.join(" ")} className={panning ? "panning" : undefined}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}

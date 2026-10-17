@@ -9,7 +9,7 @@ const CODE_BY_STATUS: Record<number, string> = {
   422: "PROCESSING_FAILED",
 };
 
-function failure(status: number, body: string, statusText: string): ApiFailure {
+export function failure(status: number, body: string, statusText: string): ApiFailure {
   let detail: unknown;
   try { detail = (JSON.parse(body) as { detail?: unknown }).detail; } catch { detail = undefined; }
   // A structured service error has a code; FastAPI errors have a text detail.
@@ -23,38 +23,31 @@ function failure(status: number, body: string, statusText: string): ApiFailure {
 /** POST one file as multipart field `file`. `onProgress` receives the sent fraction from 0 to 1. */
 export function uploadFile<T>(
   path: string, file: File, onProgress: (fraction: number) => void, responseType: "json" | "blob" = "json",
-  signal?: AbortSignal,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", path);
     xhr.responseType = responseType === "blob" ? "blob" : "text";
     xhr.upload.onprogress = (evt) => { if (evt.lengthComputable) onProgress(evt.loaded / evt.total); };
-    xhr.onload = async () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress(1);
-        resolve(responseType === "blob" ? xhr.response : JSON.parse(xhr.responseText));
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const body = responseType === "blob" ? (xhr.response as Blob).text() : Promise.resolve(xhr.responseText);
+        body.then((text) => reject(failure(xhr.status, text, xhr.statusText)), () => reject(failure(xhr.status, "", xhr.statusText)));
         return;
       }
-      const body = responseType === "blob" ? await (xhr.response as Blob).text() : xhr.responseText;
-      reject(failure(xhr.status, body, xhr.statusText));
+      onProgress(1);
+      if (responseType === "blob") { resolve(xhr.response as T); return; }
+      // A proxy or the SPA fallback can answer 2xx with HTML. Report it instead of a pending upload.
+      try { resolve(JSON.parse(xhr.responseText) as T); } catch {
+        reject(new ApiFailure({ code: "PROCESSING_FAILED", message: "Antwort des Servers nicht lesbar." }, xhr.status));
+      }
     };
     xhr.onerror = () => reject(new ApiFailure({ code: "NETWORK_ERROR", message: "Server nicht erreichbar." }));
     xhr.onabort = () => reject(new ApiFailure({ code: "UPLOAD_ABORTED", message: "Upload abgebrochen." }));
-    signal?.addEventListener("abort", () => xhr.abort(), { once: true });
     const body = new FormData();
     body.append("file", file);
     xhr.send(body);
   });
-}
-
-export async function getJson<T>(path: string): Promise<T> {
-  let res: Response;
-  try { res = await fetch(path); } catch {
-    throw new ApiFailure({ code: "NETWORK_ERROR", message: "Server nicht erreichbar." });
-  }
-  if (!res.ok) throw failure(res.status, await res.text(), res.statusText);
-  return res.json() as Promise<T>;
 }
 
 export async function sha256Hex(data: ArrayBuffer): Promise<string> {

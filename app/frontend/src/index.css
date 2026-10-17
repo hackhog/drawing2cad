@@ -47,6 +47,7 @@
   --run-bg: #e8efff;
   --flag: #e5484d;
   --flag-bg: #fdecec;
+  --viewer: #fbfbfc;
 }
 
 @theme inline {
@@ -88,6 +89,7 @@
   --color-run-bg: var(--run-bg);
   --color-flag: var(--flag);
   --color-flag-bg: var(--flag-bg);
+  --color-viewer: var(--viewer);
 }
 
 @layer base {

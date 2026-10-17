@@ -1,28 +1,67 @@
-// Error mapping of the legacy HTTP endpoints to stable codes.
+// Error mapping of the upload helper that the legacy adapter uses.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiFailure } from "../errors";
-import { getJson } from "../http";
+import { failure, uploadFile } from "../http";
+
+/** Minimal XMLHttpRequest stub: `send` answers with the configured response on the next tick. */
+function stubXhr(answer: { status: number; text?: string; network?: boolean }) {
+  class FakeXhr {
+    status = 0; statusText = ""; responseText = ""; responseType = "";
+    upload: { onprogress: ((e: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
+    onload: (() => void) | null = null; onerror: (() => void) | null = null; onabort: (() => void) | null = null;
+    open() {}
+    send() {
+      setTimeout(() => {
+        if (answer.network) { this.onerror?.(); return; }
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 5, total: 10 });
+        this.status = answer.status;
+        this.responseText = answer.text ?? "";
+        this.onload?.();
+      });
+    }
+  }
+  vi.stubGlobal("XMLHttpRequest", FakeXhr);
+}
 
 afterEach(() => vi.unstubAllGlobals());
 
-const respond = (status: number, body: unknown) =>
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status })));
+const pdf = new File(["%PDF-1.7"], "a.pdf");
 
-describe("getJson", () => {
+describe("failure", () => {
   it.each([[404, "NOT_FOUND"], [409, "REVISION_CONFLICT"], [413, "UPLOAD_TOO_LARGE"], [415, "UNSUPPORTED_MEDIA_TYPE"], [422, "PROCESSING_FAILED"]])(
-    "maps status %i to %s", async (status, code) => {
-      respond(status, { detail: "Text" });
-      await expect(getJson("api/x")).rejects.toMatchObject({ code, message: "Text", status });
+    "maps status %i to %s", (status, code) => {
+      expect(failure(status, JSON.stringify({ detail: "Text" }), "")).toMatchObject({ code, message: "Text", status });
     });
 
-  it("keeps a structured service error", async () => {
-    respond(409, { detail: { code: "REVISION_CONFLICT", message: "neuer Stand", field: "expected_revision", recovery: "neu laden" } });
-    const err = await getJson("api/x").catch((e: ApiFailure) => e);
-    expect(err).toMatchObject({ code: "REVISION_CONFLICT", field: "expected_revision", recovery: "neu laden" });
+  it("keeps a structured service error", () => {
+    const body = JSON.stringify({ detail: { code: "REVISION_CONFLICT", message: "neuer Stand", field: "expected_revision", recovery: "neu laden" } });
+    expect(failure(409, body, "")).toMatchObject({ code: "REVISION_CONFLICT", field: "expected_revision", recovery: "neu laden" });
+  });
+
+  it("uses the status text for a body that is not JSON", () => {
+    expect(failure(502, "<html>", "Bad Gateway")).toMatchObject({ code: "PROCESSING_FAILED", message: "Bad Gateway" });
+  });
+});
+
+describe("uploadFile", () => {
+  it("reports progress and returns the JSON body", async () => {
+    stubXhr({ status: 200, text: '{"ok":true}' });
+    const progress: number[] = [];
+    await expect(uploadFile("/api/x", pdf, (f) => progress.push(f))).resolves.toEqual({ ok: true });
+    expect(progress).toEqual([0.5, 1]);
+  });
+
+  it("rejects an error status with its code", async () => {
+    stubXhr({ status: 415, text: '{"detail":"Keine PDF-Datei"}' });
+    await expect(uploadFile("/api/x", pdf, () => {})).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE", message: "Keine PDF-Datei" });
+  });
+
+  it("rejects a 2xx answer that is not JSON instead of staying pending", async () => {
+    stubXhr({ status: 200, text: "<!doctype html>" });
+    await expect(uploadFile("/api/x", pdf, () => {})).rejects.toMatchObject({ code: "PROCESSING_FAILED" });
   });
 
   it("reports an unreachable server as NETWORK_ERROR", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("failed"); }));
-    await expect(getJson("api/x")).rejects.toMatchObject({ code: "NETWORK_ERROR" });
+    stubXhr({ status: 0, network: true });
+    await expect(uploadFile("/api/x", pdf, () => {})).rejects.toMatchObject({ code: "NETWORK_ERROR" });
   });
 });

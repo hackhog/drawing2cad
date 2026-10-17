@@ -33,6 +33,8 @@ interface RunRecord {
   firstPhase: number;
   artifacts: Artifact[];
   notes: RunNote[];
+  /** Output creation in progress, shared by concurrent reads of the same finished revision. */
+  building: Promise<void> | null;
 }
 
 export interface FixtureOptions { now?: () => number; phaseMs?: number; latencyMs?: number }
@@ -117,7 +119,7 @@ export class FixtureApi implements WebApi {
       part: {
         revision: 1, parameters: fixtureParameters(), operations: FIXTURE_OPERATIONS, capabilities: { parameter_edit: true },
       },
-      startedAt: this.now(), firstPhase: 0, artifacts: [], notes: [],
+      startedAt: this.now(), firstPhase: 0, artifacts: [], notes: [], building: null,
     };
     this.runs.set(record.runId, record);
     return this.view(record);
@@ -199,7 +201,12 @@ export class FixtureApi implements WebApi {
     const phase: RunPhase = finished ? (record.failing ? "failed" : "done") : PHASES[index];
 
     if (finished && !record.failing && !record.artifacts.some((a) => a.model_revision === revision)) {
-      record.artifacts = await this.outputs(record);
+      record.building ??= this.outputs(record).then((artifacts) => {
+        for (const old of record.artifacts) this.contents.delete(old.artifact_id);
+        record.artifacts = artifacts;
+        record.building = null;
+      });
+      await record.building;
     }
     const current = record.artifacts.length > 0 && record.artifacts.every((a) => a.model_revision === revision);
     const release_state = phase === "failed" ? "blocked" : phase === "done" && current ? "released"

@@ -9,6 +9,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Toaster } from "@/components/ui/sonner";
 import { useApi, type RouterContext } from "@/lib/apiContext";
+import { useEffect } from "react";
 import { errorCode } from "@/lib/errors";
 import { analysisQuery, capabilitiesQuery, runQuery, sourceQuery } from "@/lib/queries";
 import { UploadProvider } from "@/lib/uploads";
@@ -16,9 +17,20 @@ import { OverviewPage } from "@/pages/OverviewPage";
 import { RUN_TABS, RunPage, type RunTab } from "@/pages/RunPage";
 import { SourcePage, type Step } from "@/pages/SourcePage";
 
+/** A file dropped outside a drop zone must not open in the browser: that would leave the app and lose its state. */
+function useDropGuard() {
+  useEffect(() => {
+    const block = (evt: DragEvent) => { if (evt.dataTransfer?.types.includes("Files")) evt.preventDefault(); };
+    window.addEventListener("dragover", block);
+    window.addEventListener("drop", block);
+    return () => { window.removeEventListener("dragover", block); window.removeEventListener("drop", block); };
+  }, []);
+}
+
 function Shell() {
   const api = useApi();
   const { data: caps } = useQuery(capabilitiesQuery(api));
+  useDropGuard();
   return (
     <UploadProvider>
       <div className="grid h-full grid-cols-[232px_minmax(0,1fr)] max-[1000px]:h-auto max-[1000px]:min-h-full max-[1000px]:grid-cols-1">

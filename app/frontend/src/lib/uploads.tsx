@@ -4,9 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useApi } from "./apiContext";
-import { recoveryFor } from "./errors";
+import { ApiFailure, recoveryFor } from "./errors";
 import { partName } from "./format";
-import { analysisQuery, keys } from "./queries";
+import { analysisQuery, capabilitiesQuery, keys } from "./queries";
 
 // The service analyzes in a thread pool; two parallel uploads keep the wait short without overloading it.
 const PARALLEL_UPLOADS = 2;
@@ -65,6 +65,11 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     async function send(upload: Upload, file: File) {
       const t0 = performance.now();
       try {
+        // Reject an oversized file before the transfer; the service checks the limit again.
+        const { max_pdf_bytes: limit } = await queryClient.fetchQuery(capabilitiesQuery(api));
+        if (file.size > limit) {
+          throw new ApiFailure({ code: "UPLOAD_TOO_LARGE", field: "file", message: `PDF größer als ${Math.floor(limit / 1024 / 1024)} MB.` }, 413);
+        }
         const source = await api.uploadSource(file, (progress) => patch(upload.id, { progress, state: progress < 1 ? "send" : "read" }));
         const analysis = await queryClient.fetchQuery(analysisQuery(api, source.source_id));
         await queryClient.invalidateQueries({ queryKey: keys.sources });
