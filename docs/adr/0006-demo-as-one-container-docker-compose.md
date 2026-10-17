@@ -4,7 +4,8 @@ Date: 2026-10-16
 
 ## Status
 
-Accepted (local part done on 2026-10-16, `app/`).
+Accepted (local part done on 2026-10-16, `app/`). The part "one container" is superseded by
+[ADR 0012](0012-demo-app-as-frontend-and-backend-container.md) (frontend and backend container).
 
 ## Context
 

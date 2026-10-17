@@ -1,4 +1,4 @@
-// Typen und Aufrufe der Demo-API (app/src/drawing_demo/api.py). Koordinaten in Blatt-mm, y nach unten.
+// Typen und Aufrufe der Demo-API (app/backend/src/drawing_demo/api.py). Koordinaten in Blatt-mm, y nach unten.
 
 export type Box = [number, number, number, number];
 export type Point = [number, number];

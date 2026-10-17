@@ -1,6 +1,6 @@
 # Checks that the diagrams in docs/diagrams agree with their JSON source and that the SVGs
 # in the README come from the committed HTML (ADR 0011).
-# Build locally with "npm run diagrams --prefix tools/diagrams" (archify is a local skill).
+# Build locally with "npm run build --prefix tools/diagrams" (archify is a local skill).
 # This workflow only checks. It does not build, commit, or deploy.
 name: Diagrams up to date
 

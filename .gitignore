@@ -74,8 +74,8 @@ Desktop.ini
 # Intentionally keep resources/, skills/, example configs and dependency locks.
 # Do not ignore PDF, STEP, PRT, FCStd or image formats globally.
 
-# Build output of app/web (Vite); the Docker image builds it (ADR 0010)
-/app/src/drawing_demo/static/
+# Build output of app/frontend (Vite); the frontend image builds it (ADR 0012)
+/app/frontend/dist/
 
 # archify run evidence and delivery receipts with local absolute paths (tools/diagrams, ADR 0011)
 .archify/

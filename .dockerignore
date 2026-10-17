@@ -1,13 +1,13 @@
-# Nur Extraktor und App gehören ins Image, keine Eingabedaten (data/).
+# Kontext des Backend-Images (Projekt-Root): nur Extraktor und Backend, keine Eingabedaten (data/).
+# Das Frontend-Image baut aus app/frontend/ mit eigener .dockerignore.
 *
 !extractor/
-!app/
+!app/backend/
 **/.venv
 **/node_modules
-app/src/drawing_demo/static
 **/__pycache__
 **/.pytest_cache
 extractor/out
 extractor/tests
 extractor/scripts
-app/tests
+app/backend/tests

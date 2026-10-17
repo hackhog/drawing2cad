@@ -23,7 +23,7 @@ Details: [app/README.md](app/README.md).
 
 Interactive version with source links for each component: [`docs/diagrams/drawing2cad-overview.html`](docs/diagrams/drawing2cad-overview.html)
 (open it locally in a browser). The image is built from `docs/diagrams/drawing2cad-overview.json`, never by hand.
-After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks the result
+After a change, run `npm run build --prefix tools/diagrams`. The CI checks the result
 ([ADR 0011](docs/adr/0011-diagrams-in-readme-checked-by-ci.md)).
 
 ## Project structure
@@ -34,7 +34,7 @@ After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks th
 | [Streamable HTTP guide](drawing2cad-mcp/STREAMABLE_HTTP.md) | Installation, authentication, LiteLLM, network setup, and troubleshooting |
 | [skills/drawing2cad/](skills/drawing2cad/SKILL.md) | Skill, workflow, adapter instructions, and references |
 | [extractor/](extractor/README.md) | Deterministic vector extractor: PDF → classified strokes, views, and read texts (JSON) |
-| [app/](app/README.md) | Demo UI (FastAPI + React): upload PDFs, guided review of the extractor result, 3D model view |
+| [app/](app/README.md) | Demo UI: upload PDFs, guided review of the extractor result, 3D model view. [`frontend/`](app/frontend/README.md) (React, nginx) and [`backend/`](app/backend/README.md) (FastAPI), one container each |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records for extractor and demo UI |
 | [docs/diagrams/](docs/diagrams/drawing2cad-overview.json) | Architecture diagram: JSON source, interactive HTML, SVG for this README |
 | `tools/diagrams/` | Builds and checks the diagrams (archify, Playwright), not part of the app build |

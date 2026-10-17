@@ -6,6 +6,7 @@ Date: 2026-10-17
 
 Proposed. Amends ADR 0008 (tab 4 "3D model" is now active). Replaces the rule "frontend without a build chain" in `app/AGENTS.md`.
 ADR 0006 (one container) stays valid.
+Amended by [ADR 0012](0012-demo-app-as-frontend-and-backend-container.md): the UI is now in `app/frontend/` and has its own container.
 
 ## Context
 

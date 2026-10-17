@@ -91,7 +91,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cascadio", specifier = ">=0.1.1" },
-    { name = "drawing-extractor", directory = "../extractor" },
+    { name = "drawing-extractor", directory = "../../extractor" },
     { name = "fastapi", specifier = ">=0.143.3" },
     { name = "numpy", specifier = ">=2" },
     { name = "pymupdf", specifier = ">=1.28.2" },
@@ -108,7 +108,7 @@ dev = [
 [[package]]
 name = "drawing-extractor"
 version = "0.1.0"
-source = { directory = "../extractor" }
+source = { directory = "../../extractor" }
 dependencies = [
     { name = "pillow" },
     { name = "pymupdf" },
