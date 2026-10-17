@@ -4,6 +4,7 @@ import { StatusBadge } from "@/components/Status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { RunFiles } from "@/components/run/RunFiles";
 import type { Run, RunPhase } from "@/lib/contract";
 import { time } from "@/lib/format";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
@@ -51,6 +52,7 @@ export function JobCard({ run }: { run: Run }) {
             </AlertDescription>
           </Alert>
         )}
+        <RunFiles run={run} />
       </CardContent>
     </Card>
   );

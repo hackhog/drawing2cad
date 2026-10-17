@@ -1,19 +1,19 @@
-// Deliverables of a run. Only artifacts of a released run with the current revision can be downloaded;
-// stale or blocked artifacts stay visible, marked, and not offered as released.
+// Deliverables of a run. Artifacts of a released run with the current revision are released.
+// A finished run without release keeps its current-revision model as a marked diagnostic artifact; stale artifacts stay locked.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
-import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ModelFrame } from "@/components/ModelPanel";
 import { StatusBadge } from "@/components/Status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/apiContext";
+import { useArtifactUrl } from "@/lib/artifacts";
 import type { Artifact, ArtifactRole, Run } from "@/lib/contract";
 import { recoveryFor } from "@/lib/errors";
 import { bytes, shortHash } from "@/lib/format";
 import { capabilitiesQuery } from "@/lib/queries";
-import { delivery, isReleased } from "@/lib/release";
+import { delivery, isActive, isReleased } from "@/lib/release";
 
 const ROLE: Record<ArtifactRole, string> = {
   drawing_pdf: "Technische Zeichnung (PDF)", drawing_dxf: "Technische Zeichnung (DXF)", step: "3D-Modell (STEP)",
@@ -37,7 +37,9 @@ export function ArtifactsPanel({ run }: { run: Run }) {
     onError: (err) => toast.error("Download fehlgeschlagen", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const released = (a: Artifact) => isReleased(state, run, a);
-  const preview = run.artifacts.find((a) => a.role === "model_preview" && released(a));
+  // A diagnostic artifact belongs to the current revision of a finished run that the service did not release.
+  const diagnostic = (a: Artifact) => !released(a) && !isActive(run) && a.model_revision === revision;
+  const preview = run.artifacts.find((a) => a.role === "model_preview" && (released(a) || diagnostic(a)));
   const drawing = run.artifacts.find((a) => a.role === "drawing_pdf" && released(a));
 
   return (
@@ -57,6 +59,7 @@ export function ArtifactsPanel({ run }: { run: Run }) {
         {!run.artifacts.length && <li className="text-muted-foreground">Noch keine Ergebnisse.</li>}
         {run.artifacts.map((a) => {
           const ok = released(a);
+          const diag = diagnostic(a);
           const stale = a.model_revision !== revision;
           return (
             <li key={a.artifact_id} className="flex items-center gap-3 rounded-md border px-3 py-2 data-[stale]:opacity-60" data-stale={stale || undefined}>
@@ -67,8 +70,10 @@ export function ArtifactsPanel({ run }: { run: Run }) {
                 </span>
               </div>
               <span className="text-[11px] text-muted-foreground">Rev. {a.model_revision}</span>
-              <StatusBadge tone={ok ? "done" : stale ? "flag" : "error"}>{ok ? "freigegeben" : stale ? "veraltet" : "gesperrt"}</StatusBadge>
-              <Button variant="outline" size="sm" disabled={!ok || !caps?.downloads || download.isPending}
+              <StatusBadge tone={ok ? "done" : diag ? "flag" : stale ? "flag" : "error"}>
+                {ok ? "freigegeben" : diag ? "Diagnose" : stale ? "veraltet" : "gesperrt"}
+              </StatusBadge>
+              <Button variant="outline" size="sm" disabled={!(ok || diag) || !caps?.downloads || download.isPending}
                 aria-label={`${a.filename} herunterladen`} onClick={() => download.mutate(a)}>
                 <Download />
               </Button>
@@ -82,9 +87,9 @@ export function ArtifactsPanel({ run }: { run: Run }) {
           {drawing && !run.simulated ? <BlobView artifact={drawing} kind="pdf" />
             : <Empty text={run.simulated ? "Keine Zeichnungsvorschau für simulierte Ergebnisse." : "Keine freigegebene Zeichnung."} />}
         </Preview>
-        <Preview title={`Modell${preview ? ` · Rev. ${preview.model_revision}` : ""}`}>
+        <Preview title={`Modell${preview ? ` · Rev. ${preview.model_revision} · ${released(preview) ? "freigegeben" : "Diagnose, nicht freigegeben"}` : ""}`}>
           {preview ? <BlobView artifact={preview} kind="glb" />
-            : <Empty text={caps?.model_preview ? "Keine freigegebene 3D-Vorschau." : "Der verbundene Dienst liefert noch keine 3D-Vorschau."} />}
+            : <Empty text={caps?.model_preview ? "Noch keine 3D-Vorschau." : "Der verbundene Dienst liefert noch keine 3D-Vorschau."} />}
         </Preview>
       </section>
     </div>
@@ -101,20 +106,8 @@ const Empty = ({ text }: { text: string }) => (
   <div className="grid flex-1 place-items-center rounded-lg border bg-viewer p-6 text-center text-xs text-muted-foreground">{text}</div>
 );
 
-/** Load artifact content by ID into an object URL for the duration of the view. */
 function BlobView({ artifact, kind }: { artifact: Artifact; kind: "pdf" | "glb" }) {
-  const api = useApi();
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    let created: string | null = null;
-    api.readArtifact(artifact.artifact_id).then(
-      (blob) => { if (!live) return; created = URL.createObjectURL(blob); setUrl(created); },
-      (err: Error) => live && setError(`${err.message} ${recoveryFor(err)}`),
-    );
-    return () => { live = false; if (created) URL.revokeObjectURL(created); };
-  }, [api, artifact.artifact_id]);
+  const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id);
   if (error) return <Empty text={error} />;
   if (!url) return <Empty text="Wird geladen …" />;
   if (kind === "glb") return <ModelFrame url={url} name={artifact.filename} />;

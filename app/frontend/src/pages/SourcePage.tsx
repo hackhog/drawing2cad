@@ -6,7 +6,7 @@ import { ChevronRight, Maximize, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { FlagList } from "@/components/FlagList";
-import { ModelPanel } from "@/components/ModelPanel";
+import { ModelFrame, ModelPanel } from "@/components/ModelPanel";
 import { PageHeader } from "@/components/PageHeader";
 import { SheetViewer } from "@/components/SheetViewer";
 import { StatusBadge } from "@/components/Status";
@@ -15,12 +15,15 @@ import { VIEWER_FRAME } from "@/components/viewerFrame";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useApi } from "@/lib/apiContext";
+import { useArtifactUrl } from "@/lib/artifacts";
+import type { Artifact, Run } from "@/lib/contract";
 import type { ReviewFlag } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { recoveryFor } from "@/lib/errors";
 import { explainedShare, partName, pct, shortHash, time } from "@/lib/format";
 import { analysisQuery, capabilitiesQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
-import { runStatus } from "@/lib/status";
+import { delivery, isActive } from "@/lib/release";
+import { PHASE_LABEL, runStatus } from "@/lib/status";
 import { setStepPreview, useStepPreview } from "@/lib/stepPreviews";
 import { isPdf, useUploads } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
@@ -113,10 +116,12 @@ function SourceView({ sourceId }: { sourceId: string }) {
   );
 }
 
-/** Step 4: a STEP preview that the user supplies (legacy service), or a pointer to the CAD run. */
+/** Step 4: a STEP file that the user drops, else the model of the latest CAD run, else the drop area. */
 function StepModel({ sourceId }: { sourceId: string }) {
   const api = useApi();
   const { data: caps } = useQuery(capabilitiesQuery(api));
+  const { data: runs = [] } = useQuery(runsQuery(api, sourceId));
+  const latest = runs.at(-1);
   // Each drawing keeps its preview while the user navigates; the store frees replaced GLB URLs.
   const model = useStepPreview(sourceId);
   const convert = useMutation({
@@ -126,10 +131,40 @@ function StepModel({ sourceId }: { sourceId: string }) {
     onError: (err, file) => setStepPreview(sourceId, { state: "error", name: file.name, error: `${err.message} ${recoveryFor(err)}` }),
   });
 
-  if (caps?.step_preview_upload) return <ModelPanel model={model} onStep={(f) => convert.mutate(f)} />;
+  const upload = <ModelPanel model={model} onStep={(f) => convert.mutate(f)} />;
+  if (model.state !== "idle" && caps?.step_preview_upload) return upload;
+  if (latest && isActive(latest)) {
+    return (
+      <div className={cn(VIEWER_FRAME, "grid place-items-center content-center gap-2 p-6 text-center text-muted-foreground")}>
+        <p className="font-medium">Der Agent arbeitet: {PHASE_LABEL[latest.phase]} …</p>
+        <Link to="/runs/$runId" params={{ runId: latest.run_id }} className="text-xs underline">Lauf öffnen</Link>
+      </div>
+    );
+  }
+  const preview = latest?.artifacts.find((a) => a.role === "model_preview" && a.model_revision === latest.part?.revision);
+  if (latest && preview) return <RunModel run={latest} artifact={preview} />;
+  if (caps?.step_preview_upload) return upload;
   return (
     <div className={cn(VIEWER_FRAME, "grid place-items-center p-6 text-center text-muted-foreground")}>
       <p className="max-w-sm">Das 3D-Modell entsteht in einem CAD-Lauf. Lauf rechts starten oder öffnen; die Vorschau zeigt dort die geprüfte Revision.</p>
+    </div>
+  );
+}
+
+/** The model of a finished run, marked as released or diagnostic. */
+function RunModel({ run, artifact }: { run: Run; artifact: Artifact }) {
+  const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id);
+  const released = delivery(run).released;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {error || !url
+        ? <div className={cn(VIEWER_FRAME, "grid place-items-center p-6 text-center text-muted-foreground")}>{error ?? "3D-Modell wird geladen …"}</div>
+        : <ModelFrame url={url} name={`${artifact.filename} · Rev. ${artifact.model_revision}`} />}
+      <div className="flex items-center gap-2 text-xs">
+        <StatusBadge tone={released ? "done" : "flag"}>{released ? "freigegeben" : "Diagnose, nicht freigegeben"}</StatusBadge>
+        <span className="text-muted-foreground">Vom Agenten über den MCP gebaut.</span>
+        <Link to="/runs/$runId" params={{ runId: run.run_id }} search={{ tab: "review" }} className="underline">Prüfpunkte ansehen</Link>
+      </div>
     </div>
   );
 }
@@ -139,7 +174,7 @@ function RunsCard({ sourceId }: { sourceId: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: caps } = useQuery(capabilitiesQuery(api));
-  const { data: runs = [] } = useQuery({ ...runsQuery(api, sourceId), enabled: caps?.runs === true });
+  const { data: runs = [] } = useQuery(runsQuery(api, sourceId));
   const start = useMutation({
     mutationFn: () => api.createRun(sourceId),
     onSuccess: async (run) => {
@@ -158,9 +193,9 @@ function RunsCard({ sourceId }: { sourceId: string }) {
         </Button>
       </CardHeader>
       <CardContent className="px-0">
-        {!caps?.runs ? (
+        {!caps?.runs && !runs.length ? (
           <p className="text-xs text-muted-foreground">
-            Der verbundene Dienst liest nur Zeichnungen. Modell und technische Zeichnung erzeugt er noch nicht.
+            Der verbundene Dienst startet keine CAD-Läufe: Es ist kein Modell-Endpunkt für den Agenten konfiguriert.
           </p>
         ) : !runs.length ? (
           <p className="text-xs text-muted-foreground">Noch kein Lauf für diese Zeichnung.</p>

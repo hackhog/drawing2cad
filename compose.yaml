@@ -6,9 +6,17 @@ services:
       dockerfile: app/backend/Dockerfile
     image: drawing2cad-backend:local
     # Only the frontend can reach this API through the Compose network.
+    # Optional model endpoint for agent runs (ADR 0016). Without .env, the stack builds and runs; runs show as unavailable.
+    env_file:
+      - path: .env
+        required: false
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     tmpfs:
-      - /tmp                    # Keep uploads and render artifacts only during each request.
+      - /tmp                    # Temporary render artifacts of each analysis.
+    volumes:
+      - backend-data:/data      # Sources, run records, and the MCP store (part revisions, builds, STEP).
 
   frontend:
     build: app/frontend
@@ -21,3 +29,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp                    # nginx PID file and temporary upload data.
+
+volumes:
+  backend-data:

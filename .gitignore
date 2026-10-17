@@ -82,3 +82,6 @@ Desktop.ini
 # archify run evidence and delivery receipts with local absolute paths (tools/diagrams, ADR 0011)
 .archify/
 docs/diagrams/*.delivery*.json
+
+# Local data directory of the web backend (sources, runs, MCP store; ADR 0016)
+/app/backend/.data/

@@ -1,7 +1,7 @@
 // Simulated service for UI work before the #24 services exist. Every run is marked `simulated`.
 // It imitates the contract behavior that the UI must handle: job phases, revisions, stale artifacts,
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
-import type { Artifact, ArtifactRole, Capabilities, Part, Run, RunNote, RunPhase, Source } from "./contract";
+import type { Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";
 import { CONTRACT_VERSION } from "./contract";
 import type { ExtractResult } from "./drawing";
 import { ApiFailure, notFound } from "./errors";
@@ -178,6 +178,13 @@ export class FixtureApi implements WebApi {
     };
     record.notes.push(note);
     return note;
+  }
+
+  /** A simulated run has no agent trace and no MCP part state. */
+  async listRunFiles(runId: string): Promise<RunFiles> {
+    await this.latency();
+    this.run(runId);
+    return { files: [], archive_url: null };
   }
 
   async readArtifact(artifactId: string): Promise<Blob> {

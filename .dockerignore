@@ -1,8 +1,9 @@
-# The backend context contains the MCP package and backend source only.
+# The backend context contains the MCP package, the backend source, and the agent skill only.
 # The frontend image uses app/frontend/ and its own .dockerignore.
 *
 !drawing2cad-mcp/
 !app/backend/
+!skills/drawing2cad/SKILL.md
 **/.venv
 **/node_modules
 **/__pycache__
@@ -14,3 +15,4 @@ drawing2cad-mcp/*.local.toml
 drawing2cad-mcp/output
 app/backend/tests
 app/backend/scripts
+app/backend/.data

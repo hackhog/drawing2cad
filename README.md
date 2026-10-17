@@ -34,6 +34,20 @@ The worker requires the supported Linux sandbox.
 A host without that sandbox cannot silently execute CAD without isolation.
 See the [MCP guide](drawing2cad-mcp/README.md) for tools, configuration, and tests.
 
+## Web app with agent runs
+
+From the repository root:
+
+```bash
+docker compose up --build        # builds without credentials; open http://localhost:8000
+```
+
+Upload drawing PDFs, review the analysis, and start a run.
+A run lets an agent build the model only through `drawing2cad-mcp`; step 4 shows the released or diagnostic STEP in 3D
+([ADR 0016](docs/adr/0016-agent-runner-in-the-web-backend.md)).
+Runs need an OpenAI-compatible model endpoint: copy `.env.example` to `.env`, fill in the values, and run `docker compose up -d`.
+Without `.env`, the app starts and shows runs as unavailable. See the [app guide](app/README.md).
+
 ## Delivery milestones
 
 | Milestone | Deliverables and limits |

@@ -8,7 +8,7 @@ The UI design history is in [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-
 
 ## Rules
 
-- Keep uploaded PDFs and render artifacts in a temporary directory during the request. Do not retain or log customer drawings.
+- Store uploaded PDFs only in the configured data directory (`DRAWING2CAD_DATA_DIR`, a Docker volume) until a user deletes them ([ADR 0016](../docs/adr/0016-agent-runner-in-the-web-backend.md)). Keep render artifacts in a temporary directory during the request. Do not log customer drawings or commit the data directory.
 - Use `drawing2cad_mcp.pdf.PdfService` for PDF analysis and page rendering. Do not add geometry analysis to the app.
 - Compare the source hashes from analysis and rendering. Reject a result if the hashes differ.
 - The app can derive review flags from service results. Keep unclear strokes and unrecognized text characters visible.
@@ -33,4 +33,6 @@ The UI design history is in [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-
 
 The demo uses the first PDF page and the built-in BCT/NX analysis profile.
 This profile does not provide general OCR or a complete dimension interpretation.
-The demo supplies PDF analysis and STEP display. It does not expose the MCP endpoint or execute the headless build123d worker.
+Agent runs build models only through the MCP server, which the backend starts as a stdio subprocess ([ADR 0016](../docs/adr/0016-agent-runner-in-the-web-backend.md)).
+The model endpoint is optional runtime configuration (`.env`, never in Git). Tests use a mocked model; do not call a real model in tests.
+The interim run store in `backend/src/drawing_demo/store.py` is replaced by the #24 services when they are available.

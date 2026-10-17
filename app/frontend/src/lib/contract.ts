@@ -60,6 +60,18 @@ export interface Artifact {
   model_revision: number;
 }
 
+/** A diagnostic file of a run: trace, run record, or MCP part state. The service supplies root-relative URLs. */
+export interface RunFile {
+  path: string;
+  byte_count: number;
+  url: string;
+}
+
+export interface RunFiles {
+  files: RunFile[];
+  archive_url: string | null;
+}
+
 export interface Assumption {
   id: string;
   feature: string;
@@ -116,6 +128,8 @@ export interface Run {
   review: Review | null;
   error: ServiceError | null;
   simulated: boolean;
+  /** Final text of the agent conversation, if an agent built the part (ADR 0016). */
+  agent_report?: string;
 }
 
 export interface ServiceError {

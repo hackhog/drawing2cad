@@ -27,6 +27,13 @@ export function ReviewPanel({ run }: { run: Run }) {
         {reasons.map((r) => <p key={r} className="text-xs text-muted-foreground">{r}</p>)}
       </section>
 
+      {run.agent_report && (
+        <section>
+          <h3 className={H3}>Bericht des Agenten</h3>
+          <p className="rounded-md border bg-surface px-3 py-2 text-xs whitespace-pre-wrap text-card-foreground">{run.agent_report}</p>
+        </section>
+      )}
+
       <section>
         <h3 className={H3}>Annahmen ({review.assumptions.length})</h3>
         {!review.assumptions.length && <p className="text-xs text-muted-foreground">Keine offenen Annahmen.</p>}

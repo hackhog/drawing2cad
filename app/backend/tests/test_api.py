@@ -24,6 +24,25 @@ POPPLER = shutil.which(os.environ.get("DRAWING2CAD_PDFTOPPM", "pdftoppm"))
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def data_dir(tmp_path, monkeypatch):
+    """Each test uses its own data directory and no model endpoint."""
+    monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
+    for name in ("DRAWING2CAD_AGENT_BASE_URL", "DRAWING2CAD_AGENT_MODEL", "DRAWING2CAD_AGENT_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    api.services.cache_clear()
+    yield tmp_path / "data"
+    api.services.cache_clear()
+
+
+def upload(name, content):
+    """Store a PDF and return the response and, on success, its analysis."""
+    res = client.post("/api/sources", files={"file": (name, content, "application/pdf")})
+    if res.status_code != 200:
+        return res, None
+    return res, client.get(f"/api/sources/{res.json()['source_id']}/analysis").json()
+
+
 def test_health():
     data = client.get("/api/health").json()
     assert data["status"] == "ok"
@@ -36,12 +55,12 @@ def test_api_does_not_serve_ui():
 
 
 def test_rejects_non_pdf():
-    res = client.post("/api/extract", files={"file": ("x.pdf", b"hello", "application/pdf")})
+    res, _ = upload("x.pdf", b"hello")
     assert res.status_code == 415
 
 
 def test_rejects_broken_pdf():
-    res = client.post("/api/extract", files={"file": ("x.pdf", b"%PDF-1.7 broken", "application/pdf")})
+    res, _ = upload("x.pdf", b"%PDF-1.7 broken")
     assert res.status_code == 422
 
 
@@ -95,9 +114,9 @@ def service_probe(monkeypatch):
 
 def test_upload_uses_shared_service_and_removes_temporary_files(service_probe):
     content = b"%PDF-test-service-boundary"
-    res = client.post("/api/extract", files={"file": ("sample.pdf", content, "application/pdf")})
+    res, body = upload("sample.pdf", content)
     assert res.status_code == 200
-    body = res.json()
+    assert res.json()["sha256"] == sha256(content).hexdigest()
     assert body["drawing"]["source"] == "sample.pdf"
     assert body["drawing"]["strokes"][0]["id"] == 7
     assert {flag["kind"] for flag in body["review"]} == {"no_views", "unclear_strokes"}
@@ -108,13 +127,15 @@ def test_upload_uses_shared_service_and_removes_temporary_files(service_probe):
     for path in service_probe["paths"]:
         assert not path.exists()
         assert str(path) not in res.text
+        assert str(path) not in str(body)
 
 
 @pytest.mark.parametrize("failure", ["mismatch", "render_error"])
 def test_upload_rejects_invalid_render_and_removes_temporary_files(service_probe, failure):
     service_probe[failure] = True
-    res = client.post("/api/extract", files={"file": ("sample.pdf", b"%PDF-test", "application/pdf")})
+    res, _ = upload("sample.pdf", b"%PDF-test")
     assert res.status_code == 422
+    assert client.get("/api/sources").json() == []
     for path in service_probe["paths"]:
         assert not path.exists()
 
@@ -126,9 +147,8 @@ def test_synthetic_pdf_uses_real_service():
     stream = BytesIO()
     writer.write(stream)
     content = stream.getvalue()
-    res = client.post("/api/extract", files={"file": ("blank.pdf", content, "application/pdf")})
+    res, body = upload("blank.pdf", content)
     assert res.status_code == 200, res.text
-    body = res.json()
     assert body["drawing"]["source"] == "blank.pdf"
     assert body["provenance"]["source_sha256"] == sha256(content).hexdigest()
     assert body["provenance"]["render"]["renderer"] == "poppler.pdftoppm"
@@ -140,9 +160,8 @@ def test_synthetic_pdf_uses_real_service():
 @pytest.mark.parametrize("pdf", SAMPLES, ids=lambda p: p.parent.name)
 def test_sample_analysis_and_render_agree(pdf):
     content = pdf.read_bytes()
-    res = client.post("/api/extract", files={"file": (pdf.name, content, "application/pdf")})
+    res, body = upload(pdf.name, content)
     assert res.status_code == 200, res.text
-    body = res.json()
     drawing = body["drawing"]
     assert drawing["source"] == pdf.name
     assert drawing["summary"]["strokes"] == len(drawing["strokes"])
