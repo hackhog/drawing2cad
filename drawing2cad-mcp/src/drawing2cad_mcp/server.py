@@ -155,13 +155,19 @@ class Application:
             return LOCAL_CATALOG[name].input_schema
         return None
 
+    def _listed(self, tools):
+        """Do not offer build_code when the configuration does not permit it."""
+        if self.settings.cad.enabled and self.settings.cad.allow_build_code:
+            return list(tools)
+        return [tool for tool in tools if tool.name != "build_code"]
+
     async def on_list_tools(self, _context, params=None) -> ListToolsResult:
         if params and params.cursor:
             raise ValueError("drawing2cad-mcp returns the complete tool list; no cursor is supported")
         if self.domain is not None:
-            return ListToolsResult(tools=list(self.domain_catalog.values()))
+            return ListToolsResult(tools=self._listed(self.domain_catalog.values()))
         legacy = LEGACY_TOOLS if self.settings.server.expose_legacy_workflow else []
-        return ListToolsResult(tools=[*LOCAL_TOOLS, *legacy])
+        return ListToolsResult(tools=self._listed([*LOCAL_TOOLS, *legacy]))
 
     async def status(self) -> dict[str, Any]:
         result = {
@@ -376,8 +382,12 @@ class Application:
             if isinstance(preview, dict) and "data_base64" in preview:
                 images.append(ImageContent(type="image", data=preview.pop("data_base64"), mime_type="image/png"))
             return json_result(data, images=images, is_error=bool(data.get("error")) or data.get("status") == "fail")
-        except ValidationError:
-            return error_result("INVALID_ARGUMENTS", "Arguments do not match the published tool schema.")
+        except ValidationError as error:
+            # The JSON Pointer and the schema message tell the agent which field to correct.
+            pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
+            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": pointer,
+                                          "message": "Arguments do not match the published tool schema: " + error.message[:300]}},
+                               is_error=True)
         except DomainError as error:
             return json_result({"error": error.to_dict()}, is_error=True)
         except Exception:

@@ -116,7 +116,7 @@ async def test_http_status_and_pdf_text_use_real_mcp(http_application, tmp_path)
     async with running_server(http_application) as url:
         async with mcp_session(url) as session:
             tools = (await session.list_tools()).tools
-            assert len(tools) == len(LOCAL_TOOLS) + len(LEGACY_TOOLS)
+            assert len(tools) == len(LOCAL_TOOLS) + len(LEGACY_TOOLS) - 1  # build_code is disabled by default.
             assert "drawing_extract" in {tool.name for tool in tools}
             status = await session.call_tool("drawing2cad_status", {})
             assert "freecad" not in status.structured_content
@@ -193,7 +193,7 @@ async def test_http_clients_share_native_part_state_until_server_shutdown(http_a
                 first_tools, remaining_tools = await asyncio.gather(
                     first.list_tools(), remaining.list_tools(),
                 )
-                assert len(first_tools.tools) == len(remaining_tools.tools) == len(LOCAL_TOOLS)
+                assert len(first_tools.tools) == len(remaining_tools.tools) == len(LOCAL_TOOLS) - 1  # build_code is disabled by default.
                 assert not any(tool.name.startswith("freecad_") for tool in first_tools.tools)
                 result = await first.call_tool("part_create", {
                     "run_id": "shared-part", "description": description,

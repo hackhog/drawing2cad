@@ -323,3 +323,23 @@ def test_missing_critical_dimension_blocks_attested_coverage(setup_service):
     with pytest.raises(CadError) as error:
         service.export_step(run_id="example", expected_revision=1, coverage=review)
     assert error.value.code == "COVERAGE_MEASUREMENT_MISSING"
+
+
+def test_rejected_build_keeps_build_and_release(setup_service):
+    service, runner, description, source = setup_service
+    create(setup_service)
+    service.build_from_description(run_id="example", expected_revision=1)
+    service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
+    before = service.part_read(run_id="example")["part"]
+    assert before["build"] and before["release"]
+    rejected = (
+        (lambda: service.build_code(run_id="example", expected_revision=1, code="result = None"), "BUILD_CODE_DISABLED"),
+        (lambda: service.build_from_description(run_id="example", expected_revision=1, pmi={}), "PMI_PROFILE_REQUIRED"),
+    )
+    for attempt, code in rejected:
+        with pytest.raises(CadError) as error:
+            attempt()
+        assert error.value.code == code
+    after = service.part_read(run_id="example")["part"]
+    assert (after["build"], after["release"], after["source_review"]) == (before["build"], before["release"], before["source_review"])
+    assert runner.calls.count("build") == 1 and "build_code" not in runner.calls

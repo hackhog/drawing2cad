@@ -93,7 +93,7 @@ Use the live catalog for exact schemas and limits.
 | `step_reconstruct` | Rebuild an existing STEP artifact in fresh workers. Return separate diagnostic artifacts; do not approve or change the source run. |
 | `part_render_pmi` | Inspect the current AP242 build before release. Return stored-PMI PDF/PNG views bound to its revision and hash. |
 | `step_render_pmi` | Inspect an authorized generated STEP artifact by ID and exact hash. Return PDF/PNG views; no model approval. |
-| `build_code` | Optional in-memory execution, requiring configuration and a verified sandbox. |
+| `build_code` | Optional in-memory execution, requiring configuration and a verified sandbox. The tool list omits it when `allow_build_code` is false. |
 | `export_step` | Release a candidate after trusted re-import, dimension checks, and source-review coverage. |
 | `part_export_review` | Review records, coverage, manifest, and event evidence. |
 | `drawing_schema`, `drawing_validate`, `drawing_render`, `drawing_read`, `drawing_review` | Revision-bound drawing specification, DXF/PDF output, layout checks, and identified review. |
@@ -126,6 +126,7 @@ The service does not enforce an aggregate disk quota or a retention period. Oper
 Use `job_submit` for `build_from_description`, `build_code`, `drawing_render`, or `export_step`.
 Supply `operation`, its normal `arguments`, and an `idempotency_key`. Reuse a key only for the identical operation and arguments.
 Read completion with `job_get`; a transport response that confirms submission is not a CAD pass.
+A job that ran and failed its checks has the state `failed` and keeps the public operation report in `result`, for example the defects of a drawing validation.
 The queue permits 128 pending or active jobs by default. It returns `JOB_QUEUE_FULL` at the limit and still permits exact idempotent retries.
 One job service holds an operating-system lock for the shared store. Start it once in the application lifespan.
 After a restart, queued jobs resume. Unfinished active jobs become `interrupted`; uncertain effects are not replayed.
@@ -299,7 +300,10 @@ Part revisions, build results, and release records are stored separately from tr
 A lost response does not prove that an operation failed or stopped.
 Use `part_read` and inspect artifacts before you repeat a CAD call.
 Part operations use a per-run lock and expected revisions.
-Coordinate edits to the same run; a busy run returns `RUN_BUSY`.
+Coordinate edits to the same run; a busy run returns `RUN_BUSY` for a mutation.
+While another operation holds the run, `part_read`, `drawing_read`, `drawing_validate`, and `notes_read` return a consistent snapshot with `read_mode: snapshot_during_active_operation`.
+A rejected build (`CAD_DISABLED`, `BUILD_CODE_DISABLED`, `PMI_PROFILE_REQUIRED`, `STEP_BUDGET_EXHAUSTED`, or a source check) keeps the current build, release, and drawing review.
+Errors contain a stable `code` and a message without host paths. Worker errors keep their `feature_id`. Invalid arguments return the JSON Pointer of the field in `target`.
 This transport setting does not make CAD operations stateless.
 
 ### Listener access

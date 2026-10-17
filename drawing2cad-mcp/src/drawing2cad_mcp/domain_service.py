@@ -12,8 +12,10 @@ from copy import deepcopy
 import hashlib
 from io import BytesIO
 import json
+import logging
 import os
 from pathlib import Path
+import re
 import threading
 import time
 from tempfile import TemporaryDirectory
@@ -24,13 +26,22 @@ from jsonschema import Draft202012Validator, ValidationError
 from . import __version__
 from .cad_service import CadError, CadService
 from .cad_tools import CAD_SCHEMAS
-from .domain_jobs import JobCancelled, JobService
+from .domain_jobs import JobCancelled, JobFailed, JobService
 from .domain_store import AccessContext, DomainError, DomainStore
 from .domain_tools import DOMAIN_SCHEMAS
 from .drawing_contract import drawing_schema, drawing_validate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import PdfError, PdfService
 from .step import StepError, StepService
+
+
+LOG = logging.getLogger(__name__)
+# Host paths in worker messages: Windows drive paths and common POSIX roots.
+# JSON Pointers such as /features/0/diameter do not match.
+_HOST_PATH = re.compile(r"(?:\b[A-Za-z]:[\\/]|(?<![\w.])/(?:tmp|opt|usr|home|data|var|root|srv|mnt|etc|proc|inputs|app|Users)/)[^\s'\"<>|,;)]*")
+# Read-only run operations. During an active operation they return a consistent snapshot without the run lock.
+SNAPSHOT_READS = frozenset({"part_read", "drawing_read", "drawing_validate", "notes_read"})
+MAX_PUBLIC_MESSAGE = 4000
 
 
 def _json(value):
@@ -76,7 +87,7 @@ class DomainService:
             return self._services[ctx.subject]
 
     @contextmanager
-    def _run_lock(self, ctx, run_id):
+    def _run_lock(self, ctx, run_id, wait_seconds=10):
         """Serialize domain operations across processes without nesting CAD locks."""
         cad = self._backend(ctx)[0]
         directory = cad._directory(run_id)
@@ -88,7 +99,7 @@ class DomainService:
             if not stream.tell():
                 stream.write(b"0")
                 stream.flush()
-            deadline = time.monotonic() + 10
+            deadline = time.monotonic() + wait_seconds
             while True:
                 try:
                     stream.seek(0)
@@ -120,6 +131,12 @@ class DomainService:
             raise DomainError("REVISION_CONFLICT", "Read the current part revision before this operation.")
         return state
 
+    def _redact(self, text):
+        """Return a bounded message without storage roots or other host paths."""
+        for root in (self.store.root, self.settings.pdf.output_root):
+            text = text.replace(str(root), "[private storage]").replace(root.as_posix(), "[private storage]")
+        return _HOST_PATH.sub("[path]", text)[:MAX_PUBLIC_MESSAGE]
+
     def _public(self, value):
         """Remove private locations and process output from transport results."""
         private = {"path", "work_dir", "candidate_step", "logs", "stdout", "stderr", "traceback"}
@@ -129,9 +146,15 @@ class DomainService:
                 if key in private or key.endswith("_path"):
                     continue
                 if key == "error" and item is not None:
-                    # A worker exception can contain paths outside its run directory.
-                    code = item.get("code", "OPERATION_FAILED") if isinstance(item, dict) else "OPERATION_FAILED"
-                    result[key] = {"code": code, "message": "The operation reported an error. Inspect its code and check results."}
+                    # Keep the code, the redacted message, and the feature ID, so that an agent can correct the input.
+                    item = item if isinstance(item, dict) else {}
+                    message = item.get("message")
+                    error = {"code": str(item.get("code", "OPERATION_FAILED")),
+                             "message": self._redact(message) if isinstance(message, str) and message
+                             else "The operation reported an error. Inspect its code and check results."}
+                    if isinstance(item.get("feature_id"), str):
+                        error["feature_id"] = item["feature_id"]
+                    result[key] = error
                 else:
                     result[key] = self._public(item)
             return result
@@ -152,7 +175,12 @@ class DomainService:
             encoded = _json(arguments)
             if len(encoded) > 8 * 1024 * 1024:
                 raise DomainError("LIMIT_EXCEEDED", "The request exceeds the domain size limit.")
-        except (ValidationError, ValueError, TypeError, RecursionError):
+        except ValidationError as error:
+            # The JSON Pointer and the schema message tell the agent which field to correct.
+            pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
+            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract: " + error.message[:300],
+                              target=pointer, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
+        except (ValueError, TypeError, RecursionError):
             raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract.") from None
 
     def call(self, ctx: AccessContext, name: str, arguments: dict):
@@ -164,12 +192,13 @@ class DomainService:
             raise
         except CadError as error:
             message = error.message if error.code != "CAD_SERVICE_FAILED" else "The CAD operation failed."
-            raise DomainError(error.code, self._public(message)) from None
+            raise DomainError(error.code, self._redact(message)) from None
         except StepError as error:
             raise DomainError(error.code, "The STEP inspection failed. Check the artifact and expected hash.") from None
         except PdfError:
             raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.") from None
         except Exception:
+            LOG.exception("Domain operation %s failed", name)
             raise DomainError("DOMAIN_OPERATION_FAILED", "The domain operation failed. No private process details are returned.") from None
 
     def _call(self, ctx, name, args):
@@ -222,7 +251,8 @@ class DomainService:
         # Once execution starts, the actual result is recorded even if cancelled.
         result = self.call(ctx, operation, arguments)
         if result.get("status") == "fail":
-            raise DomainError("JOB_OPERATION_FAILED", "The operation failed its checks. Read the current run or drawing state for its report.")
+            # Keep the public report, for example the defects of a failed drawing validation, in the job record.
+            raise JobFailed("JOB_OPERATION_FAILED", "The operation failed its checks. Read the job result for its report.", result)
         return result
 
     def _preview(self, path):
@@ -497,7 +527,39 @@ class DomainService:
                     and review.get("decision") == "accepted"
                     and review.get("candidate_sha256") == release.get("sha256"))
 
+    def _snapshot_read(self, ctx, name, args):
+        """Read a run without its lock while another operation, for example a job, holds it.
+
+        State files are replaced atomically, so each read gives one complete revision.
+        """
+        cad = self._backend(ctx)[0]
+        directory = cad._directory(args["run_id"])
+        if name == "notes_read":
+            return self._notes(ctx, args["run_id"])
+        state = self._state(cad, directory, args.get("expected_revision"))
+        if name == "drawing_read":
+            result = {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state)}
+        elif name == "drawing_validate":
+            result = drawing_validate(args["drawing_spec"], state["description"], state["revision"])
+            result.pop("resolved", None)
+        else:
+            result = {"status": "pass", "part": deepcopy(state), "run_id": args["run_id"], "revision": state["revision"],
+                      "call_count": state["call_count"], "step_budget": state["step_budget"]}
+            result["drawing"] = self._drawing(directory, state)
+            if not self._release_is_current(result["part"], result["drawing"]):
+                result["part"]["release"] = None
+        result["read_mode"] = "snapshot_during_active_operation"
+        return result
+
     def _run_call(self, ctx, name, args):
+        if name in SNAPSHOT_READS:
+            try:
+                with self._run_lock(ctx, args["run_id"], wait_seconds=0.2) as (cad, directory):
+                    return self._run_operation(ctx, name, args, cad, directory)
+            except (DomainError, CadError) as error:
+                if error.code != "RUN_BUSY":
+                    raise
+            return self._snapshot_read(ctx, name, args)
         with self._run_lock(ctx, args["run_id"]) as (cad, directory):
             # Record domain mutations separately from the existing CAD trace.
             # Read-only calls do not consume an unbounded audit log.
@@ -577,6 +639,8 @@ class DomainService:
         if name not in CAD_SCHEMAS:
             raise DomainError("UNKNOWN_TOOL", "The run operation is not supported.")
         if name in {"build_from_description", "build_code"}:
+            # A rejected build must keep the current build, release, and drawing review.
+            cad.check_build(name, args, state)
             self._invalidate_release(cad, state["run_id"])
             drawing = self._drawing(directory, state)
             if drawing:
