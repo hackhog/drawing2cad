@@ -92,7 +92,7 @@ def test_uploaded_source_scope():
         {"source_id": source_id, "sha256": digest, "role": "construction"}]}, config, {"part_create"})
 
 
-async def test_uploaded_source_prompt_requires_drawing_review(tmp_path):
+async def test_uploaded_source_prompt_asks_for_a_drawing_without_gating_the_release(tmp_path):
     session = Session()
     config = plan(source_id="src_" + "a" * 32, source_sha256="b" * 64)
     requests = []
@@ -104,7 +104,7 @@ async def test_uploaded_source_prompt_requires_drawing_review(tmp_path):
     await drive(session, catalog("drawing_review"), config, "Skill", Trace(tmp_path), model_call=model)
     system = requests[0]["messages"][0]["content"]
     assert "src_" + "a" * 32 in system and "/inputs/part.pdf" not in system
-    assert "drawing_review before export_step" in system
+    assert "drawing_review" in system and "The validated model gates export_step, not the drawing" in system
     assert [tool["function"]["name"] for tool in requests[0]["tools"]] == ["drawing_review", "request_user_input"]
 
 
@@ -183,6 +183,21 @@ async def test_later_mutation_invalidates_recorded_release(tmp_path, mutation):
                   model_response([call(mutation, arguments)]), model_response(text="Finished.")))
     assert result["released"] is False
     assert result["status"] == "stopped_without_release"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("drawing_call", ["drawing_render", "drawing_review"])
+async def test_drawing_call_after_release_keeps_the_release(tmp_path, drawing_call):
+    """The drawing does not gate the STEP release, so a later drawing call keeps it."""
+    class DrawingSession(Session):
+        async def call_tool(self, name, arguments):
+            data = {"status": "pass", "release": {"sha256": "a" * 64}} if name == "export_step" else {"status": "pass"}
+            return SimpleNamespace(model_dump=lambda **kwargs: {"isError": False, "structuredContent": data, "content": []})
+    result = await drive(DrawingSession(), catalog("export_step", drawing_call), plan(), "Test skill", Trace(tmp_path),
+        inference(model_response([call("export_step", {"run_id": "localtest-a"})]),
+                  model_response([call(drawing_call, {"run_id": "localtest-a"})]), model_response(text="Finished.")))
+    assert result["released"] is True
+    assert result["status"] == "released"
 
 
 @pytest.mark.asyncio

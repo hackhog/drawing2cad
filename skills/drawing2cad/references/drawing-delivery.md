@@ -59,7 +59,7 @@ Passing layout checks cannot prove that the source was interpreted correctly or 
 Record `drawing_review` with the current drawing hash, part revision, construction-source hashes, reviewer, decision, and reason.
 The final accepted review must follow the current model build. Rebuilding the model invalidates an earlier review.
 This is an identified review attestation. Automatic drawing-to-solid equivalence remains `not_tested`.
-Domain STEP release requires the current drawing and its accepted review, in addition to the model validation gates.
+Domain STEP release requires the model validation gates, not the drawing. The release records the drawing status and its files, or the reason why no drawing exists.
 The local-path metric does not require drawing tools. Its result does not establish complete-service drawing delivery.
 
 A drawing can reveal a model error. Do not change the source requirement to conceal that error.

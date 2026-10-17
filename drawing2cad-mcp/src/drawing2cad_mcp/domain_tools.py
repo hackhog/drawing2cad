@@ -31,7 +31,7 @@ DOMAIN_SCHEMAS["part_create"]["properties"]["sources"]["items"] = _object({
     "source_id": ID, "sha256": HASH, "role": {"enum": ["construction", "verification"]}})
 DOMAIN_DESCRIPTIONS["part_create"] = "Create a part from uploaded source IDs and exact hashes. Evidence must use these source IDs. Verification sources cannot supply construction values."
 DOMAIN_DESCRIPTIONS["part_export_review"] = "Export path-free JSON part, run manifest, drawing review, and recorded run trace as immutable artifacts."
-DOMAIN_DESCRIPTIONS["export_step"] = "Release validated STEP after the current drawing passes layout checks and an identified review. Drawing and part revisions must agree. AP242 and semantic PMI remain separate M3 requirements."
+DOMAIN_DESCRIPTIONS["export_step"] = "Release validated STEP of the current model build. The drawing does not gate the release: release.drawing records its status (accepted, unreviewed, rejected, failed, or missing) with the drawing files or the reason. Call again after a drawing change to record the new status. AP242 and semantic PMI remain separate M3 requirements."
 
 _EXTRA = {
     "step_render_pmi": (_object({"artifact_id": ID, "expected_sha256": HASH}),
@@ -69,7 +69,7 @@ _EXTRA = {
                      "Replace a run note with optimistic note revision control. Does not change the part revision."),
     "drawing_schema": (_object({}), "Read DrawingSpec version 1.0 and its supported geometry, dimension, and review scope."),
     "drawing_validate": (_object({**REVISION, "drawing_spec": DRAWING}), "Check supplied views, dimensions, evidence, uncertainty markers, and layout against the current part. Does not render or prove CAD equivalence."),
-    "drawing_render": (_object({**REVISION, "drawing_spec": DRAWING}), "Render supplied geometry and native DXF dimensions in the restricted worker. Return matching DXF and PDF artifacts on success. Layout failures can return bounded collision details and diagnostic PDF/JSON artifacts bound to the exact drawing and part revision. Diagnostic artifacts cannot be reviewed or released. Invalidate the previous drawing review before worker execution; schema or non-layout preflight failures leave it unchanged."),
+    "drawing_render": (_object({**REVISION, "drawing_spec": DRAWING}), "Render supplied geometry and native DXF dimensions in the restricted worker. Return matching DXF and PDF artifacts on success. Layout failures can return bounded collision details and diagnostic PDF/JSON artifacts bound to the exact drawing and part revision. Diagnostic artifacts cannot be reviewed as an accepted drawing. A STEP release links them as the files of a failed drawing. Invalidate the previous drawing review before worker execution; schema or non-layout preflight failures leave it unchanged."),
     "drawing_read": (_object(RUN), "Read current drawing state, artifact IDs, and review binding."),
     "drawing_review": (_object({**REVISION, "drawing_sha256": HASH, "reviewer": {"type": "string", "minLength": 1, "maxLength": 200},
                                 "reason": TEXT, "source_hashes": {"type": "array", "items": HASH, "minItems": 1, "uniqueItems": True},

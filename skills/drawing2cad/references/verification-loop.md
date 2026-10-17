@@ -66,7 +66,7 @@ A model error requires a model correction and new binding; moving drawing text c
 Diagnostic previews apply to supported rendered layout failures only.
 Schema, evidence, geometry, or binding failures can stop before a preview exists.
 Correct the reported contract defect first. Do not bypass it with a separate renderer.
-Keep failed artifacts as evidence. A failed drawing cannot receive an accepted review or authorize STEP release.
+Keep failed artifacts as evidence. A failed drawing cannot receive an accepted review. The STEP release states the failed drawing and links its diagnostic files.
 
 ## Review and release
 

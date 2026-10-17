@@ -29,9 +29,9 @@ export function delivery(run: Run): Delivery {
   return { released: state === "released" && revisionsAgree && reasons.length === 0, revisionsAgree, reasons };
 }
 
-/** An artifact is released only if the run is released and the artifact has the current revision. */
+/** An artifact is released only if the run is released, the artifact has the current revision, and the release names it. */
 export const isReleased = (state: Delivery, run: Run, artifact: Artifact): boolean =>
-  state.released && artifact.model_revision === run.part?.revision;
+  state.released && artifact.model_revision === run.part?.revision && (artifact.released ?? true);
 
 export const isActive = (run: Run) => run.job.status === "queued" || run.job.status === "running";
 
