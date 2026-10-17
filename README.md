@@ -13,6 +13,18 @@ docker compose up --build    # → http://localhost:8000, then upload drawing PD
 This needs only Docker. It does not need a key, a login, or a network connection at runtime.
 Details: [app/README.md](app/README.md).
 
+## Architecture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/drawing2cad-overview.dark.svg">
+  <img alt="Drawing2CAD: system overview" src="docs/diagrams/drawing2cad-overview.light.svg">
+</picture>
+
+Interactive version with source links for each component: [`docs/diagrams/drawing2cad-overview.html`](docs/diagrams/drawing2cad-overview.html)
+(open it locally in a browser). The image is built from `docs/diagrams/drawing2cad-overview.json`, never by hand.
+After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks the result
+([ADR 0011](docs/adr/0011-diagrams-in-readme-checked-by-ci.md)).
+
 ## Project structure
 
 | Path | Contents |
@@ -22,6 +34,8 @@ Details: [app/README.md](app/README.md).
 | [extractor/](extractor/README.md) | Deterministic vector extractor: PDF → classified strokes, views, and read texts (JSON) |
 | [app/](app/README.md) | Demo UI (FastAPI + React): upload PDFs, guided review of the extractor result, 3D model view |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records for extractor and demo UI |
+| [docs/diagrams/](docs/diagrams/drawing2cad-overview.json) | Architecture diagram: JSON source, interactive HTML, SVG for this README |
+| `tools/diagrams/` | Builds and checks the diagrams (archify, Playwright), not part of the app build |
 | `compose.yaml` | Local start of the demo UI with Docker Compose |
 | `resources/` | Original drawings and CAD references for verification |
 | `output/` | Locally generated models, drawings, preview images, and test reports |

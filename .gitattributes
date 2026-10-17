@@ -22,3 +22,6 @@ resources/** -text -whitespace
 *.gif binary
 *.webp binary
 *.zip binary
+
+# Diagram files are hashed by tools/diagrams (ADR 0011). Preserve their exact bytes.
+docs/diagrams/** -text

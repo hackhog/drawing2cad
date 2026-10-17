@@ -1,0 +1,13 @@
+{
+  "name": "drawing2cad-diagrams",
+  "private": true,
+  "type": "module",
+  "description": "Builds the archify diagrams in docs/diagrams and their SVG export for the README (ADR 0011)",
+  "scripts": {
+    "build": "node diagrams.mjs",
+    "check": "node diagrams.mjs --check"
+  },
+  "dependencies": {
+    "playwright-core": "1.55.0"
+  }
+}

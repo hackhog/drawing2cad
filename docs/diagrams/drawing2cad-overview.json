@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Drawing2CAD: system overview",
+    "output": "docs/diagrams/drawing2cad-overview.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/hackhog/drawing2cad.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "992c18edfd8fbee6f564a1a001b58703bf447bfa"
+    }
+  },
+  "components": [
+    {
+      "id": "engineer", "type": "external", "label": "Engineer", "sublabel": "browser, drawing PDFs",
+      "pos": [40, 200], "size": [150, 64],
+      "sources": [{ "path": "compose.yaml", "line": 1, "label": "local demo URL" }]
+    },
+    {
+      "id": "webui", "type": "frontend", "label": "Demo UI", "sublabel": "React, Vite, three.js",
+      "pos": [300, 200], "size": [150, 64],
+      "sources": [
+        { "path": "app/web/src/App.tsx", "line": 18, "label": "steps 1-4" },
+        { "path": "app/web/src/lib/api.ts", "line": 52, "end_line": 57, "label": "API calls" },
+        { "path": "app/web/src/components/ModelViewer.tsx", "line": 30, "label": "3D viewer" }
+      ]
+    },
+    {
+      "id": "api", "type": "backend", "label": "Demo API", "sublabel": "FastAPI :8000, review flags",
+      "pos": [660, 200], "size": [160, 64],
+      "sources": [
+        { "path": "app/src/drawing_demo/api.py", "line": 39, "end_line": 67, "label": "POST /api/extract" },
+        { "path": "app/src/drawing_demo/review.py", "line": 51, "label": "review flags" },
+        { "path": "app/src/drawing_demo/api.py", "line": 96, "label": "serves built UI" }
+      ]
+    },
+    {
+      "id": "mesher", "type": "backend", "label": "STEP mesher", "sublabel": "cascadio, OpenCASCADE",
+      "pos": [665, 40], "size": [150, 64],
+      "sources": [{ "path": "app/src/drawing_demo/api.py", "line": 70, "end_line": 84, "label": "POST /api/model" }]
+    },
+    {
+      "id": "extractor", "type": "backend", "label": "drawing_extractor", "sublabel": "strokes, views, glyph text",
+      "pos": [940, 200], "size": [160, 64], "tag": "deterministic, no AI",
+      "sources": [
+        { "path": "extractor/src/drawing_extractor/__init__.py", "line": 18, "end_line": 22, "label": "extract()" },
+        { "path": "extractor/src/drawing_extractor/classify.py", "line": 40, "label": "classify strokes" },
+        { "path": "extractor/src/drawing_extractor/text.py", "line": 206, "label": "read glyph text" }
+      ]
+    },
+    {
+      "id": "agent", "type": "external", "label": "AI agent", "sublabel": "drawing2cad skill",
+      "pos": [665, 400], "size": [150, 64],
+      "sources": [{ "path": "skills/drawing2cad/SKILL.md", "line": 15, "label": "drawing first, STEP last" }]
+    },
+    {
+      "id": "mcp", "type": "backend", "label": "drawing2cad-mcp", "sublabel": "stdio MCP, PDF tools",
+      "pos": [945, 400], "size": [150, 64],
+      "sources": [
+        { "path": "drawing2cad-mcp/src/drawing2cad_mcp/server.py", "line": 66, "label": "drawing_extract tool" },
+        { "path": "drawing2cad-mcp/src/drawing2cad_mcp/pdf.py", "line": 345, "label": "extract_drawing()" }
+      ]
+    },
+    {
+      "id": "freecad", "type": "external", "label": "FreeCAD MCP", "sublabel": "upstream CAD tools",
+      "pos": [1225, 400], "size": [150, 64],
+      "sources": [
+        { "path": "drawing2cad-mcp/src/drawing2cad_mcp/server.py", "line": 210, "end_line": 213, "label": "freecad_* routing" },
+        { "path": "drawing2cad-mcp/src/drawing2cad_mcp/proxy.py", "line": 49, "label": "FreeCADProxy" }
+      ]
+    },
+    {
+      "id": "step", "type": "database", "label": "STEP AP242", "sublabel": "parametric model export",
+      "pos": [1225, 580], "size": [150, 64],
+      "sources": [{ "path": "skills/drawing2cad/SKILL.md", "line": 15, "label": "export STEP last" }]
+    }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Demo container (docker compose)", "wraps": ["api", "mesher"] }
+  ],
+  "connections": [
+    { "id": "upload", "from": "engineer", "to": "webui", "label": "upload PDFs", "variant": "emphasis" },
+    { "id": "http", "from": "webui", "to": "api", "label": "/api/extract, /api/model", "variant": "emphasis" },
+    { "id": "mesh", "from": "api", "to": "mesher", "label": "STEP to GLB" },
+    { "id": "extract", "from": "api", "to": "extractor", "label": "extract(pdf)" },
+    { "id": "stdio", "from": "agent", "to": "mcp", "label": "MCP stdio" },
+    { "id": "tool", "from": "mcp", "to": "extractor", "label": "drawing_extract" },
+    { "id": "proxy", "from": "mcp", "to": "freecad", "label": "freecad_* proxy" },
+    { "id": "export", "from": "freecad", "to": "step", "label": "export", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Demo flow", "items": ["1 Drawing, 2 Recognized, 3 Review, 4 3D model", "Review lists unclear strokes and '?' text: marked, not guessed", "Tab 4 shows a pipeline STEP, meshed to GLB on the server"] },
+    { "dot": "emerald", "title": "Extractor", "items": ["Reads vector paths of BCT drawing PDFs, no text layer needed", "Text from glyph templates, no OCR, no model, no key", "One library for the demo API and the MCP tool"] },
+    { "dot": "rose", "title": "Rules", "items": ["Ground-truth STEP files are never a pipeline input", "Drawing first, then 3D model, STEP export last", "Uploaded PDFs stay in a temp directory, not stored"] }
+  ]
+}

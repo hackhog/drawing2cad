@@ -76,3 +76,7 @@ Desktop.ini
 
 # Build output of app/web (Vite); the Docker image builds it (ADR 0010)
 /app/src/drawing_demo/static/
+
+# archify run evidence and delivery receipts with local absolute paths (tools/diagrams, ADR 0011)
+.archify/
+docs/diagrams/*.delivery*.json
