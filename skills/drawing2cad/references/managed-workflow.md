@@ -1,6 +1,6 @@
 # Maintained part workflow
 
-This reference describes the M1 part service.
+This reference describes the shared domain service and its maintained part tools.
 Use the live schemas for exact argument types, limits, and required fields.
 The installed server can differ from the skill version.
 
@@ -28,7 +28,7 @@ An unresolved value that prevents a reasonable build remains a blocker.
 
 | Tool | Use |
 |---|---|
-| `part_create` | Supply `run_id`, `description`, and `sources`. Each source has `path`, `sha256`, and `role` (`construction` or `verification`). |
+| `part_create` | Supply `run_id`, `description`, and `sources`. Each source has uploaded `source_id`, `sha256`, and `role` (`construction` or `verification`). |
 | `part_read` | Supply `run_id`; read the description, revision, results, and budget. This call is recorded. Audit access remains available after the execution budget is reached. |
 | `part_update` | Supply `run_id`, `expected_revision`, and the changed `description`. Prior builds and releases become stale. |
 | `create_base_body` | Add a supported box, cylinder, polygon extrusion, or closed line-and-arc profile extrusion. |
@@ -60,6 +60,14 @@ These calls cannot enable more construction or release operations.
 Reserve calls for candidate release and report export.
 The agent separately tracks the overall budget, including PDF preparation, discovery, and retries.
 
+Use `job_submit` for long builds, drawing renders, or STEP release. The operation arguments keep their normal revision requirements.
+Supply a unique idempotency key for a new request. An exact retry uses the same key; changed arguments require a new key.
+Inspect `job_get` for the terminal state and actual result. A submitted or running job is not a successful operation.
+Queued cancellation prevents execution. A running operation can finish with effects after cancellation is requested.
+After a service restart, queued jobs resume and unfinished active jobs become `interrupted`. Inspect the run before a replacement request.
+The queue has a finite pending-job limit. Do not repeatedly submit when it reports `JOB_QUEUE_FULL`.
+Use `notes_read` and `notes_update` for run notes. Their revision is separate from the part revision.
+
 The description is the editable source for the declarative M1 path.
 Changing a stored number alone does not prove editability.
 Rebuild the changed description and measure the intended geometric effects.
@@ -67,6 +75,12 @@ Scalar references update their direct uses. The prototype does not have an algeb
 Derived profile points and edge selectors can require coordinated edits after a dimension change.
 
 Closed profiles can contain straight lines and three-point circular arcs.
+Before a profile extrusion or cut, inspect the coordinate basis in the live `part_schema`.
+Profile points use local coordinates. The feature origin uses global coordinates.
+Use the declared local X, Y, and Z basis to map each profile point into the part.
+Do not infer the two profile axes from the extrusion axis name.
+For example, a positive Y extrusion can map positive local y to negative global Z.
+Check the transformed profile bounds before construction, especially for non-Z and negative-axis features.
 Extrusions support a bounded draft angle. Blind holes can include an explicit drill-tip angle.
 The blind depth is the cylindrical depth; the conical tip extends beyond it.
 
@@ -86,6 +100,22 @@ A cylindrical diameter/depth pass alone does not prove the correct entry side.
 Thread data in M1 describe a tap-drill representation and thread attributes.
 They do not prove modeled helical flanks or semantic thread PMI in STEP.
 
+## Drawing and review
+
+Read `drawing_schema` and prepare DrawingSpec 1.0 with the current `part_revision` and `description_sha256` from `part_read`.
+Supply 2D views, line/circle/arc geometry, feature and evidence references, dimensions, notes, and uncertainty markers.
+Drawing scalar references can use a parameter, factor, and offset. Rebind and regenerate after model changes.
+Use `drawing_validate`, then `drawing_render` with `run_id`, `expected_revision`, and `drawing_spec`.
+The worker produces DXF with native dimensions and a PDF rendered from those same entities.
+This is supplied view geometry; automatic solid projection and section extraction are unsupported.
+
+Inspect the PDF and layout report. Compare geometry, dimensions, sections, and manufacturing data with the permitted source and measured model.
+Either drawing or model may be created first. The final accepted review must follow the current model build.
+Use `drawing_review` with the current drawing hash, part revision, construction-source hashes, reviewer, decision, and reason.
+A model rebuild invalidates a previous drawing review even if the part revision did not change.
+The review is an identified attestation. It does not convert untested automatic drawing-to-solid equivalence into a pass.
+Use [drawing-first.md](drawing-first.md) for the visual review and delivery requirements.
+
 ## Validation, export, and reports
 
 Inspect the returned build status and each measurement.
@@ -102,11 +132,13 @@ Keep a separate inventory that links each printed callout to its geometry check.
 The reviewer must also check features that do not have dimensions, such as a visible web or a drill tip.
 Do not replace a failed local check with a bounding-box check that does not measure the same feature.
 
-Release requires trusted re-import, passing source-dimension checks, and complete source-review coverage.
+Release requires trusted re-import, passing source-dimension checks, complete source-review coverage, and the current accepted drawing review.
 Record the actual AP214 schema, units, product identity, and geometry.
 A passed re-import does not prove STEP-only feature reconstruction.
 
 Call `part_export_review` for review records, coverage, manifest, and event evidence.
+Use `artifact_get` and `artifact_read` to download the description, drawing, STEP, and reports. Verify each complete file hash.
+Artifacts are immutable snapshots. A later run revision does not replace an earlier artifact ID.
 Keep unexecuted NX, independent conformance, model comparison, and PMI tests as `not_tested`.
 A successful server operation is not a complete metric pass when required external checks are missing.
 
@@ -126,7 +158,8 @@ The bounded STEP readers remain useful for inspection:
 - `step_read_review_properties`: application metadata envelopes.
 - `step_append_review_properties`: metadata in a separate candidate.
 
-These tools use an authorized path and its exact-byte `expected_sha256`.
+In the domain profile, the read-only tools use an authorized `artifact_id` and its exact-byte `expected_sha256`.
+`step_append_review_properties` is not part of that profile. The local-path development profile retains its older path-based inspection tools.
 Their parsing success does not prove geometry, full EXPRESS conformity, or general PMI support.
 A metadata append is not CAD export or semantic-PMI authoring.
 

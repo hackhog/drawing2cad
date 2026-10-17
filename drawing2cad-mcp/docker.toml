@@ -1,5 +1,5 @@
 [pdf]
-allowed_roots = ["/inputs"]
+allowed_roots = ["/data"]
 output_root = "/data/output"
 timeout_seconds = 90
 
@@ -13,3 +13,10 @@ memory_mb = 3072
 concurrency = 1
 allow_build_code = false
 max_tool_calls = 45
+
+[domain]
+enabled = true
+root = "/data/domain"
+principal = "local"
+max_source_bytes = 20971520
+max_chunk_bytes = 524288

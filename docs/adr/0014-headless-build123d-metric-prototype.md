@@ -32,7 +32,7 @@ A neutral end body does not satisfy those capabilities.
 
 M1 is the first pull request's implementation scope.
 M2 and M3 have separate issues and do not block the M1 prototype merge.
-Issue 12 retains the open M1 metric acceptance work after the prototype merge.
+Issue 12 is closed. The user deferred metric acceptance until after the implementation milestones.
 Merging the implementation does not establish complete source coverage, independent STEP conformity, or target-CAD acceptance.
 
 M2 has separate implementation owners for the MCP/domain services and the web API/frontend.

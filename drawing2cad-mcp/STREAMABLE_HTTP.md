@@ -1,28 +1,46 @@
 # Streamable HTTP setup and operation
 
 Use this guide to run `drawing2cad-mcp` as an HTTP service and connect an MCP client or LiteLLM.
-The guide applies to version 0.5.0 and later versions with the same configuration interface.
+Use the current domain profile for uploads, drawing delivery, and artifact downloads. The local-path development profile remains a separate option.
 
 The connection path is:
 
 ```text
 Agent or LiteLLM -> HTTP /mcp -> drawing2cad-mcp -> PDF tools
                                             -> isolated build123d worker
-                                            -> part revisions and STEP candidates
+                                            -> shared sources, jobs, revisions, drawings, and artifacts
 ```
 
-The M1 image includes PDF tools and a build123d worker.
+The image includes PDF tools, a build123d worker, and the DXF/PDF drawing adapter.
 The supplied `compose.mcp.yaml` profile uses stdio with network disabled.
 It does not expose an HTTP port.
-An HTTP deployment needs a configured listener and network access for the application.
+The `compose.mcp-http.yaml` override adds an authenticated listener on host loopback port 8765.
 The CAD child retains its own network and filesystem restrictions.
 
-The HTTP transport does not yet supply persistent uploads or artifact downloads.
-These belong to the M2 unified service.
+The domain profile supplies persistent PDF uploads and artifact downloads through MCP tools.
+It does not supply separate REST upload/download routes. The web API and React interface belong to #26.
 The [existing demo](../app/README.md) has a separate UI and API; it does not host this MCP endpoint.
 The current MCP executes CAD only through the headless build123d worker. It has no FreeCAD proxy.
 
-## 1. Prepare the installation
+## Docker quick start
+
+Supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism. Do not commit its value.
+From the repository root, run:
+
+```bash
+docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up --build -d
+```
+
+Connect to `http://127.0.0.1:8765/mcp` with the same bearer token.
+The override listens on container port 8000 and publishes only the host loopback interface.
+The `cad-data` volume stores uploaded PDFs, revisions, jobs, notes, and artifacts under `/data`.
+No source-directory mount is required. The image enables `[domain]` with private storage at `/data/domain`.
+
+Use `docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml down` to stop the service after active jobs finish.
+This retains the named volume. Do not remove it while its sources or evidence are needed.
+The host-installation commands below are optional development setup. They use port 8000 unless configured otherwise.
+
+## 1. Prepare a host installation
 
 Install Python 3.11 or later and Poppler with `pdftoppm`.
 For CAD operations, use the supported Linux sandbox and install the package with its `cad` extra.
@@ -75,15 +93,20 @@ Keep this deployment file outside version control.
 | `cad.allow_build_code` | Keep `false` unless verified in-memory execution is required. |
 | `cad.timeout_seconds` and `cad.memory_mb` | Set finite limits for each worker process. |
 | `cad.concurrency` | Set the maximum number of concurrent CAD workers in this server process. |
+| `domain.enabled` | Set `true` for uploads and public source/artifact IDs. Docker enables it. |
+| `domain.root` | Set private persistent storage. Docker uses `/data/domain`. |
+| `domain.principal` | Set the trusted deployment identity. MCP tool arguments cannot select it. |
+| `domain.max_source_bytes`, `domain.max_chunk_bytes` | Limit PDF uploads and decoded chunks. Defaults are 20 MiB and 512 KiB. |
 
 Remove the old `[freecad]` section and `server.expose_freecad_proxy` setting during migration.
 The current configuration rejects both, including disabled values.
 The generic example disables CAD execution. The Docker configuration enables its supported build123d worker.
 
 Relative configuration paths use the TOML file's directory.
-PDF tool calls require absolute paths on the server filesystem.
-An HTTP connection does not upload input files.
-Supply only sources permitted for the current task, even when the path rules permit more files.
+Domain tools accept IDs and keep server paths internal. Upload PDF bytes before PDF preparation.
+The default Python settings leave `domain.enabled=false` for local-path development compatibility.
+Only that development profile accepts absolute server paths. It is not the remote upload contract.
+Supply only sources permitted for the current task.
 
 ## 3. Select Streamable HTTP
 
@@ -166,6 +189,11 @@ Press `Ctrl+C` to stop an interactive server.
 Before a planned restart, let active CAD operations finish.
 After an interrupted call, inspect the model before you repeat that call.
 
+All clients of this MCP deployment use the same configured principal.
+Bearer authentication does not create separate user identities.
+The shared service accepts a trusted `AccessContext` for the future web adapter; it is not a multi-user authentication system.
+Start one shared `DomainService` and its job service per store in the application lifespan. A second active job service returns `JOB_SERVICE_BUSY`.
+
 ## 6. Verify the MCP connection
 
 1. Connect an MCP client to `http://127.0.0.1:8000/mcp`.
@@ -179,8 +207,9 @@ After an interrupted call, inspect the model before you repeat that call.
 ```
 
 The result must contain `transport: "streamable-http"`.
-The local catalog contains PDF, STEP inspection, part construction, review, and capability tools.
-Legacy `workflow_*` evidence tools require explicit configuration; they are separate from current part revision gates.
+The domain catalog includes `upload_begin`, `artifact_read`, `job_submit`, and `drawing_render`, in addition to PDF, STEP inspection, construction, and review tools.
+If these are absent, verify the active profile and image. A running older image does not load source changes automatically.
+Legacy local-path and `workflow_*` tools are development interfaces, separate from the production domain profile.
 The removed `freecad_*` tools are unavailable and return `UNKNOWN_TOOL`.
 Transport readiness does not prove that CAD execution is available.
 Call `cad_capabilities` and `cad_worker_probe`, then inspect their actual results.
@@ -199,6 +228,7 @@ Use [litellm-mcp.example.json](litellm-mcp.example.json) as the request body for
 The example selects LiteLLM's transport value `"http"`.
 It uses `auth_type: "none"` for a loopback MCP server without a token.
 The JSON is not a complete LiteLLM configuration file.
+For the supplied Docker HTTP profile, change the URL to the reachable port 8765 endpoint and use `bearer_token`.
 
 1. Set `url` to the MCP endpoint reachable from LiteLLM.
 2. For a token-protected endpoint, set `auth_type` to `bearer_token`.
@@ -290,6 +320,30 @@ Follow the current skill sequence for source evidence, part construction, valida
 The complete service also requires a dimensioned technical drawing. Its creation can precede or follow the model.
 HTTP transport does not change the evidence or review requirements.
 
+## Upload, jobs, and download procedure
+
+1. Call `upload_begin` with the authorized PDF filename, byte count, and SHA-256.
+2. Send base64 chunks with `upload_chunk` at the committed byte offset. Keep each decoded chunk within 512 KiB unless the configured limit is smaller.
+3. After a lost response, read `upload_get`. Exact chunk retries are safe; changed bytes or chunk boundaries are rejected.
+4. Call `upload_complete`. It verifies size, hash, and PDF header/trailer markers. Structural validation remains `not_tested` until actual preparation checks run.
+5. Use the returned `source_id` with the PDF tools. Compare source hashes across operations.
+6. Use `job_submit` for long builds, drawing renders, or STEP release. Supply the normal operation arguments and an idempotency key.
+7. Read `job_get` until it reaches a terminal state. Inspect `result` and `error`; submission alone is not successful construction.
+8. Download output with `artifact_read` at successive byte offsets. Verify the complete download against `artifact_get.sha256`.
+
+Reuse an idempotency key only for an identical request. The service verifies the current revision again when the job starts.
+The default queue limit is 128 queued or active jobs. Exact idempotent retries remain available at capacity.
+`job_cancel` prevents queued work from starting. Running work can still finish with effects and a `succeeded` or `failed` state.
+Cancellation cannot roll back CAD changes or released artifacts.
+After restart, queued jobs resume; unfinished active jobs become `interrupted` and are not replayed.
+Inspect their run state before a replacement request.
+
+The drawing adapter renders supplied 2D geometry with native DXF dimensions and a PDF copy.
+It does not infer arbitrary projections or sections from a solid.
+Either drawing or model can be created first. Record the final drawing review after the model build, against the current drawing hash and part revision.
+A model rebuild invalidates the previous drawing review. STEP release requires an accepted current review and passing geometry checks.
+AP242 construction and semantic PMI remain M3 requirements.
+
 ## 10. Diagnose connection problems
 
 | Symptom | Action |
@@ -307,7 +361,11 @@ HTTP transport does not change the evidence or review requirements.
 | `CAD_DISABLED` | Enable `[cad]` only in a deployment with the supported Linux sandbox. |
 | `SANDBOX_UNAVAILABLE` | Use the maintained Docker profile and inspect the worker probe. Do not use an unsandboxed fallback. |
 | Vector analysis rejects the page layout | Use the normal PDF image tools. The vector profile accepts orthogonal page rotation, but still requires the supported full-page boxes and UserUnit 1. |
-| PDF path rejected | Use an existing absolute server path inside a permitted input directory. |
+| Path fields rejected | Upload bytes and use source/artifact IDs in the domain profile. |
+| `JOB_SERVICE_BUSY` | Stop the duplicate service for this store. Do not delete a live lock file. |
+| `JOB_QUEUE_FULL` | Wait for active work to finish or cancel queued work. |
+| `CURRENT_DRAWING_REQUIRED` | Render a checked drawing for the current part revision. |
+| `DRAWING_REVIEW_REQUIRED` | Review the current drawing and model candidate. |
 | Poppler unavailable | Install `pdftoppm` or set its actual executable path in the configuration. |
 | Timeout or lost response | Inspect the model and artifacts before you repeat a CAD operation. |
 
@@ -320,14 +378,16 @@ Use the [stdio registration example](litellm-stdio.example.json) for LiteLLM's s
 - Part mutations use explicit stored revisions. Coordinate changes to the same part.
 - Per-run locks protect part operations. A competing call can return `RUN_BUSY`.
 - Stateless HTTP supplies no MCP session ID or stream resumption. The part store is separate from transport state.
-- Returned artifact paths refer to server files. MCP image blocks remain available to remote clients.
-- Bearer authentication does not provide user-specific file isolation. CAD workers retain their separate sandbox restrictions.
-- The server does not automatically retry interrupted CAD calls.
+- Domain results use artifact IDs. MCP image blocks remain available to remote clients.
+- Domain storage verifies the trusted principal. MCP supplies one configured principal; bearer access is shared for this deployment.
+- No aggregate disk quota or automatic retention policy is supplied. Operators must manage retained storage.
+- The server does not automatically retry interrupted active CAD calls. Queued jobs resume after restart.
 
 ## Validate the deployment
 
 Verify the connection through each client that will use this deployment.
-Test HTTP initialization, tool discovery, status, PDF rendering, and the configured worker probe.
+Test HTTP initialization, tool discovery, status, PDF upload/render/download, jobs, and the configured worker probe.
+Test drawing output and its current-review release gate.
 Test CAD construction and fresh STEP re-import separately.
 Verify token rejection and the permitted Host and Origin values.
 Record actual results separately from this guide.

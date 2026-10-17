@@ -14,8 +14,8 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0011](0011-diagrams-in-readme-checked-by-ci.md) | Architecture diagram from a versioned source, as an image in the README, checked by CI |
 | [0012](0012-demo-app-as-frontend-and-backend-container.md) | Demo app as a frontend container (nginx) and a backend container (FastAPI) |
 | [0013](0013-vector-analysis-in-mcp.md) | Keep vector analysis in the MCP; remove the standalone extractor package and CLI |
-
 | [0014](0014-headless-build123d-metric-prototype.md) | Headless build123d prototype, sandbox boundary, staged delivery, and challenge acceptance |
 | [0015](0015-web-ui-on-tanstack-shadcn-with-service-adapter.md) | Web UI on TanStack Router, TanStack Query, and shadcn, with a replaceable service adapter |
+| [0016](0016-shared-domain-service-and-drawing-delivery.md) | Shared domain services, persistent uploads and jobs, DXF/PDF drawing delivery, and current-review release gates |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

@@ -46,12 +46,24 @@ class CadSettings(BaseModel):
     max_tool_calls: int = Field(default=45, ge=5, le=100, strict=True)
 
 
+class DomainSettings(BaseModel):
+    """Configure the shared service. Adapters supply the trusted identity."""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    root: Path | None = None
+    principal: str = Field(default="local", min_length=1, max_length=256)
+    max_source_bytes: int = Field(default=20971520, ge=1, le=20971520, strict=True)
+    max_chunk_bytes: int = Field(default=524288, ge=1, le=524288, strict=True)
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pdf: PdfSettings
     server: ServerSettings = Field(default_factory=ServerSettings)
     http: HTTPSettings = Field(default_factory=HTTPSettings)
     cad: CadSettings = Field(default_factory=CadSettings)
+    domain: DomainSettings = Field(default_factory=DomainSettings)
 
     @classmethod
     def load(cls, path: str | Path) -> "Settings":
@@ -66,6 +78,8 @@ class Settings(BaseModel):
 
         settings.pdf.allowed_roots = [resolve(p) for p in settings.pdf.allowed_roots]
         settings.pdf.output_root = resolve(settings.pdf.output_root)
+        if settings.domain.root is not None:
+            settings.domain.root = resolve(settings.domain.root)
         value = settings.pdf.pdftoppm
         if value and ("/" in value or "\\" in value):
             settings.pdf.pdftoppm = str(resolve(Path(value)))

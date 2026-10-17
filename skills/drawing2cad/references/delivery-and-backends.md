@@ -16,15 +16,19 @@ AP242 and semantic PMI remain binding final requirements.
 They do not block delivery of an explicitly limited M1 prototype.
 A passed prototype must not be described as the final AP242 master.
 
-M1 can use permitted server-side paths.
-M2 must accept PDF uploads and keep storage paths internal.
-Clients then use source, run, and artifact IDs.
+The M2 domain profile accepts PDF uploads and keeps storage paths internal.
+Clients use source, run, job, and artifact IDs.
 A remote client must not need access to the server filesystem.
+The local-path profile remains for development only.
+Shared services, storage, jobs, notes, and drawing delivery belong to the MCP milestone.
+The web API and React interface are a separate implementation milestone using the same service instance and contracts.
+MCP currently uses one configured principal. Its bearer token does not create separate client identities.
 
 ## Technical drawing
 
-The proposed default is editable DXF plus a PDF inspection copy.
-The M2 adapter must prove native dimension entities, correct units, view geometry, and rendering.
+The maintained format is editable DXF plus a PDF inspection copy rendered from the same entities.
+The adapter validates supplied view geometry, dimensions, evidence, and layout.
+It does not automatically project solids or extract sections. Source accuracy and drawing/model agreement require independent review.
 Raw projections or hand-written SVG do not establish a complete technical drawing.
 
 Use [drawing-first.md](drawing-first.md) for sheet requirements.

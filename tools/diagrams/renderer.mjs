@@ -72,7 +72,7 @@ export function renderSvg(data, theme) {
     `<rect width="${width}" height="${height}" fill="${t.bg}"/><g font-family="Arial, Helvetica, sans-serif">`,
     `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="${t.line}"/></marker></defs>`,
     textAt(data.meta.title, 40, 45, { size: 24, weight: 700, color: t.text }),
-    textAt('Current M1 runtime and explicit later milestones', 40, 70, { size: 14, color: t.muted })];
+    textAt(data.meta.subtitle ?? 'Service boundaries and delivery milestones', 40, 70, { size: 14, color: t.muted })];
   for (const region of data.boundaries ?? []) {
     const wrapped = region.wraps.map((id) => nodes.get(id));
     const x = Math.min(...wrapped.map((n) => n.pos[0])) - 24;

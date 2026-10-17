@@ -1,11 +1,11 @@
-# M1 uses MCP stdio. Input and output directories are supplied by the operator.
+# Remote clients upload PDF bytes through MCP. Persistent data stays in a volume.
 services:
   mcp:
     build:
       context: .
       dockerfile: drawing2cad-mcp/Dockerfile
       target: production
-    image: drawing2cad-mcp:m1
+    image: drawing2cad-mcp:m2
     stdin_open: true
     network_mode: none
     read_only: true
@@ -17,10 +17,6 @@ services:
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=512m
     volumes:
-      - type: bind
-        source: ${DRAWING2CAD_INPUT_DIR:-./resources}
-        target: /inputs
-        read_only: true
       - cad-data:/data
 volumes:
   cad-data:

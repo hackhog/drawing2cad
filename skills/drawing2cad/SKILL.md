@@ -1,8 +1,8 @@
 ---
 name: drawing2cad
-description: Reconstruct CAD from permitted technical PDF drawings through drawing2cad-mcp. Record source evidence and assumptions, build an editable part description, and validate STEP. Use the same interface for model changes and separately verified AP242 adapter tests.
+description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record evidence, build an editable part description, deliver a dimensioned DXF/PDF drawing, and validate STEP within the live capability scope.
 metadata:
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # drawing2cad
@@ -11,10 +11,11 @@ Use only `drawing2cad-mcp` for PDF preparation and CAD execution.
 Use its live schemas. Do not call CAD libraries, a local CAD shell, or another CAD MCP directly.
 Keep backend-specific code inside maintained server adapters.
 
-The declarative M1 path uses a versioned JSON part description as its editable construction source.
+The declarative path uses a versioned JSON part description as its editable construction source.
 It exports AP214 geometry and verifies fresh re-import.
 This does not prove editable construction or semantic PMI inside STEP.
-The complete service must also deliver a dimensioned technical drawing.
+The domain profile also supplies a dimensioned DXF drawing and its PDF inspection copy from supplied 2D view geometry.
+It does not automatically project arbitrary solids or extract sections.
 Drawing and model creation can occur in either order; their final revisions must agree.
 AP242 construction, adapter edits, and semantic PMI remain required final capabilities.
 
@@ -22,7 +23,10 @@ AP242 construction, adapter edits, and semantic PMI remain required final capabi
 
 1. Call `drawing2cad_status`, `cad_capabilities`, `cad_worker_probe`, and `part_schema`.
    Record versions, supported operations, sandbox results, and unavailable claims.
-2. Read the authorized PDF through `pdf_info`, `pdf_read_text`, and `pdf_render_page`.
+   Read `drawing_schema` before preparing a drawing. If the live server lacks drawing delivery, report that gap; do not claim a complete result.
+2. In the domain profile, upload authorized PDF bytes with `upload_begin`, `upload_chunk`, and `upload_complete`.
+   Use the exact byte count and SHA-256. Resume from `upload_get` after a lost response.
+   Read the returned `source_id` through `pdf_info`, `pdf_read_text`, and `pdf_render_page`.
    Use `pdf_crop_region` and `drawing_extract` for needed detail.
    Compare `source.sha256` between operations.
 3. Inventory required views, printed dimensions, features, and unclear details.
@@ -31,6 +35,7 @@ AP242 construction, adapter edits, and semantic PMI remain required final capabi
 4. Prepare and validate the versioned description with `part_validate`.
    Give stable feature IDs and source regions for values and assumptions.
 5. Use `part_create` with `run_id`, `description`, and authorized `sources`.
+   Bind sources by ID, hash, and construction or verification role.
    Use granular tools to revise features, then call `build_from_description`.
    Read state with `part_read`; use `part_update` for a changed description.
    Mutations require `run_id` and the current `expected_revision`.
@@ -38,13 +43,19 @@ AP242 construction, adapter edits, and semantic PMI remain required final capabi
    Compare them with independent source expectations, not only construction constants.
    Have a separate reviewer compare the declared features and measurements with every source view.
    A valid solid or a passed bounding-box check cannot establish that internal webs, ribs, or local details are present.
-7. Inspect the build candidate and its fresh-worker re-import results.
+7. Prepare the revision-bound drawing specification. Use `drawing_validate` and `drawing_render`.
+   Inspect the actual PDF, native dimension placement, required views and sections, manufacturing notes, and uncertainty markers.
+   Either drawing or model can be created first. Record `drawing_review` after the model build, using the current drawing hash, revision, source hashes, reviewer, and reason.
+   The review is an identified attestation. Automatic drawing-to-solid equivalence remains `not_tested`.
+   Model edits require updated drawing content and binding. A rebuild invalidates the earlier drawing review.
+8. Inspect the build candidate and its fresh-worker re-import results.
    Call `export_step` with the verified revision and complete source-review `coverage`.
    Record external STEP analysis and target-CAD opening separately.
    Treat the coverage counts as a review assertion. Retain a callout-to-measurement inventory to support it.
    If an independent source review fails, report the released artifact as rejected for source accuracy.
-8. Call `part_export_review`.
-   Deliver the description, released STEP artifact, review list, coverage report, manifest, trace, and actual test statuses.
+9. Call `part_export_review`.
+   Deliver the description, DXF and PDF drawing, released STEP, review evidence, manifest, trace, and actual test statuses.
+   Download artifacts with `artifact_read` and verify complete file hashes against their metadata.
    If release is blocked, identify the candidate as an unapproved diagnostic artifact.
 
 Granular operations are `create_base_body`, `add_hole`, `add_pocket`, `add_cut`, `add_chamfer`, and `add_fillet`.
@@ -58,6 +69,11 @@ Read [managed-workflow.md](references/managed-workflow.md) for revision handling
 Use [validation.md](references/validation.md) before delivery.
 A tool name in this skill is not proof that an older server supplies it.
 If the matching tool or sandbox is unavailable, report the precise capability gap.
+The local-path development profile is separate. Use its path-based schema only when the task explicitly uses that profile; a client-local path is not an upload.
+
+For long operations, use `job_submit` and inspect `job_get` until completion.
+An identical request can reuse its idempotency key; changed requests need a new key.
+Cancellation cannot undo a running operation. After interruption, inspect stored run state before resubmission.
 
 ## Evidence and assumptions
 
