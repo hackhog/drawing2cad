@@ -6,7 +6,7 @@ import { delivery } from "@/lib/release";
 import type { Tone } from "@/lib/status";
 
 const RELEASE: Record<ReleaseState, [Tone, string]> = {
-  draft: ["wait", "Entwurf"], stale: ["flag", "veraltet"], blocked: ["error", "gesperrt"], released: ["done", "freigegeben"],
+  draft: ["wait", "Entwurf"], stale: ["flag", "veraltet"], blocked: ["flag", "nicht freigegeben"], released: ["done", "freigegeben"],
 };
 const CHECK: Record<ValidationResult["status"], [Tone, string]> = {
   pass: ["done", "bestanden"], fail: ["error", "fehlgeschlagen"], not_tested: ["wait", "nicht geprüft"],

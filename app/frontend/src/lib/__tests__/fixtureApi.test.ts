@@ -74,6 +74,13 @@ describe("run lifecycle", () => {
     expect(run.error?.code).toBe("STEP_REIMPORT_FAILED");
     expect(run.review?.release_state).toBe("blocked");
     expect(delivery(run).released).toBe(false);
+    expect(delivery(run).reasons[0]).toMatch(/Prüfung ist fehlgeschlagen/);
+  });
+
+  it("does not report a failed check for a valid build without release", async () => {
+    const { run } = await finishedRun("fail-case.pdf");
+    const unreleased = { ...run, review: { ...run.review!, validation: run.review!.validation.filter((v) => v.status !== "fail") } };
+    expect(delivery(unreleased).reasons).toEqual(["Modell gebaut, aber nicht freigegeben: Geprüfte Zeichnung und STEP-Freigabe fehlen."]);
   });
 });
 

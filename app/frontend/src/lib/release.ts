@@ -18,11 +18,14 @@ export function delivery(run: Run): Delivery {
   const reasons: string[] = [];
   const state = run.review?.release_state ?? "draft";
   if (state === "stale") reasons.push("Ergebnisse gehören zu einer älteren Revision und werden neu erzeugt.");
-  if (state === "blocked") reasons.push("Eine Prüfung ist fehlgeschlagen. Die Ergebnisse sind gesperrt.");
+  // "blocked" also covers a valid build without release; name a failed check only when one failed.
+  const failed = run.review?.validation.some((v) => v.status === "fail") ?? false;
+  if (state === "blocked") reasons.push(failed ? "Eine Prüfung ist fehlgeschlagen. Die Ergebnisse sind gesperrt."
+    : "Modell gebaut, aber nicht freigegeben: Geprüfte Zeichnung und STEP-Freigabe fehlen.");
   if (state === "draft") reasons.push("Noch keine geprüften Ergebnisse.");
   // These checks guard against an inconsistent service state; the reported state already explains the other cases.
   if (state === "released" && outputs.length && !revisionsAgree) reasons.push("Zeichnung und Modell gehören nicht zur aktuellen Revision.");
-  if (state === "released" && run.review?.validation.some((v) => v.status === "fail")) reasons.push("Mindestens eine Prüfung ist fehlgeschlagen.");
+  if (state === "released" && failed) reasons.push("Mindestens eine Prüfung ist fehlgeschlagen.");
   return { released: state === "released" && revisionsAgree && reasons.length === 0, revisionsAgree, reasons };
 }
 
