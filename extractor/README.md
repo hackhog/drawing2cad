@@ -59,6 +59,8 @@ The extractor does not know the scale (for example 2:1). The scale is in the tit
 - Text: only the NX font of the samples (34 characters). Unknown characters (for example "±") show as `?`,
   but the extractor can also read them as a wrong known character. The title block (scale, weight)
   uses stroke text, and the extractor does not read it yet.
+- A filled glyph that the PDF stores as rectangle (`re`) path items stops the text reader with an error.
+  NX writes glyphs only as polylines, but other programs can use rectangles.
 - Extension lines that do not touch an arrowhead sometimes stay `contour`. Because of this,
   view frames can be a little too large (for example Welle).
 - The extractor does not recognize arrowheads that are not isosceles triangles. The 9 samples do not
