@@ -1,10 +1,12 @@
 # drawing2cad-mcp
 
-This local MCP server supplies PDF metadata, embedded text, page images, and detail images.
+This MCP server supplies PDF metadata, embedded text, page images, and detail images.
 With the optional [vector extractor](../extractor/README.md), it also supplies the views, read text, and classified strokes of a vector drawing.
 It also supplies tools from an existing FreeCAD MCP with the prefix `freecad_`.
 
-Agent → **drawing2cad-mcp** → PDF preparation / existing FreeCAD MCP → FreeCAD addon.
+Agent → **Streamable HTTP or stdio** → **drawing2cad-mcp** → PDF preparation / existing FreeCAD MCP → FreeCAD addon.
+
+Use the [Streamable HTTP guide](STREAMABLE_HTTP.md) for installation, authentication, LiteLLM registration, network setup, and troubleshooting.
 
 ## Tools
 
@@ -61,33 +63,120 @@ Set the TOML configuration:
 
 - `[pdf]`: permitted source directories, output directory, and optional absolute Poppler path. Without that path, the server searches `PATH` for `pdftoppm`.
 - `[freecad]`: set `enabled=true`, the existing MCP launcher in `command`, and its `args`. Optional fields are `env` and `cwd`. For PDF work alone, set `enabled=false`.
-- `[server]`: preview limits and concurrency limits. The example contains the default values.
+- `[server]`: transport, preview limits, and PDF concurrency. The default transport is `stdio`.
+- `[http]`: listener address, port, permitted Host and Origin headers, and the bearer-token environment variable.
 
 Relative **configuration paths** use the TOML directory as their base. PDF tool calls use **absolute file paths**.
 The `.local.toml` file is specific to this computer. The portable example has no user-specific paths.
 
+## Start Streamable HTTP
+
+Run this command from the package directory:
+
+```powershell
+.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml --transport streamable-http
+```
+
+On Linux or macOS, use `.venv/bin/python`.
+The default endpoint is `http://127.0.0.1:8000/mcp`.
+The path is `/mcp`. The server does not supply the legacy `/sse` transport.
+Set `[server].transport = "streamable-http"` to make HTTP the configured transport.
+CLI options `--transport`, `--host`, and `--port` override their configuration values.
+The standard command keeps stdio if the configuration does not select HTTP.
+
+The server uses the MCP SDK's stateless Streamable HTTP transport with streamed responses.
+It does not require an `Mcp-Session-Id` header.
+Each HTTP request body has a limit of 4 MiB.
+The server has no result store, stream resumption, or automatic replay of interrupted requests.
+A lost response does not prove that an operation failed or stopped.
+Inspect the actual model and artifacts before you repeat a CAD call.
+This transport setting does not make CAD operations stateless.
+One server process has one shared FreeCAD proxy. Its upstream calls run in sequence.
+Coordinate document access between clients. Separate server processes do not share a CAD write lock.
+Run one server process for one shared FreeCAD upstream until a worker coordinator exists.
+
+### Listener access
+
+The default listener accepts connections only on the local loopback interface.
+If `DRAWING2CAD_HTTP_TOKEN` is set, each request must include `Authorization: Bearer <token>`.
+The server reads the variable named by `[http].token_env` at startup.
+Set the same token in the client. Do not commit its value.
+Restart the server after a token change.
+A non-loopback listener requires a non-empty token before startup.
+
+`allowed_hosts` permits incoming Host headers. Add the deployment hostname and port before clients use that address.
+The defaults permit loopback names. A listener address such as `0.0.0.0` does not permit every Host header.
+Requests without an Origin header are permitted.
+If a request has an Origin header, it must match `allowed_origins`.
+The default empty list rejects all supplied origins. This setting does not add browser CORS support.
+
+For a container service, set the listener to `0.0.0.0` and configure its token.
+Add the actual service address, for example `drawing2cad:8000`, to `allowed_hosts`.
+Use `http://drawing2cad:8000/mcp` from another container on that network.
+The address `127.0.0.1` in a LiteLLM container refers to that container.
+For connections across an untrusted network, put the endpoint behind a TLS reverse proxy.
+Preserve the permitted Host header and request streaming through that proxy.
+
+The HTTP endpoint uses the same PDF and FreeCAD permissions as stdio.
+It does not add user-specific file isolation, a web interface, or artifact downloads.
+Returned `artifact.path` values refer to the server filesystem.
+MCP image blocks remain available to remote clients.
+The HTTP transport does not remove the current upstream's GUI dependency.
+
+For a future shared Python backend, use `drawing2cad_mcp.http.create_http_app(application)` as the ASGI application factory.
+Pass a configured `Application` and run the returned application's lifespan.
+It owns upstream startup and shutdown. Do not start a second copy for each request.
+
 ## Register with an agent
 
 Register only this server. It starts the existing FreeCAD MCP internally.
-For clients with an `mcpServers` configuration, replace the example paths:
+For LiteLLM, use [litellm-mcp.example.json](litellm-mcp.example.json) and the [registration procedure](#register-with-litellm).
+For an HTTP client with an `mcpServers` configuration, use the server URL:
+
+```json
+{
+  "mcpServers": {
+    "drawing2cad": {
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
+```
+
+Configure the bearer token through the client's secret mechanism when the server requires it.
+The client must support Streamable HTTP. A browser page or ordinary GET request is not an MCP readiness test.
+Initialize an MCP connection, list tools, and call `drawing2cad_status`.
+
+For stdio clients, replace the example paths:
 
 ```json
 {
   "mcpServers": {
     "drawing2cad": {
       "command": "C:/Projekt/drawing2cad-mcp/.venv/Scripts/python.exe",
-      "args": ["-m", "drawing2cad_mcp", "--config", "C:/Projekt/drawing2cad-mcp/drawing2cad-mcp.local.toml"]
+      "args": ["-m", "drawing2cad_mcp", "--config", "C:/Projekt/drawing2cad-mcp/drawing2cad-mcp.local.toml", "--transport", "stdio"]
     }
   }
 }
 ```
 
-Codex uses TOML for the same entry:
+Codex uses TOML. For HTTP, use a URL and an optional token variable:
+
+```toml
+[mcp_servers.drawing2cad]
+url = "http://127.0.0.1:8000/mcp"
+bearer_token_env_var = "DRAWING2CAD_HTTP_TOKEN"
+startup_timeout_sec = 30
+tool_timeout_sec = 1920
+```
+
+Omit `bearer_token_env_var` for the local listener without authentication.
+The stdio alternative is:
 
 ```toml
 [mcp_servers.drawing2cad]
 command = 'C:\Projekt\drawing2cad-mcp\.venv\Scripts\python.exe'
-args = ["-m", "drawing2cad_mcp", "--config", 'C:\Projekt\drawing2cad-mcp\drawing2cad-mcp.local.toml']
+args = ["-m", "drawing2cad_mcp", "--config", 'C:\Projekt\drawing2cad-mcp\drawing2cad-mcp.local.toml', "--transport", "stdio"]
 startup_timeout_sec = 30
 tool_timeout_sec = 1920
 ```
@@ -98,14 +187,77 @@ To supply only this interface, disable the existing direct FreeCAD entry.
 After configuration changes, reload the MCP connection in the client.
 See the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
-To start the protocol process manually, run this command:
+To start the stdio protocol process manually, run this command:
 
 ```powershell
-.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml
+.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml --transport stdio
 ```
 
 The process waits for an MCP client on stdin/stdout. It sends logs to stderr.
 An empty console is not an error.
+
+## Register with LiteLLM
+
+[litellm-mcp.example.json](litellm-mcp.example.json) is a request body for `POST /v1/mcp/server` on LiteLLM.
+It registers Streamable HTTP with the explicit LiteLLM value `"transport": "http"`.
+It is not a stdio UI JSON block or a complete LiteLLM configuration file.
+
+1. Install `drawing2cad-mcp`, Poppler, and the selected FreeCAD upstream on the MCP server host.
+2. Create the local configuration from the [TOML example](drawing2cad-mcp.example.toml). Set its paths for that host.
+3. Start the [Streamable HTTP server](#start-streamable-http).
+4. Set the example's `url` to an address that the LiteLLM process can reach.
+5. Register the JSON with the LiteLLM management API, or enter its values in the Admin UI.
+6. Assign the necessary MCP access in LiteLLM and list the tools.
+7. Call `drawing2cad_status` with `refresh_freecad=true` through the registered tool name.
+
+For the UI, open **MCP Servers → Add New MCP Server**.
+Select **Streamable HTTP** and enter the server name, alias, URL, and authentication settings.
+Configure database storage for UI registrations as required by the LiteLLM deployment.
+For API registration, send the example as JSON to the LiteLLM endpoint with a permitted LiteLLM administration credential.
+The `auth_type` and `auth_value` fields configure LiteLLM's connection to drawing2cad.
+They are separate from the credential used to call the LiteLLM management API.
+
+The example uses `auth_type="none"` for the default local listener without a token.
+If the MCP server requires a token, set `auth_type="bearer_token"` and supply `auth_value` through the registration process.
+Use the same value as the server's configured token variable. Keep it outside the committed JSON example.
+Do not use `auth_type="api_key"`; that setting sends a different header.
+
+LiteLLM `config.yaml` uses a separate format:
+
+```yaml
+mcp_servers:
+  drawing2cad:
+    url: http://127.0.0.1:8000/mcp
+    transport: http
+    auth_type: none
+```
+
+For a token-protected server, use these fields instead of `auth_type: none`:
+
+```yaml
+    auth_type: bearer_token
+    auth_value: os.environ/DRAWING2CAD_HTTP_TOKEN
+```
+
+Set that variable in the LiteLLM process environment.
+HTTP registration does not require `LITELLM_ENABLE_MCP_STDIO`.
+See the official [transport and configuration reference](https://docs.litellm.ai/docs/mcp_config_reference)
+and [API registration example](https://docs.litellm.ai/docs/mcp_public_internet#per-server-setting).
+Use the [authentication reference](https://docs.litellm.ai/docs/mcp/) for credential fields.
+
+### Optional stdio registration
+
+[litellm-stdio.example.json](litellm-stdio.example.json) preserves the `mcpServers` JSON format for the LiteLLM stdio UI.
+Install the MCP package on the LiteLLM host. Replace both paths with paths accessible to that process.
+Set `LITELLM_ENABLE_MCP_STDIO=true` in the LiteLLM process environment before startup.
+Select **Standard Input/Output (stdio)** and paste the adjusted JSON into its configuration field.
+See the [stdio registration instructions](https://docs.litellm.ai/docs/mcp/#add-stdio-mcp-server).
+
+Neither registration mode installs the planned headless CAD worker. The current FreeCAD upstream still requires its own runtime.
+
+Load the complete [drawing2cad skill folder](../skills/drawing2cad/SKILL.md) in the agent that uses these tools.
+Include its `references/` files. MCP registration does not install the skill or load its workflow instructions.
+The skill remains at `skills/drawing2cad`; the JSON examples remain with the MCP configuration examples.
 
 ## Reproducible PDF procedure
 
@@ -176,7 +328,9 @@ The extractor supports the BCT template (A3, NX export). See the [extractor limi
 
 ```powershell
 $env:DRAWING2CAD_PDFTOPPM = 'C:\Pfad\zu\pdftoppm.exe'
-.\.venv\Scripts\python.exe -m pytest tests --basetemp tmp/tests -q
+New-Item -ItemType Directory -Force ../output | Out-Null
+$testRun = '../output/tests-' + [guid]::NewGuid().ToString('N')
+.\.venv\Scripts\python.exe -m pytest tests --basetemp $testRun -q
 ```
 
 Without Poppler, the test suite skips image-render tests.
@@ -186,7 +340,7 @@ The suite uses synthetic PDFs and a harmless MCP test process. It does not chang
 It tests rotation, CropBox/MediaBox, UserUnit, detail pixels, source identity, errors, transport fidelity, and cancellation without automatic retry.
 
 The project skill is at `../skills/drawing2cad`.
-Version **0.5.1** specifies this interface and the model-independent workflow in `references/drawing2cad-mcp.md`.
+It specifies this interface and the model-independent workflow in `references/drawing2cad-mcp.md`.
 Create and verify the controlling dimensioned drawing before the 3D build.
 Use `references/drawing-first.md` for the necessary evidence.
 This is a work instruction. The server does not yet enforce it.

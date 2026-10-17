@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import tomllib
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -35,9 +36,19 @@ class FreeCADSettings(BaseModel):
 
 class ServerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    transport: Literal["stdio", "streamable-http"] = "stdio"
     preview_max_pixels: int = Field(default=4000000, gt=0, le=16000000, strict=True)
     preview_max_bytes: int = Field(default=6000000, gt=0, le=12000000, strict=True)
     pdf_concurrency: int = Field(default=2, ge=1, le=4, strict=True)
+
+
+class HTTPSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    host: str = Field(default="127.0.0.1", min_length=1, max_length=253, pattern=r"^[A-Za-z0-9_.:\-]+$")
+    port: int = Field(default=8000, ge=1, le=65535, strict=True)
+    allowed_hosts: list[str] = Field(default_factory=lambda: ["127.0.0.1:*", "localhost:*", "[::1]:*"], min_length=1)
+    allowed_origins: list[str] = Field(default_factory=list)
+    token_env: str = Field(default="DRAWING2CAD_HTTP_TOKEN", pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class Settings(BaseModel):
@@ -45,6 +56,7 @@ class Settings(BaseModel):
     pdf: PdfSettings
     freecad: FreeCADSettings = Field(default_factory=lambda: FreeCADSettings(enabled=False))
     server: ServerSettings = Field(default_factory=ServerSettings)
+    http: HTTPSettings = Field(default_factory=HTTPSettings)
 
     @classmethod
     def load(cls, path: str | Path) -> "Settings":

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "drawing2cad": {
+      "command": "/opt/drawing2cad/drawing2cad-mcp/.venv/bin/python",
+      "args": [
+        "-m",
+        "drawing2cad_mcp",
+        "--config",
+        "/opt/drawing2cad/drawing2cad-mcp/drawing2cad-mcp.local.toml",
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}

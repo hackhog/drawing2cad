@@ -17,6 +17,19 @@ startup_timeout_seconds = 10
 timeout_seconds = 120
 
 [server]
+transport = "stdio"
 preview_max_pixels = 4000000
 preview_max_bytes = 6000000
 pdf_concurrency = 2
+
+[http]
+# Use --transport streamable-http, or set server.transport to streamable-http.
+# The endpoint path is /mcp. CLI --host and --port override these values.
+host = "127.0.0.1"
+port = 8000
+allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+# Requests without Origin are permitted. Add explicit origins only if necessary.
+allowed_origins = []
+# Set this environment variable in the server process to require a bearer token.
+# A non-loopback listener requires a non-empty token. Do not put secrets here.
+token_env = "DRAWING2CAD_HTTP_TOKEN"

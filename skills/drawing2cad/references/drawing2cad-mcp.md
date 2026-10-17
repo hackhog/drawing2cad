@@ -6,11 +6,30 @@ The production target is a complete headless server pipeline. It must create and
 
 ## Initial configuration
 
-Install the package with Python 3.11 or later. Complete `drawing2cad-mcp.example.toml` for the server. To start the stdio server, use `python -m drawing2cad_mcp --config <absolute-config-path>`. Alternatively, use `drawing2cad-mcp --config <absolute-config-path>`. Replace the placeholder with the deployment configuration path. Register only this server with the agent client. The server starts its FreeCAD upstream internally. Keep deployment paths and credentials outside the skill package.
+Install the package with Python 3.11 or later. Complete `drawing2cad-mcp.example.toml` for the server.
+Start HTTP with `python -m drawing2cad_mcp --config <absolute-config-path> --transport streamable-http`.
+Use `--transport stdio` for a client that starts the MCP process locally.
+Without an override, the configured transport applies. Its default is `stdio`.
+Alternatively, use the `drawing2cad-mcp` command with the same arguments.
+Replace the placeholder with the deployment configuration path. Register only this server with the agent client.
+The server starts its FreeCAD upstream internally. Keep deployment paths and credentials outside the skill package.
 
 - `[pdf]`: Set `allowed_roots` and `output_root`. Optional fields are `pdftoppm`, `timeout_seconds`, `max_pdf_bytes`, and `max_pixels`.
 - `[freecad]`: Set `enabled`, `command`, and `args`. Optional fields include `env` and `cwd`. Also configure `startup_timeout_seconds` and `timeout_seconds`. If FreeCAD is unavailable, initially use `enabled=false`. Subsequent CAD construction requires a functional upstream.
-- `[server]`: `preview_max_pixels`, `preview_max_bytes`, and `pdf_concurrency` limit image previews and concurrent PDF preparation.
+- `[server]`: `transport` selects `stdio` or `streamable-http`. `preview_max_pixels`, `preview_max_bytes`, and `pdf_concurrency` limit previews and PDF preparation.
+- `[http]`: Configure `host`, `port`, `allowed_hosts`, `allowed_origins`, and `token_env`. The default endpoint is `http://127.0.0.1:8000/mcp`.
+
+CLI options `--host` and `--port` override the listener configuration.
+Set the variable named by `token_env` to require a bearer token. Its default name is `DRAWING2CAD_HTTP_TOKEN`.
+A non-loopback listener requires a non-empty token. Clients must send `Authorization: Bearer <token>` when authentication is enabled.
+Permit the actual deployment Host header in `allowed_hosts`. Requests with an Origin header must match `allowed_origins`.
+Use a TLS reverse proxy for connections across untrusted networks. Keep credentials outside model contracts and run evidence.
+
+The HTTP transport has no MCP session ID. FreeCAD document state remains shared within its upstream runtime.
+One server process uses one proxy and serializes upstream calls. Coordinate document access across clients and server processes.
+An HTTP connection does not prove headless CAD operation. It also does not supply user-specific file isolation or artifact downloads.
+Remote clients can inspect MCP image blocks. Returned artifact paths identify files on the server host.
+Do not treat those paths as files on the agent host.
 
 Relative configuration paths refer to the TOML file folder. Tool calls use absolute PDF paths. `allowed_roots` limits file access for PDF tools. Within these folders, the agent must still select only the sources authorized for the task. The server writes outputs to `output_root`.
 
@@ -48,7 +67,7 @@ Example for the central upper third of a page: `[0.25, 0.0, 0.75, 0.34]`. Determ
 
 Image results contain `source`, `artifact`, and `provenance`. `artifact` contains `path`, `sha256`, `mime_type`, `width_pixels`, `height_pixels`, and `size_bytes`. `provenance` includes the page, DPI, rotation, original and effective page boxes, and normalized box. Detail images also include `pixel_bbox` and `full_page_pixels`. Left and top coordinates are rounded down. Right and bottom coordinates are rounded up. Use the returned path. Do not guess a file name.
 
-The PNG artifact retains the full generated resolution. The preview directly included in the MCP result can be reduced for transport. If the host supplies image content directly, examine it. For small dimensions, open the high-resolution artifact or select a smaller region. `include_image=false` suppresses the image preview. It does not prevent file creation. Text output alone is not visual inspection evidence.
+The PNG artifact retains the full generated resolution. The preview directly included in the MCP result can be reduced for transport. If the host supplies image content directly, examine it. For small dimensions, open an accessible high-resolution artifact or select a smaller region. `include_image=false` suppresses the image preview. It does not prevent file creation. Text output alone is not visual inspection evidence.
 
 ## FreeCAD through the same interface
 

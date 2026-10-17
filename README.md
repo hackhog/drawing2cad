@@ -2,6 +2,7 @@
 
 This project supplies tools and a reproducible agent workflow to reconstruct CAD models from technical PDF drawings.
 The Python MCP prepares PDFs and gives access to the existing FreeCAD MCP through one interface.
+Clients can use Streamable HTTP at `/mcp` or the existing stdio transport.
 The skill specifies model construction, source evidence, unresolved dimensions, and tests of CAD and STEP outputs.
 
 ## Quick start: demo UI
@@ -30,6 +31,7 @@ After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks th
 | Path | Contents |
 |---|---|
 | [drawing2cad-mcp/](drawing2cad-mcp/README.md) | Python server, installation, configuration, and tests |
+| [Streamable HTTP guide](drawing2cad-mcp/STREAMABLE_HTTP.md) | Installation, authentication, LiteLLM, network setup, and troubleshooting |
 | [skills/drawing2cad/](skills/drawing2cad/SKILL.md) | Skill, workflow, adapter instructions, and references |
 | [extractor/](extractor/README.md) | Deterministic vector extractor: PDF → classified strokes, views, and read texts (JSON) |
 | [app/](app/README.md) | Demo UI (FastAPI + React): upload PDFs, guided review of the extractor result, 3D model view |
@@ -37,6 +39,8 @@ After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks th
 | [docs/diagrams/](docs/diagrams/drawing2cad-overview.json) | Architecture diagram: JSON source, interactive HTML, SVG for this README |
 | `tools/diagrams/` | Builds and checks the diagrams (archify, Playwright), not part of the app build |
 | `compose.yaml` | Local start of the demo UI with Docker Compose |
+| [litellm-mcp.example.json](drawing2cad-mcp/litellm-mcp.example.json) | Streamable HTTP registration body for the LiteLLM management API |
+| [litellm-stdio.example.json](drawing2cad-mcp/litellm-stdio.example.json) | Optional stdio registration example for the LiteLLM Admin UI |
 | `resources/` | Original drawings and CAD references for verification |
 | `output/` | Locally generated models, drawings, preview images, and test reports |
 | `tmp/` | Local temporary data |
@@ -44,10 +48,18 @@ After a change, run `npm run diagrams --prefix tools/diagrams`. The CI checks th
 ## Start
 
 Use the [MCP documentation](drawing2cad-mcp/README.md#installation) for Python, Poppler, FreeCAD, and test commands.
+Use the [Streamable HTTP guide](drawing2cad-mcp/STREAMABLE_HTTP.md) for the complete HTTP setup procedure.
 Copy [drawing2cad-mcp.example.toml](drawing2cad-mcp/drawing2cad-mcp.example.toml) to `drawing2cad-mcp.local.toml`.
 Set the configuration values for your computer.
 
+For LiteLLM, use [litellm-mcp.example.json](drawing2cad-mcp/litellm-mcp.example.json).
+Follow the [registration procedure](drawing2cad-mcp/README.md#register-with-litellm) to start the HTTP server and register its URL.
+Existing stdio clients can keep their configuration. The default transport remains `stdio`.
+Load the complete [drawing2cad skill](skills/drawing2cad/SKILL.md), including its references, in the agent that uses the MCP.
+MCP registration supplies tools. The agent must also load the skill instructions.
+
 The MCP supplies PDF metadata, text, page images, detail images, and FreeCAD tools.
+The HTTP transport does not supply a headless CAD worker, web interface, or download service.
 Test CAD history, semantic PMI, and exports without a GUI for each adapter and tool version.
 A successful STEP export does not prove these properties.
 

@@ -1,4 +1,4 @@
-"""Stdio MCP facade: bounded PDF tools and a transparent FreeCAD tool proxy."""
+"""MCP facade over stdio or Streamable HTTP, with one FreeCAD tool proxy."""
 
 from __future__ import annotations
 
@@ -86,6 +86,7 @@ def error_result(code: str, message: str) -> CallToolResult:
 class Application:
     def __init__(self, settings: Settings, proxy: FreeCADProxy | None = None):
         self.settings = settings
+        self.transport = settings.server.transport
         self.pdf = PdfService(**settings.pdf.model_dump())
         self.proxy = proxy
         if self.proxy is None and settings.freecad.enabled:
@@ -144,6 +145,7 @@ class Application:
             extractor_version = None
         return {
             "name": "drawing2cad-mcp", "version": __version__,
+            "transport": self.transport,
             "dependencies": {package: version(package) for package in ("mcp", "pypdf", "Pillow")},
             "pdf": {"allowed_roots": [str(p) for p in self.settings.pdf.allowed_roots],
                     "output_root": str(self.settings.pdf.output_root),
@@ -228,21 +230,48 @@ class Application:
 
 
 async def serve(settings: Settings) -> None:
+    """Run the local stdio transport."""
     application = Application(settings)
+    application.transport = "stdio"
     async with stdio_server() as streams:
         await application.server.run(streams[0], streams[1], application.server.create_initialization_options())
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="PDF preparation and FreeCAD behind one local stdio MCP.")
+    parser = argparse.ArgumentParser(description="PDF preparation and FreeCAD through stdio or Streamable HTTP.")
     parser.add_argument("--config", type=Path, required=True, help="Path to the explicit TOML configuration")
+    parser.add_argument("--transport", choices=("stdio", "streamable-http"), help="Override server.transport")
+    parser.add_argument("--host", help="Override http.host for Streamable HTTP")
+    parser.add_argument("--port", type=int, help="Override http.port for Streamable HTTP")
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)  # stderr; stdout is exclusively MCP protocol.
     try:
         settings = Settings.load(args.config)
+        if args.transport is not None:
+            settings.server.transport = args.transport
+        if args.host is not None or args.port is not None:
+            if settings.server.transport != "streamable-http":
+                raise ValueError("--host and --port require the streamable-http transport")
+            values = settings.http.model_dump()
+            if args.host is not None:
+                values["host"] = args.host
+            if args.port is not None:
+                values["port"] = args.port
+            settings.http = type(settings.http).model_validate(values)
+        if settings.server.transport == "streamable-http":
+            import uvicorn
+            from .http import create_http_app
+
+            app = create_http_app(Application(settings))
     except (OSError, ValueError) as error:
         parser.error(str(error))
-    asyncio.run(serve(settings))
+    if settings.server.transport == "streamable-http":
+        # One process owns the shared CAD proxy. Forwarded headers require an
+        # explicitly configured deployment boundary and are not trusted here.
+        uvicorn.run(app, host=settings.http.host, port=settings.http.port,
+                    workers=1, proxy_headers=False, timeout_graceful_shutdown=10)
+    else:
+        asyncio.run(serve(settings))
 
 
 if __name__ == "__main__":

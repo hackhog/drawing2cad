@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct CAD models from permitted technical drawings through drawing2cad-mcp. Create and verify the dimensioned drawing before the 3D model. Record evidence and uncertainties. Test editable construction and PMI in STEP AP242. Also use this skill for reconstruction from STEP alone, model changes, and adapter tests within a verified capability scope.
 metadata:
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # drawing2cad: a reproducible AP242 master file
@@ -33,6 +33,7 @@ The current GUI bridge is a development path. It does not meet the production re
 Record headless capability evidence for each phase. Do not report the complete server workflow as implemented without these tests.
 
 Use `drawing2cad-mcp` for PDF preparation and access to FreeCAD tools.
+Clients can use Streamable HTTP or stdio. The transport does not prove headless CAD operation or isolated document state.
 Before each run, inspect the actual tool catalog and `drawing2cad_status`.
 Do all CAD work through the FreeCAD MCP proxy, with the prefix `freecad_`.
 You can send all necessary Python code inline.
