@@ -19,3 +19,8 @@ export const duration = (seconds: number) => {
   const s = Math.round(seconds);
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ""}`;
 };
+/** A running stopwatch: minutes and seconds, for example 02:14. */
+export const clock = (seconds: number) =>
+  `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+export const hours = (h: number) => `${h.toLocaleString("de-DE", { maximumFractionDigits: 1 })} h`;
+export const euros = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });

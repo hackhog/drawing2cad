@@ -41,7 +41,7 @@
       "id": "demoapi",
       "type": "backend",
       "label": "Web API",
-      "sublabel": "FastAPI routes, run records",
+      "sublabel": "FastAPI routes, run records, measurements",
       "pos": [
         660,
         140

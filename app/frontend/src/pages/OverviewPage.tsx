@@ -1,9 +1,10 @@
-// Overview page: tiles for all drawings, tiles for what the CAD runs delivered, and one table row per source or upload (ADR 0008).
+// Overview page: tiles for all drawings, tiles for what the CAD runs delivered and save, and one table row per source or upload (ADR 0008).
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Gauge, Hash, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { BenefitDialog } from "@/components/BenefitDialog";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/Status";
 import { UploadButton } from "@/components/UploadButton";
@@ -13,13 +14,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useApi } from "@/lib/apiContext";
-import { benefit } from "@/lib/benefit";
-import type { Source } from "@/lib/contract";
+import { useAssumptions } from "@/lib/assumptions";
+import { benefit, effort, measurementsCsv, runSeconds, saving } from "@/lib/benefit";
+import type { Measurement, Run, Source } from "@/lib/contract";
 import type { ExtractResult } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { errorCode, recoveryFor } from "@/lib/errors";
-import { bytes, duration, explainedShare, fmt, partName, pct } from "@/lib/format";
-import { analysisQuery, keys, runsQuery, sourcesQuery } from "@/lib/queries";
+import { ESTIMATOR_LABEL } from "@/lib/estimators";
+import { bytes, duration, euros, explainedShare, fmt, hours, partName, pct } from "@/lib/format";
+import { analysisQuery, keys, measurementsQuery, runsQuery, sourcesQuery } from "@/lib/queries";
 import { analysisStatus, uploadStatus } from "@/lib/status";
 import { isPdf, useUploads, type Upload } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
@@ -50,6 +53,8 @@ export function OverviewPage() {
   const { data: sources = [] } = useQuery(sourcesQuery(api));
   const analyses = useQueries({ queries: sources.map((s) => analysisQuery(api, s.source_id)) });
   const runs = useQueries({ queries: sources.map((s) => runsQuery(api, s.source_id)) });
+  const { data: measurements = [] } = useQuery(measurementsQuery(api));
+  const [assumptions, setAssumptions] = useAssumptions();
   const [gauge, setGauge] = useState(false);
   const [over, setOver] = useState(false);
   const drop = dropTarget((files) => addFiles(files.filter(isPdf)), setOver);
@@ -67,6 +72,10 @@ export function OverviewPage() {
   const empty = !sources.length && !uploads.length;
   const b = benefit(runs.map((q) => q.data ?? []));
   const built = b.models > 0;
+  const human = effort(measurements);
+  const saved = saving(b, human, assumptions);
+  const machineBySource = new Map(sources.map((s, i) => [s.source_id, latestSeconds(runs[i]?.data)]));
+  const csv = measurementsCsv(measurements, new Map(sources.map((s) => [s.source_id, { name: partName(s.filename), machineSeconds: machineBySource.get(s.source_id) ?? null }])));
 
   const [jobsSub, jobsTone]: [string, Tone] = busy ? [`${busy} in Arbeit`, ""]
     : failed ? [`${failed} nicht lesbar`, "bad"]
@@ -121,8 +130,11 @@ export function OverviewPage() {
       <section aria-labelledby="benefit-title" className="grid gap-1.5">
         <h2 id="benefit-title" className="flex items-center gap-2 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">
           Nutzen{b.simulated && <Badge variant="secondary" className="bg-warn-bg text-bad normal-case tracking-normal">Simuliert</Badge>}
+          <span className="ml-auto">
+            <BenefitDialog built={b} human={human} result={saved} assumptions={assumptions} onAssumptions={setAssumptions} csv={csv} />
+          </span>
         </h2>
-        <div className="grid grid-cols-4 gap-3 max-[1000px]:grid-cols-2">
+        <div className="grid grid-cols-3 gap-3 max-[1000px]:grid-cols-2">
           <Tile
             title="3D-Modelle" value={<Big>{built || b.active ? fmt(b.models) : "–"}</Big>}
             sub={b.active ? `${b.active} im Bau` : built ? `aus ${fmt(done.length)} gelesenen Zeichnungen` : "STEP aus der Zeichnung gebaut"}
@@ -140,6 +152,17 @@ export function OverviewPage() {
           <Tile
             title="Zeit je Modell" value={<Big>{b.medianSeconds === null ? "–" : duration(b.medianSeconds)}</Big>}
             sub={b.medianSeconds === null ? "Zeichnung bis STEP" : "Median, Zeichnung bis STEP"}
+          />
+          <Tile
+            title="Prüfzeit" value={<Big>{human.reviewSeconds === null ? "–" : duration(human.reviewSeconds)}</Big>}
+            sub={human.reviewSeconds === null ? "Stoppuhr in Schritt 3 „Prüfen“"
+              : `Median aus ${fmt(human.reviews)} Prüfung${human.reviews === 1 ? "" : "en"}`}
+          />
+          <Tile
+            title="Gespart" value={<Big>{saved ? hours(saved.hours) : "–"}</Big>}
+            sub={!saved ? "von Hand gegen Lauf und Prüfung"
+              : `≈ ${euros(saved.euros)}, ${saved.manualAssumed ? `Annahme ${hours(saved.manualHours)} von Hand` : `von Hand ${hours(saved.manualHours)} geschätzt`}`}
+            tone={saved && saved.hours > 0 ? "good" : ""}
           />
         </div>
       </section>
@@ -160,12 +183,16 @@ export function OverviewPage() {
                 <TableRow className="[&>th]:text-[11px] [&>th]:font-semibold [&>th]:tracking-[.06em] [&>th]:text-faint [&>th]:uppercase">
                   <TableHead>Zeichnung</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Erklärt</TableHead>
                   <TableHead className="text-right">Ansichten</TableHead><TableHead className="text-right">Texte</TableHead>
-                  <TableHead className="text-right">Zu prüfen</TableHead><TableHead className="text-right">Größe</TableHead><TableHead />
+                  <TableHead className="text-right">Zu prüfen</TableHead><TableHead className="text-right">Maschine</TableHead>
+                  <TableHead className="text-right">Prüfung</TableHead><TableHead className="text-right">Von Hand</TableHead>
+                  <TableHead className="text-right">Größe</TableHead><TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sources.map((source, i) => (
-                  <SourceRow key={source.source_id} source={source} analysis={analyses[i]?.data} error={analyses[i]?.error ?? null} />
+                  <SourceRow key={source.source_id} source={source} analysis={analyses[i]?.data} error={analyses[i]?.error ?? null}
+                    machineSeconds={machineBySource.get(source.source_id) ?? null}
+                    measurements={measurements.filter((m) => m.source_id === source.source_id)} />
                 ))}
                 {uploads.map((upload) => <UploadRow key={upload.id} upload={upload} />)}
               </TableBody>
@@ -179,11 +206,26 @@ export function OverviewPage() {
 
 const NUM = "text-right tabular-nums";
 
-export function SourceRow({ source, analysis, error }: { source: Source; analysis: ExtractResult | undefined; error: Error | null }) {
+/** Machine time of the latest run of a drawing, if it succeeded. */
+const latestSeconds = (runs: Run[] | undefined) => {
+  const latest = runs?.at(-1);
+  return latest ? runSeconds(latest) : null;
+};
+
+interface SourceRowProps {
+  source: Source;
+  analysis: ExtractResult | undefined;
+  error: Error | null;
+  machineSeconds?: number | null;
+  measurements?: Measurement[];
+}
+
+export function SourceRow({ source, analysis, error, machineSeconds = null, measurements = [] }: SourceRowProps) {
   const navigate = useNavigate();
   const [tone, label] = analysisStatus(analysis, error !== null);
   const open = () => void navigate({ to: "/sources/$sourceId", params: { sourceId: source.source_id } });
   const d = analysis?.drawing;
+  const human = effort(measurements);
   return (
     <TableRow tabIndex={0} onClick={open} onKeyDown={(e) => e.key === "Enter" && open()} className="cursor-pointer">
       <TableCell className="font-semibold text-card-foreground" title={`SHA-256 ${source.sha256}`}>{partName(source.filename)}</TableCell>
@@ -199,6 +241,13 @@ export function SourceRow({ source, analysis, error }: { source: Source; analysi
       <TableCell className={NUM}>{d ? fmt(d.views.length) : "–"}</TableCell>
       <TableCell className={NUM}>{d ? fmt(d.text_blocks.length) : "–"}</TableCell>
       <TableCell className={NUM}>{analysis ? fmt(analysis.review.length) : "–"}</TableCell>
+      <TableCell className={NUM}>{machineSeconds === null ? "–" : duration(machineSeconds)}</TableCell>
+      <TableCell className={NUM} title={human.reviews > 1 ? `Median aus ${human.reviews} Prüfungen` : undefined}>
+        {human.reviewSeconds === null ? "–" : duration(human.reviewSeconds)}
+      </TableCell>
+      <TableCell className={NUM} title={human.estimators.map((e) => ESTIMATOR_LABEL[e]).join(", ") || undefined}>
+        {human.manualHours === null ? "–" : hours(human.manualHours)}
+      </TableCell>
       <TableCell className={NUM}>{bytes(source.byte_count)}</TableCell>
       <TableCell className="w-8"><DeleteButton source={source} /></TableCell>
     </TableRow>
@@ -250,7 +299,7 @@ function UploadRow({ upload }: { upload: Upload }) {
     <TableRow className="hover:bg-transparent">
       <TableCell className="font-semibold text-card-foreground">{partName(upload.name)}</TableCell>
       <TableCell><StatusBadge tone={tone} title={upload.error ?? undefined}>{label}</StatusBadge></TableCell>
-      <TableCell colSpan={5}>
+      <TableCell colSpan={8}>
         {upload.state === "error"
           ? <span className="text-flag">{upload.error}</span>
           : <Progress value={upload.progress * 100} aria-label={`Upload ${upload.name}`} className="h-1.5" />}

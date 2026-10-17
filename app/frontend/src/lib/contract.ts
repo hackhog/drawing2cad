@@ -156,6 +156,22 @@ export interface ServiceError {
 }
 
 /** Actual capabilities of the connected service. The UI hides or explains every unavailable one. */
+/** Who estimated the manual effort: a drafter (for example, from BCT), a guest or jury member, or the team. */
+export type Estimator = "drafter" | "guest" | "team";
+
+/** One review of one drawing: the stopwatch time and, optionally, the estimated time of a manual rebuild. */
+export interface MeasurementInput {
+  review_seconds: number;
+  manual_hours: number | null;
+  estimator: Estimator | null;
+}
+
+export interface Measurement extends MeasurementInput {
+  measurement_id: string;
+  source_id: string;
+  recorded_at: string;
+}
+
 export interface Capabilities {
   contract_version: string;
   simulated: boolean;

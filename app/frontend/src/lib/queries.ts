@@ -12,6 +12,7 @@ export const keys = {
   run: (id: string) => ["run", id] as const,
   note: (runId: string) => ["note", runId] as const,
   runFiles: (runId: string) => ["runFiles", runId] as const,
+  measurements: ["measurements"] as const,
 };
 
 const POLL_MS = 600;
@@ -48,3 +49,7 @@ export const noteQuery = (api: WebApi, runId: string) =>
 // Loaded on request; the trace grows while the run is active, so each opening reads the current list.
 export const runFilesQuery = (api: WebApi, runId: string) =>
   queryOptions({ queryKey: keys.runFiles(runId), queryFn: () => api.listRunFiles(runId), staleTime: 0 });
+
+// Measurements change only through a mutation of this browser or a reload.
+export const measurementsQuery = (api: WebApi) =>
+  queryOptions({ queryKey: keys.measurements, queryFn: () => api.listMeasurements() });

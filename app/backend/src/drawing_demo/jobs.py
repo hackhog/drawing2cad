@@ -22,7 +22,7 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _write_json(path: Path, data: Any) -> None:
+def write_json(path: Path, data: Any) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(temporary, path)
@@ -53,7 +53,7 @@ class JobStore:
             "job": {"job_id": run_id, "status": "queued", "progress": 0, "started_at": now(), "finished_at": None},
             "error": None,
         }
-        _write_json(directory / "run.json", record)
+        write_json(directory / "run.json", record)
         return record
 
     def get(self, run_id: str) -> dict[str, Any]:
@@ -71,7 +71,7 @@ class JobStore:
             record = self.get(run_id)
             for key, value in changes.items():
                 record[key] = {**record["job"], **value} if key == "job" else value
-            _write_json(self.root / run_id / "run.json", record)
+            write_json(self.root / run_id / "run.json", record)
             return record
 
     def list(self, source_id: str | None = None) -> list[dict[str, Any]]:
