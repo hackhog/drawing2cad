@@ -1,7 +1,7 @@
 # Streamable HTTP setup and operation
 
 Use this guide to run `drawing2cad-mcp` as an HTTP service and connect an MCP client or LiteLLM.
-The guide applies to version 0.2.0 and later versions with the same configuration interface.
+The guide applies to version 0.3.0 and later versions with the same configuration interface.
 
 The connection path is:
 
@@ -45,15 +45,9 @@ cp drawing2cad-mcp.example.toml drawing2cad-mcp.local.toml
 ```
 
 The remaining commands use the `drawing2cad-mcp` directory.
-For optional vector extraction, use Python 3.12 or later.
-Install the extractor in the same environment:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e ../extractor
-```
-
-On Linux or macOS, replace the executable with `.venv/bin/python`.
-Without this package, `drawing_extract` returns `EXTRACTOR_UNAVAILABLE`. The other tools remain available.
+Installation includes the vector analysis module and its pinned PyMuPDF dependency. No separate extractor package is necessary.
+Use `drawing_extract` for the supported profile described in [Vector analysis](README.md#vector-analysis).
+The operation reads page 1. It creates no persistent JSON export or colored overlay.
 
 The recorded runtime tests used Windows and Python 3.12.
 The Linux and macOS commands are installation instructions, not evidence of platform validation.
@@ -68,6 +62,7 @@ Keep this deployment file outside version control.
 | `pdf.allowed_roots` | Set the permitted input directories on the server. |
 | `pdf.output_root` | Set a writable output directory. Keep generated files in an ignored directory. |
 | `pdf.pdftoppm` | Set the Poppler executable path, or omit this setting to use `PATH`. |
+| `pdf.timeout_seconds` | Set the time limit for each Poppler or vector-analysis process. |
 | `freecad.enabled` | Use `false` for PDF tools alone. Use `true` when the upstream is configured. |
 | `freecad.command` and `freecad.args` | Set the existing FreeCAD MCP launcher and its arguments. |
 | `freecad.cwd` and `freecad.env` | Set these optional fields only when the upstream requires them. |
@@ -181,7 +176,7 @@ The upstream determines their number and schemas.
 `freecad.connected` confirms the upstream MCP connection.
 It does not prove that the FreeCAD addon can execute operations.
 Use a suitable read-only FreeCAD tool from the discovered catalog to verify runtime access.
-The `extractor.available` field reports whether the optional extractor distribution is installed.
+The `drawing_analysis` field reports the built-in engine, profile, schema version, and process timeout.
 A browser page or ordinary GET request is not an MCP readiness test.
 
 ## 7. Connect LiteLLM
@@ -300,7 +295,7 @@ HTTP transport does not change the evidence or review requirements.
 | HTTP 404 | Use `/mcp`; the service has no `/sse`, download, or health route. |
 | HTTP 413 | Reduce the request body below the 4 MiB limit. |
 | Only six tools | Verify `freecad.enabled`, the launcher, its arguments, and the refreshed status. |
-| `EXTRACTOR_UNAVAILABLE` | Install the optional extractor in the MCP environment, then restart the service. |
+| Vector analysis rejects the page layout | Use the normal PDF image tools. The vector profile requires an unrotated, uncropped page with unit UserUnit. |
 | `catalog_stale=true` | Restore the upstream connection, then refresh status and list the tools again. |
 | FreeCAD tool fails after discovery | Verify addon access separately; upstream MCP discovery does not prove CAD execution. |
 | PDF path rejected | Use an existing absolute server path inside a permitted input directory. |

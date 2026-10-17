@@ -1,11 +1,12 @@
-"""Text lesen ohne Textebene: Die Schrift liegt als gefüllte Glyphen-Umrisse einer einzigen
-NX-Schrift vor. Jedes Zeichen wird in Leserichtung gedreht, gerastert und mit gelabelten
-Vorlagen (`glyph_templates.json`) verglichen. Deterministisch, ohne OCR-Programm oder Modell.
+"""Read filled vector character outlines with stored NX font templates.
 
-Leserichtung: bei mehreren Zeichen aus der Lage der Zeichenmittelpunkte, bei einem einzelnen
-Zeichen aus der nächstgelegenen Maßlinie (Maßzahlen stehen parallel zur Maßlinie). Welche der
-zwei Richtungen auf dieser Achse gilt, entscheidet der Vorlagenvergleich; bei Gleichstand gilt
-DIN 406: lesbar von unten oder von rechts.
+Rotate each glyph into its reading direction and compare a normalized bitmap.
+No external OCR program, model, or API is used.
+
+Use the glyph centers to find the reading axis for a character group.
+For a single glyph, use the nearest dimension line.
+Template matching selects one of the two directions on this axis.
+A tie favors text readable from the bottom or right.
 """
 
 from __future__ import annotations
@@ -21,21 +22,21 @@ from PIL import Image, ImageChops, ImageDraw
 from .geometry import Grid, UnionFind, expand, overlaps, point_segment_distance, union
 from .model import Glyph, Kind, Line, Point, Stroke, TextBlock
 
-BITMAP = 16  # Kantenlänge des Vergleichsrasters
+BITMAP = 16  # Side length of the comparison bitmap
 _SUPERSAMPLE = 4
 _UNKNOWN = "?"
-_MAX_DISTANCE = 0.22  # schlechtere Treffer gelten als nicht erkannt
-_SPACE_GAP = 0.30  # Lücke in Schrifthöhen: Zeichenabstand ≤ 0,26, Wortabstand ≥ 0,35 (gemessen)
-# Schmale Zeichen haben in der NX-Schrift breite Ränder; neben „1“ misst die Lücke bis 0,35.
+_MAX_DISTANCE = 0.22  # Reject matches above this distance.
+_SPACE_GAP = 0.30  # Gap in glyph heights: character gap <= 0.26; word gap >= 0.35.
+# Narrow glyphs have side margins. The gap near 1 can reach 0.35.
 _SIDE_BEARING = {"1": 0.15}
 
 
 @dataclass(slots=True)
 class Features:
-    bitmap: tuple[float, ...]  # BITMAP×BITMAP Grauwerte 0..1, Zeichen seitenverhältnistreu zentriert
-    aspect: float  # Breite / Höhe
-    rel_height: float  # Höhe / Schrifthöhe des Blocks
-    rel_bottom: float  # Unterkante relativ zur Grundlinie, in Schrifthöhen (Komma > 0)
+    bitmap: tuple[float, ...]  # Centered BITMAP by BITMAP grayscale values from 0 to 1
+    aspect: float  # Width divided by height
+    rel_height: float  # Glyph height divided by block height
+    rel_bottom: float  # Bottom offset from the baseline, divided by block height
 
 
 @dataclass(slots=True)
@@ -54,19 +55,19 @@ def distance(a: Features, b: Features) -> float:
     )
 
 
-# --- Gruppieren -------------------------------------------------------------------------------
+# Grouping
 
 
 def is_section_bar(g: Glyph) -> bool:
-    """Gefüllte Balken am Schnittverlauf (Enden, Knicke) sind keine Schrift: einzelnes Viereck
-    mit langer Seite ≥ 3 mm. Der Bindestrich in „A-A“ ist nur 1,3 mm lang."""
+    """Exclude a single quadrilateral with a long side of at least 3 mm.
+    Short hyphens remain text candidates."""
     if len(g.contours) != 1 or len(g.contours[0]) > 5:
         return False
     return max(g.bbox[2] - g.bbox[0], g.bbox[3] - g.bbox[1]) >= 3.0
 
 
 def group_glyphs(glyphs: list[Glyph]) -> list[list[Glyph]]:
-    """Zeichen, deren Boxen nah beieinander liegen, bilden einen Block. Schnittbalken fallen weg."""
+    """Group nearby character boxes. Exclude section bars."""
     glyphs = [g for g in glyphs if not is_section_bar(g)]
     uf = UnionFind(len(glyphs))
     grid = Grid(cell=3.0)
@@ -83,7 +84,7 @@ def group_glyphs(glyphs: list[Glyph]) -> list[list[Glyph]]:
     return groups
 
 
-# --- Geometrie in Leserichtung ----------------------------------------------------------------
+# Geometry in reading coordinates
 
 
 def _center(g: Glyph) -> Point:
@@ -91,7 +92,7 @@ def _center(g: Glyph) -> Point:
 
 
 def _axis_from_glyphs(members: list[Glyph]) -> float | None:
-    """Hauptachse der Zeichenmittelpunkte in Grad [0, 180), None bei nur einem Zeichen."""
+    """Return the principal axis in [0, 180), or None for a single glyph."""
     if len(members) < 2:
         return None
     pts = [_center(g) for g in members]
@@ -104,7 +105,7 @@ def _axis_from_glyphs(members: list[Glyph]) -> float | None:
 
 
 def _axis_from_dimension(members: list[Glyph], strokes: list[Stroke]) -> float | None:
-    """Richtung der nächstgelegenen Maßlinie (höchstens 6 mm entfernt)."""
+    """Return the direction of the nearest dimension line within 6 mm."""
     c = _center(members[0])
     best, best_d = None, 6.0
     for s in strokes:
@@ -116,14 +117,14 @@ def _axis_from_dimension(members: list[Glyph], strokes: list[Stroke]) -> float |
 
 
 def _readable(phi: float) -> bool:
-    """DIN 406: von unten (Richtung nach rechts) oder von rechts (Richtung nach oben) lesbar.
-    phi in Blattkoordinaten (y nach unten)."""
+    """Accept a reading direction from the bottom or right.
+    The angle uses sheet coordinates with positive y downward."""
     c, s = math.cos(math.radians(phi)), math.sin(math.radians(phi))
     return c > 1e-3 or (abs(c) <= 1e-3 and s < 0)
 
 
 def _local(p: Point, phi: float) -> Point:
-    """(u, v): u entlang der Leserichtung, v quer dazu nach „unten“ der Schrift."""
+    """Return coordinates along the reading direction and perpendicular to it."""
     c, s = math.cos(math.radians(phi)), math.sin(math.radians(phi))
     return p[0] * c + p[1] * s, -p[0] * s + p[1] * c
 
@@ -146,14 +147,14 @@ def _rasterize(g: Glyph, phi: float, ext: tuple[float, float, float, float]) -> 
         mask = Image.new("1", (size, size), 0)
         pts = [_local(p, phi) for p in contour]
         ImageDraw.Draw(mask).polygon([((u - u0) * scale + off_u, (v - v0) * scale + off_v) for u, v in pts], fill=1)
-        img = ImageChops.logical_xor(img, mask)  # Even-Odd: Innenkonturen stanzen aus
+        img = ImageChops.logical_xor(img, mask)  # Even-odd fill removes inner contours.
     small = img.convert("L").resize((BITMAP, BITMAP), Image.Resampling.BOX)
     return tuple(round(v / 255, 3) for v in small.get_flattened_data())
 
 
 def block_features(members: list[Glyph], phi: float) -> tuple[list[tuple[Features, float, float]], float]:
-    """Features je Zeichen in Leserichtung sortiert, mit (u0, u1) für die Leerzeichen-Erkennung,
-    dazu die Schrifthöhe des Blocks in mm."""
+    """Return glyph features in reading order and the block height in millimeters.
+    Include horizontal extents for word-spacing detection."""
     exts = [_extent(g, phi) for g in members]
     height = max(e[3] - e[1] for e in exts)
     bottoms = sorted(e[3] for e in exts)
@@ -174,7 +175,7 @@ def reading_axis(members: list[Glyph], strokes: list[Stroke]) -> float:
     return 0.0 if axis is None else axis
 
 
-# --- Erkennen ---------------------------------------------------------------------------------
+# Recognition
 
 
 @cache
@@ -204,7 +205,7 @@ def _read(members: list[Glyph], phi: float, templates: tuple[Template, ...]) -> 
 
 
 def read_blocks(glyphs: list[Glyph], strokes: list[Stroke]) -> list[TextBlock]:
-    """Gruppiert die Zeichen zu Blöcken und liest jeden Block."""
+    """Group glyphs into blocks and read each block."""
     templates = load_templates()
     blocks = []
     for i, members in enumerate(group_glyphs(glyphs)):
@@ -212,7 +213,7 @@ def read_blocks(glyphs: list[Glyph], strokes: list[Stroke]) -> list[TextBlock]:
         candidates = []
         for phi in (axis, axis + 180.0):
             text, cost = _read(members, phi, templates)
-            # Bei (fast) gleichen Kosten gewinnt die normgerechte Leserichtung
+            # Prefer the standard reading direction when rounded costs are equal.
             candidates.append((round(cost, 2), not _readable(phi), text, phi))
         _, _, text, phi = min(candidates)
         bbox = union(g.bbox for g in members)

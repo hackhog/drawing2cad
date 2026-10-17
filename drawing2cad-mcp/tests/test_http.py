@@ -20,7 +20,6 @@ import uvicorn
 
 from drawing2cad_mcp.config import HTTPSettings, PdfSettings, ServerSettings, Settings
 from drawing2cad_mcp.http import create_http_app
-from drawing2cad_mcp import pdf as pdf_module
 from drawing2cad_mcp.proxy import FreeCADProxy
 from drawing2cad_mcp.server import Application
 from test_pdf import make_pdf
@@ -135,18 +134,17 @@ async def test_http_status_and_pdf_text_use_real_mcp(http_application, tmp_path)
     assert http_application.lifespan_starts == http_application.lifespan_closes == 1
 
 
-async def test_http_drawing_extract_reports_missing_optional_package(http_application, tmp_path, monkeypatch):
-    monkeypatch.setattr(pdf_module, "drawing_extractor", None)
+async def test_http_drawing_analysis_works_without_separate_package(http_application, tmp_path):
     source = make_pdf(tmp_path / "synthetic.pdf")
     async with running_server(http_application) as url:
         async with mcp_session(url) as session:
             result = await session.call_tool("drawing_extract", {"path": str(source)})
-            assert result.is_error
-            assert result.structured_content["error"]["code"] == "EXTRACTOR_UNAVAILABLE"
-            assert "not installed" in result.structured_content["error"]["message"]
+            assert not result.is_error, result
+            assert result.structured_content["provenance"]["engine"] == "drawing2cad_mcp.vector"
             info = await session.call_tool("pdf_info", {"path": str(source)})
             assert not info.is_error
             assert info.structured_content["source"]["sha256"] == sha256(source.read_bytes()).hexdigest()
+            assert info.structured_content["source"] == result.structured_content["source"]
 
 
 async def test_http_pdf_render_returns_image_and_artifact(http_application, tmp_path):

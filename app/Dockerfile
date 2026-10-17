@@ -1,7 +1,7 @@
-# Demo-App (ADR 0006, 0010). Build-Kontext ist das Projekt-Root, weil der Extraktor als Pfad-Abhängigkeit mitkommt:
-#   docker compose build   bzw.   docker build -f app/Dockerfile .
+# Demo app (ADR 0006, 0010). Use the repository root as the build context.
+#   docker compose build   or   docker build -f app/Dockerfile .
 
-# Stufe 1: Oberfläche (React, app/web) → statische Dateien. Node ist nur hier nötig, nicht im fertigen Image.
+# Stage 1 builds the static UI. The runtime image does not need Node.js.
 FROM node:24.21.0-slim AS web
 WORKDIR /src/app/web
 COPY app/web/package.json app/web/package-lock.json ./
@@ -9,10 +9,14 @@ RUN npm ci --no-audit --no-fund
 COPY app/web/ ./
 RUN npm run build
 
-# Stufe 2: Python-App mit Extraktor; liefert API und die gebaute Oberfläche aus
+# Stage 2 serves the API and UI with the shared MCP PDF service.
 FROM python:3.12-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -20,7 +24,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /src
-COPY extractor/ extractor/
+COPY drawing2cad-mcp/ drawing2cad-mcp/
 COPY app/ app/
 COPY --from=web /src/app/src/drawing_demo/static/ app/src/drawing_demo/static/
 

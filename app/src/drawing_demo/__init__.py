@@ -1,4 +1,4 @@
-"""Demo-App für Drawing2CAD (ADR 0006): Zeichnungs-PDF hochladen, Ergebnis des Extraktors ansehen."""
+"""Drawing2CAD demo UI for the shared MCP PDF service (ADR 0006)."""
 
 from __future__ import annotations
 

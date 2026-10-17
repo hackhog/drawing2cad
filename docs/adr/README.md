@@ -12,5 +12,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0009](0009-drawing-extract-as-mcp-tool.md) | Vector extractor as the MCP tool `drawing_extract` |
 | [0010](0010-demo-ui-in-react-with-3d-viewer.md) | Demo UI in React with a 3D viewer, STEP to GLB on the server |
 | [0011](0011-diagrams-in-readme-checked-by-ci.md) | Architecture diagram from a versioned source, as an image in the README, checked by CI |
+| [0012](0012-vector-analysis-in-mcp.md) | Keep vector analysis in the MCP; remove the standalone extractor package and CLI |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct CAD models from permitted technical drawings through drawing2cad-mcp. Create and verify the dimensioned drawing before the 3D model. Record evidence and uncertainties. Test editable construction and PMI in STEP AP242. Also use this skill for reconstruction from STEP alone, model changes, and adapter tests within a verified capability scope.
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # drawing2cad: a reproducible AP242 master file
@@ -91,7 +91,7 @@ A standard STEP import of a BREP and reconstruction through a verified specialis
 
 2. **Verify capabilities.** Record `drawing2cad_status`, the current tool catalog, tool versions, and adapter profiles. Compare necessary functions with verified functions. A reachable proxy does not prove a reachable FreeCAD kernel or operation without a GUI. Missing evidence is not a pass. Use small isolated MCP tests to resolve specific capability questions.
 
-3. **Collect evidence and review entries.** For PDF sources, use `pdf_info → pdf_read_text → pdf_render_page → pdf_crop_region`. Request only necessary pages and details. Compare the returned source hashes. Inspect the actual images. Text extraction has no OCR and does not replace visual interpretation. Separate original data, deterministic derivations, assumptions, and unresolved data. Give each unclear location and derived or assumed value a source, status, target anchor, and visible review marker. Keep these markers separate from original PMI. Do not conceal an unresolved location with an invented position.
+3. **Collect evidence and review entries.** For PDF sources, use `pdf_info → pdf_read_text → pdf_render_page → pdf_crop_region`. Use `drawing_extract` when the source meets its supported vector profile. Follow [drawing2cad-mcp.md](references/drawing2cad-mcp.md) for its coordinate limits and verification procedure. Request only necessary pages and details. Compare the returned source hashes. Inspect the actual images. Text extraction has no OCR and does not replace visual interpretation. Separate original data, deterministic derivations, assumptions, and unresolved data. Give each unclear location and derived or assumed value a source, status, target anchor, and visible review marker. Keep these markers separate from original PMI. Do not conceal an unresolved location with an invented position.
 
 4. **Create and verify the technical drawing.** For a new design, create a dimensioned sheet from explicit 2D geometry before the 3D build. Include necessary views, sections, notes, and review markers. Save an editable file and a rendered sheet. Inspect the sheet against sources and recorded decisions. Record its revision and hashes in `drawing_ref`. Use [drawing-first.md](references/drawing-first.md) for mode-specific rules.
 

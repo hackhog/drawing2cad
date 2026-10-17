@@ -4,6 +4,8 @@
 
 - Use technical English in accordance with ASD-STE100 for all project documentation.
 - Apply this rule to README files, skill instructions, reference guides, technical plans, and new reports.
+- Use technical English for new code comments, docstrings, tool descriptions, and architecture decision records.
+- Keep user-facing interface text in its specified product language. This exception does not apply to technical documentation.
 - Use [documentation-language.md](skills/drawing2cad/references/documentation-language.md) for the reference edition, project terms, and review procedure.
 - Keep original source text, identifiers, code with recorded hashes, and historical evidence unchanged. Write explanations of these items in English.
 - Do not state full STE conformity without a review against the applicable rules and dictionary.

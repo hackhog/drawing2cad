@@ -11,11 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
+import json
 import math
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 from typing import Any
 from uuid import uuid4
@@ -23,19 +25,12 @@ from uuid import uuid4
 from PIL import Image, UnidentifiedImageError
 from pypdf import PdfReader
 
-try:  # Optional: the vector extractor is a separate package (ADR 0009).
-    import drawing_extractor
-    from drawing_extractor.export import to_dict as drawing_to_dict
-except ImportError:
-    drawing_extractor = None
+from .vector.export import SCHEMA_VERSION
+from .vector.model import Kind
 
 
 class PdfError(ValueError):
     """An invalid PDF request or a failed PDF preparation operation."""
-
-
-class ExtractorUnavailable(PdfError):
-    """The optional drawing_extractor package is not installed."""
 
 
 @dataclass(frozen=True)
@@ -345,21 +340,66 @@ class PdfService:
     def extract_drawing(
         self, path: str | Path, include_strokes: bool = False, stroke_kinds: list[str] | None = None
     ) -> dict[str, Any]:
+        if not isinstance(include_strokes, bool):
+            raise PdfError("include_strokes must be a boolean.")
+        if stroke_kinds is not None:
+            if (not include_strokes or not isinstance(stroke_kinds, list) or not stroke_kinds
+                    or any(not isinstance(kind, str) or kind not in {item.value for item in Kind} for kind in stroke_kinds)
+                    or len(set(stroke_kinds)) != len(stroke_kinds)):
+                raise PdfError("stroke_kinds requires include_strokes=true and a nonempty list of distinct supported classes.")
         source = self._load(path)
-        if drawing_extractor is None:
-            raise ExtractorUnavailable("The drawing_extractor package is not installed in the server environment.")
-        # Extract from the hashed snapshot, not from the path, so that the result agrees with source.sha256.
+        geometry = self._geometry(source, 1)
+        if (geometry["rotation_degrees"] != 0 or geometry["user_unit"] != 1
+                or geometry["cropbox_points"] != geometry["mediabox_points"]
+                or geometry["mediabox_points"][:2] != [0.0, 0.0]):
+            raise PdfError("Vector analysis requires an unrotated page with UserUnit=1 and a full, zero-origin MediaBox. Use PDF rendering for other page layouts.")
+        # PyMuPDF does not support multithreaded execution. Each analysis uses
+        # a separate process, the permitted snapshot, and the configured timeout.
         with tempfile.TemporaryDirectory(prefix=".pdf-extract-", dir=self._output_directory()) as temp:
             snapshot = Path(temp) / "source.pdf"
+            result_path = Path(temp) / "result.json"
             snapshot.write_bytes(source.data)
             try:
-                data = drawing_to_dict(drawing_extractor.extract(snapshot))
-            except Exception as exc:
-                raise PdfError(f"Vector extraction failed: {type(exc).__name__}: {exc}") from exc
+                completed = subprocess.run(
+                    [sys.executable, "-X", "utf8", "-m", "drawing2cad_mcp.vector_worker", str(snapshot), str(result_path)],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    timeout=self.timeout_seconds, check=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise PdfError(f"Vector analysis exceeded the {self.timeout_seconds:g} second timeout.") from exc
+            except OSError as exc:
+                raise PdfError(f"Cannot start vector analysis: {type(exc).__name__}.") from exc
+            if completed.returncode:
+                detail = completed.stderr.decode("utf-8", errors="replace").strip()[-1000:]
+                raise PdfError(f"Vector analysis failed: {detail or 'worker exited without a result'}")
+            if not result_path.is_file() or result_path.stat().st_size > 64 * 1024 * 1024:
+                raise PdfError("Vector analysis produced no result or exceeded the 64 MiB result limit.")
+            try:
+                data = json.loads(result_path.read_text(encoding="utf-8"))
+                valid_kinds = {kind.value for kind in Kind}
+                if (not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION
+                        or not isinstance(data.get("strokes"), list) or not isinstance(data.get("views"), list)
+                        or any(not isinstance(stroke, dict) or stroke.get("kind") not in valid_kinds for stroke in data["strokes"])
+                        or any(not isinstance(view, dict) or not isinstance(view.get("stroke_ids"), list) for view in data["views"])):
+                    raise ValueError("invalid vector result")
+            except (OSError, ValueError, TypeError) as exc:
+                raise PdfError("Vector analysis produced an invalid result.") from exc
         strokes = data.pop("strokes")
         if include_strokes:
             data["strokes"] = [s for s in strokes if stroke_kinds is None or s["kind"] in stroke_kinds]
         else:  # Stroke ids are most of the payload and refer to nothing without the strokes.
             for view in data["views"]:
                 view["stroke_count"] = len(view.pop("stroke_ids"))
-        return {**data, "source": source.metadata}
+        return {
+            **data, "source": source.metadata,
+            "provenance": {
+                **geometry, "profile": "bct_nx_a3", "coordinate_system": "sheet_mm_top_left_y_down",
+                "scale_applied": False, "ocr_performed": False, "engine": "drawing2cad_mcp.vector",
+                "limitations": [
+                    "Only page 1 is analyzed; the drawing-area profile is calibrated for BCT/NX A3 sheets.",
+                    "Glyph recognition can return '?' or an incorrect known character; verify dimensions in source images.",
+                    "Sheet coordinates and stroke classes do not define part dimensions or CAD operations.",
+                ],
+            },
+        }

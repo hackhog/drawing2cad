@@ -1,7 +1,7 @@
-"""Deterministischer Vektor-Extraktor für technische Zeichnungen (ADR 0003).
+"""Deterministic vector analysis for technical drawings.
 
-Liest ein Zeichnungs-PDF, klassifiziert die Striche und gruppiert sie zu Ansichten.
-Liefert Fakten über die Zeichnung, nicht über das Bauteil.
+Read drawing paths, classify strokes, and group views.
+The results describe the sheet, not the physical part.
 """
 
 from __future__ import annotations

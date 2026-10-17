@@ -1,7 +1,6 @@
-"""Review-Flags aus dem Extraktor-JSON: Stellen, die ein Mensch prüfen muss, statt sie zu raten.
+"""Derive review flags from drawing data without changing the analysis.
 
-Bisher zwei Quellen: Striche der Klasse `unclear` (räumlich zu Gruppen zusammengefasst)
-und Textblöcke mit nicht sicher erkannten Zeichen (`?`).
+Flag unclear strokes, unrecognized text characters, and missing views.
 """
 
 from __future__ import annotations

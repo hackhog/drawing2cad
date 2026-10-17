@@ -1,21 +1,22 @@
-"""Regressionstests auf den BCT-Beispielzeichnungen.
+"""Test the original BCT drawing regression fixtures.
 
-Die Zeichnungen werden unter resources/Drawing2CAD (Team-Repo) oder data/samples erwartet;
-fehlen sie, werden die Tests übersprungen. Die erwarteten Ansichten sind von Hand gezählt.
+The fixtures remain under resources/Drawing2CAD.
+Tests skip when the drawing files are absent.
+Expected view counts are manually reviewed reference values.
 """
 
 from pathlib import Path
 
 import pytest
 
-from drawing_extractor import Kind, extract
-from drawing_extractor.model import Line
+from drawing2cad_mcp.vector import Kind, extract
+from drawing2cad_mcp.vector.model import Line
 
-# Team-Repo: resources/Drawing2CAD, lokale Arbeitskopie: data/samples
-_ROOT = Path(__file__).resolve().parents[2]
-SAMPLES = next((p for p in (_ROOT / "resources" / "Drawing2CAD", _ROOT / "data" / "samples") if p.is_dir()), _ROOT / "data" / "samples")
+# Original regression drawings remain separate from the runtime package.
+_ROOT = Path(__file__).resolve().parents[3]
+SAMPLES = _ROOT / "resources" / "Drawing2CAD"
 
-# Teil -> (Anzahl Ansichten inkl. 3D-Ansicht, hat Schnittverlauf)
+# Part -> (view count including shaded image, cutting plane present)
 EXPECTED = {
     "Befestigung": (3, False),
     "Dreistern": (4, True),
@@ -32,7 +33,7 @@ EXPECTED = {
 def _pdf(name: str) -> Path:
     pdf = SAMPLES / name / f"{name}_dwg.pdf"
     if not pdf.exists():
-        pytest.skip(f"Beispielzeichnung fehlt: {pdf}")
+        pytest.skip(f"Regression drawing is absent: {pdf}")
     return pdf
 
 
@@ -48,7 +49,7 @@ def test_views_are_grouped(name):
 
 
 def test_flansch_circles_have_drawing_radii():
-    """Flansch, Maßstab 2:1: Ø20 und Ø30 erscheinen als Kreise mit r = 20 und 30 mm auf dem Blatt."""
+    """At a scale of 2:1, diameters 20 and 30 give sheet radii of 20 and 30 mm."""
     drawing = extract(_pdf("Flansch"))
     radii = {round(s.geom.radius, 2) for s in drawing.strokes if getattr(s.geom, "is_circle", False)
              and s.kind is Kind.CONTOUR}
@@ -56,8 +57,8 @@ def test_flansch_circles_have_drawing_radii():
 
 
 def test_maschinenteil_split_arrowhead_is_arrow():
-    """Die Spitze am Winkelmaß 25,5° (Ansicht 1) liegt in zwei aufeinanderfolgenden PDF-Pfaden:
-    ein Schenkel und die Füllstriche im einen, zweiter Schenkel und Basis im nächsten."""
+    """The 25.5-degree dimension arrowhead spans two consecutive PDF paths.
+    One leg and the fill strokes precede the other leg and the base."""
     drawing = extract(_pdf("Maschinenteil"))
     head = [s for s in drawing.strokes
             if isinstance(s.geom, Line) and all(59.7 <= x <= 62.45 and 47.9 <= y <= 51.0 for x, y in s.geom.endpoints())]

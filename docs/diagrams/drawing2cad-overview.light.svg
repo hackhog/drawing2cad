@@ -429,7 +429,7 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <rect width="100%" height="100%" fill="url(#grid)"/>
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Demo container (docker compose)" x="630" y="10" width="220" height="274" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="Demo HTTP API" x="630" y="10" width="220" height="274" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
@@ -446,7 +446,7 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         </g>
         <g data-graph-role="automatic-crossover" style="--step:3">
           <path data-graph-role="automatic-crossover-underlay" d="M 820 232 L 940 232" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="api" data-edge-to="extractor" data-edge-label="extract(pdf)" data-edge-key="3" data-edge-id="extract" data-composition-points="820,232;940,232" data-composition-crossover="halo" data-composition-independent="true" d="M 820 232 L 940 232" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-edge-from="api" data-edge-to="pdfservice" data-edge-label="PdfService" data-edge-key="3" data-edge-id="extract" data-composition-points="820,232;940,232" data-composition-crossover="halo" data-composition-independent="true" d="M 820 232 L 940 232" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
           <path data-graph-role="automatic-crossover-underlay" d="M 815 432 L 945 432" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -458,7 +458,7 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
           <path data-graph-role="automatic-crossover-underlay" d="M 1020 400 L 1020 264" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="mcp" data-edge-to="extractor" data-edge-label="drawing_extract" data-edge-key="6" data-edge-id="tool" data-composition-points="1020,400;1020,264" data-composition-crossover="halo" data-composition-independent="true" d="M 1020 400 L 1020 264" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-edge-from="mcp" data-edge-to="pdfservice" data-edge-label="PDF tool calls" data-edge-key="6" data-edge-id="tool" data-composition-points="1020,400;1020,264" data-composition-crossover="halo" data-composition-independent="true" d="M 1020 400 L 1020 264" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:7">
           <path data-graph-role="automatic-crossover-underlay" d="M 1095 432 L 1225 432" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -467,6 +467,10 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <g data-graph-role="automatic-crossover" style="--step:8">
           <path data-graph-role="automatic-crossover-underlay" d="M 1300 464 L 1300 580" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
           <path data-edge-from="freecad" data-edge-to="step" data-edge-label="export" data-edge-key="8" data-edge-id="export" data-composition-points="1300,464;1300,580" data-composition-crossover="halo" data-composition-independent="true" d="M 1300 464 L 1300 580" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:9">
+          <path data-graph-role="automatic-crossover-underlay" d="M 1100 232 L 1225 232" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="pdfservice" data-edge-to="vector" data-edge-label="snapshot + timeout" data-edge-key="9" data-edge-id="analyze" data-composition-points="1100,232;1225,232" data-composition-crossover="halo" data-composition-independent="true" d="M 1100 232 L 1225 232" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
 
         <!-- Components -->
@@ -496,8 +500,8 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="375" y="246" class="t-muted" font-size="9" text-anchor="middle">React, Vite, three.js</text>
         </g>
 
-        <g id="node-api" data-node-id="api" data-node-label="Demo API" tabindex="0" role="button" aria-label="Focus Demo API, FastAPI :8000, review flags, Demo container (docker compose)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="FastAPI :8000, review flags" data-node-context="Demo container (docker compose)">
-          <title>Demo API · FastAPI :8000, review flags · Demo container (docker compose)</title>
+        <g id="node-api" data-node-id="api" data-node-label="Demo API" tabindex="0" role="button" aria-label="Focus Demo API, FastAPI :8000, review flags, Demo HTTP API" aria-pressed="false" data-node-kind="backend" data-node-sublabel="FastAPI :8000, review flags" data-node-context="Demo HTTP API">
+          <title>Demo API · FastAPI :8000, review flags · Demo HTTP API</title>
           <rect x="660" y="200" width="160" height="64" rx="6" class="c-mask"/>
           <rect x="660" y="200" width="160" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(666 206) scale(0.6875)">
@@ -507,8 +511,8 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="740" y="246" class="t-muted" font-size="9" text-anchor="middle">FastAPI :8000, review flags</text>
         </g>
 
-        <g id="node-mesher" data-node-id="mesher" data-node-label="STEP mesher" tabindex="0" role="button" aria-label="Focus STEP mesher, cascadio, OpenCASCADE, Demo container (docker compose)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="cascadio, OpenCASCADE" data-node-context="Demo container (docker compose)">
-          <title>STEP mesher · cascadio, OpenCASCADE · Demo container (docker compose)</title>
+        <g id="node-mesher" data-node-id="mesher" data-node-label="STEP mesher" tabindex="0" role="button" aria-label="Focus STEP mesher, cascadio, OpenCASCADE, Demo HTTP API" aria-pressed="false" data-node-kind="backend" data-node-sublabel="cascadio, OpenCASCADE" data-node-context="Demo HTTP API">
+          <title>STEP mesher · cascadio, OpenCASCADE · Demo HTTP API</title>
           <rect x="665" y="40" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="665" y="40" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(671 46) scale(0.6875)">
@@ -518,16 +522,16 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="740" y="86" class="t-muted" font-size="9" text-anchor="middle">cascadio, OpenCASCADE</text>
         </g>
 
-        <g id="node-extractor" data-node-id="extractor" data-node-label="drawing_extractor" tabindex="0" role="button" aria-label="Focus drawing_extractor, strokes, views, glyph text, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="strokes, views, glyph text" data-node-tag="deterministic, no AI" data-node-context="Architecture component">
-          <title>drawing_extractor · strokes, views, glyph text · Architecture component · deterministic, no AI</title>
+        <g id="node-pdfservice" data-node-id="pdfservice" data-node-label="MCP PDF service" tabindex="0" role="button" aria-label="Focus MCP PDF service, source hash, analysis, images, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="source hash, analysis, images" data-node-tag="shared Python service" data-node-context="Architecture component">
+          <title>MCP PDF service · source hash, analysis, images · Architecture component · shared Python service</title>
           <rect x="940" y="200" width="160" height="64" rx="6" class="c-mask"/>
           <rect x="940" y="200" width="160" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(946 206) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" x="1020" y="230" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">drawing_extractor</text>
-        <text x="1020" y="246" class="t-muted" font-size="9" text-anchor="middle">strokes, views, glyph text</text>
-        <text x="1020" y="256" class="t-backend" font-size="7" text-anchor="middle">deterministic, no AI</text>
+          <text data-node-label="" x="1020" y="230" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MCP PDF service</text>
+        <text x="1020" y="246" class="t-muted" font-size="8.7" text-anchor="middle">source hash, analysis, images</text>
+        <text x="1020" y="256" class="t-backend" font-size="7" text-anchor="middle">shared Python service</text>
         </g>
 
         <g id="node-agent" data-node-id="agent" data-node-label="AI agent" tabindex="0" role="button" aria-label="Focus AI agent, drawing2cad skill, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="drawing2cad skill" data-node-context="Architecture component">
@@ -589,6 +593,17 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
         <text x="1300" y="626" class="t-muted" font-size="9" text-anchor="middle">export and adapter tests</text>
         </g>
 
+        <g id="node-vector" data-node-id="vector" data-node-label="Vector analysis" tabindex="0" role="button" aria-label="Focus Vector analysis, MCP request process, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="MCP request process" data-node-context="Architecture component">
+          <title>Vector analysis · MCP request process · Architecture component</title>
+          <rect x="1225" y="200" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="1225" y="200" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1231 206) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" x="1300" y="230" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Vector analysis</text>
+        <text x="1300" y="246" class="t-muted" font-size="9" text-anchor="middle">MCP request process</text>
+        </g>
+
         <!-- Connection labels -->
         <g data-edge-from="engineer" data-edge-to="webui" data-edge-label="upload PDFs" data-edge-key="0" data-edge-id="upload">
           <rect x="213.6" y="212" width="62.8" height="14" rx="3" class="c-mask"/>
@@ -602,9 +617,9 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
           <rect x="708.6" y="180" width="62.8" height="14" rx="3" class="c-mask"/>
           <text x="740" y="190" class="t-edge-default" font-size="8" text-anchor="middle">STEP to GLB</text>
         </g>
-        <g data-edge-from="api" data-edge-to="extractor" data-edge-label="extract(pdf)" data-edge-key="3" data-edge-id="extract">
-          <rect x="846.2" y="212" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="880" y="222" class="t-edge-default" font-size="8" text-anchor="middle">extract(pdf)</text>
+        <g data-edge-from="api" data-edge-to="pdfservice" data-edge-label="PdfService" data-edge-key="3" data-edge-id="extract">
+          <rect x="851" y="212" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="880" y="222" class="t-edge-default" font-size="8" text-anchor="middle">PdfService</text>
         </g>
         <g data-edge-from="agent" data-edge-to="mcp" data-edge-label="stdio or HTTP" data-edge-key="4" data-edge-id="stdio">
           <rect x="843.8" y="412" width="72.4" height="14" rx="3" class="c-mask"/>
@@ -614,9 +629,9 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
           <rect x="993.4" y="560" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
           <text x="1020" y="570" class="t-edge-default" font-size="8" text-anchor="middle">HTTP /mcp</text>
         </g>
-        <g data-edge-from="mcp" data-edge-to="extractor" data-edge-label="drawing_extract" data-edge-key="6" data-edge-id="tool">
-          <rect x="979" y="380" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="1020" y="390" class="t-edge-default" font-size="8" text-anchor="middle">drawing_extract</text>
+        <g data-edge-from="mcp" data-edge-to="pdfservice" data-edge-label="PDF tool calls" data-edge-key="6" data-edge-id="tool">
+          <rect x="981.4" y="380" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="1020" y="390" class="t-edge-default" font-size="8" text-anchor="middle">PDF tool calls</text>
         </g>
         <g data-edge-from="mcp" data-edge-to="freecad" data-edge-label="stdio proxy" data-edge-key="7" data-edge-id="proxy">
           <rect x="1128.6" y="412" width="62.8" height="14" rx="3" class="c-mask"/>
@@ -626,11 +641,15 @@ svg[data-preset="editorial"][data-animation="trace"] [data-animate="node"] { ani
           <rect x="1255.1999999999998" y="515" width="38.8" height="14" rx="3" class="c-mask"/>
           <text x="1274.6" y="525" class="t-edge-dashed" font-size="8" text-anchor="middle">export</text>
         </g>
+        <g data-edge-from="pdfservice" data-edge-to="vector" data-edge-label="snapshot + timeout" data-edge-key="9" data-edge-id="analyze">
+          <rect x="1114.3" y="212" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="1162.5" y="222" class="t-edge-default" font-size="8" text-anchor="middle">snapshot + timeout</text>
+        </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Demo container (docker compose)">
-          <rect data-graph-role="structural-frame-label-mask" x="634" y="19" width="179.8000186" height="17" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="638" y="32.12903325806452" class="t-cloud" font-size="9.129033258064515" font-weight="600">Demo container (docker compose)</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="Demo HTTP API">
+          <rect data-graph-role="structural-frame-label-mask" x="634" y="19" width="81.20645941290321" height="17" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="638" y="32.12903325806452" class="t-cloud" font-size="9.129033258064515" font-weight="600">Demo HTTP API</text>
         </g>
 
         <!-- Legend -->

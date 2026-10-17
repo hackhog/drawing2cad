@@ -1,7 +1,7 @@
 [project]
 name = "drawing-demo"
 version = "0.1.0"
-description = "Demo-Oberfläche für Drawing2CAD: Zeichnungs-PDF hochladen, Extraktor-Ergebnis ansehen"
+description = "Drawing2CAD demo UI with PDF analysis through drawing2cad-mcp"
 readme = "README.md"
 authors = [
     { name = "dernerl", email = "50828248+dernerl@users.noreply.github.com" }
@@ -9,10 +9,9 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "cascadio>=0.1.1",
-    "drawing-extractor",
+    "drawing2cad-mcp",
     "fastapi>=0.143.3",
     "numpy>=2",
-    "pymupdf>=1.28.2",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -31,9 +30,9 @@ dev = [
 ]
 
 [tool.uv.sources]
-drawing-extractor = { path = "../extractor", editable = false }
+drawing2cad-mcp = { path = "../drawing2cad-mcp", editable = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# PyMuPDF (SWIG) meldet beim Import Warnungen, die nichts mit unserem Code zu tun haben
+# PyMuPDF reports SWIG import warnings that are unrelated to this code.
 filterwarnings = ["ignore:builtin type .* has no __module__ attribute:DeprecationWarning"]

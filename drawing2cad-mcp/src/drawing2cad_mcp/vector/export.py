@@ -1,4 +1,4 @@
-"""JSON-Ausgabe des Extraktionsergebnisses."""
+"""Serialize vector analysis results as JSON-compatible data."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 from .model import Arc, Drawing, Stroke
 
-SCHEMA_VERSION = 2  # 2: text_blocks mit erkanntem Text und Leserichtung
+SCHEMA_VERSION = 2  # Version 2 adds recognized text and reading direction.
 
 
 def _r(v: float) -> float:
@@ -34,7 +34,7 @@ def to_dict(d: Drawing) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "source": d.source,
-        "units": "mm, Blattkoordinaten, Ursprung oben links, y nach unten",
+        "units": "mm, sheet coordinates, origin at top left, positive y down",
         "sheet_size_mm": [_r(v) for v in d.sheet_size_mm],
         "raster_image_bbox": [_r(v) for v in d.raster_bbox] if d.raster_bbox else None,
         "summary": {

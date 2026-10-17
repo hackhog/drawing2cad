@@ -1,4 +1,4 @@
-"""Geometrie-Hilfen: Kreis durch drei Punkte, Bögen zusammenfügen, räumlicher Index."""
+"""Geometry operations for circle fitting, arc merging, and spatial lookup."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ BBox = tuple[float, float, float, float]
 
 
 def circle_through(a: Point, b: Point, c: Point) -> tuple[Point, float] | None:
-    """Mittelpunkt und Radius des Kreises durch drei Punkte, None bei Kollinearität."""
+    """Return the center and radius through three points, or None for collinear points."""
     (ax, ay), (bx, by), (cx, cy) = a, b, c
     d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
     if abs(d) < 1e-9:
@@ -20,13 +20,13 @@ def circle_through(a: Point, b: Point, c: Point) -> tuple[Point, float] | None:
     ux = ((ax**2 + ay**2) * (by - cy) + (bx**2 + by**2) * (cy - ay) + (cx**2 + cy**2) * (ay - by)) / d
     uy = ((ax**2 + ay**2) * (cx - bx) + (bx**2 + by**2) * (ax - cx) + (cx**2 + cy**2) * (bx - ax)) / d
     r = math.dist((ux, uy), a)
-    if r > 2000:  # praktisch gerade
+    if r > 2000:  # The fitted curve is approximately straight.
         return None
     return (ux, uy), r
 
 
 def _normalized(arc: Arc) -> Arc:
-    """Bogen mit positivem Sweep und Startwinkel in [0, 360)."""
+    """Return an arc with a positive sweep and a start angle in [0, 360)."""
     if arc.sweep_deg < 0:
         return Arc(arc.center, arc.radius, (arc.start_deg + arc.sweep_deg) % 360.0, -arc.sweep_deg)
     return Arc(arc.center, arc.radius, arc.start_deg % 360.0, arc.sweep_deg)
@@ -35,8 +35,8 @@ def _normalized(arc: Arc) -> Arc:
 def fit_arcs_into_circles(
     geoms: list[tuple[Line | Arc, float, int]], tol_deg: float = 0.5
 ) -> list[tuple[Line | Arc, float, int]]:
-    """Fügt aneinanderliegende Bogenstücke desselben Pfads zu einem Bogen bzw. Vollkreis
-    zusammen. Gestrichelte Kreise bleiben getrennt, weil zwischen ihren Stücken Lücken sind."""
+    """Merge connected arcs from the same PDF path.
+    Gaps between dashed arc segments prevent a merge."""
     groups: dict[tuple, list[Arc]] = defaultdict(list)
     out: list[tuple[Line | Arc, float, int]] = []
     for g, width, pid in geoms:
@@ -55,7 +55,7 @@ def fit_arcs_into_circles(
                 merged[-1] = Arc(last.center, last.radius, last.start_deg, last.sweep_deg + a.sweep_deg)
             else:
                 merged.append(a)
-        # Überlauf über 0°: letztes Stück an das erste hängen
+        # Merge across zero degrees.
         if len(merged) > 1:
             first, last = merged[0], merged[-1]
             if abs((last.start_deg + last.sweep_deg) - (first.start_deg + 360.0)) < tol_deg:
@@ -69,7 +69,8 @@ def fit_arcs_into_circles(
 
 
 def point_segment_distance(p: Point, a: Point, b: Point) -> tuple[float, float]:
-    """Abstand von p zur Strecke ab und Parameter t der Projektion (0 = a, 1 = b)."""
+    """Return the distance to segment ab and the projection parameter t.
+    The parameter is zero at a and one at b."""
     dx, dy = b[0] - a[0], b[1] - a[1]
     ll = dx * dx + dy * dy
     if ll == 0:
@@ -80,7 +81,7 @@ def point_segment_distance(p: Point, a: Point, b: Point) -> tuple[float, float]:
 
 
 def angle_diff(a: float, b: float) -> float:
-    """Kleinster Winkel zwischen zwei Richtungen in Grad (Richtungen modulo 180°)."""
+    """Return the smallest angle between directions modulo 180 degrees."""
     d = abs(a - b) % 180.0
     return min(d, 180.0 - d)
 
@@ -103,7 +104,7 @@ def union(boxes: Iterable[BBox]) -> BBox:
 
 
 class Grid:
-    """Einfacher räumlicher Index: Objekte nach Bounding Box in Rasterzellen einsortiert."""
+    """Index object bounding boxes in spatial grid cells."""
 
     def __init__(self, cell: float = 5.0) -> None:
         self.cell = cell

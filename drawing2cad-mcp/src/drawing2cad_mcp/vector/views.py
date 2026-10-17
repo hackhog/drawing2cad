@@ -1,4 +1,4 @@
-"""Gruppiert Körpergeometrie zu Ansichten."""
+"""Group body geometry into drawing view candidates."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from .model import Kind, Line, Point, Stroke, View
 _BODY = (Kind.CONTOUR, Kind.HATCH, Kind.HIDDEN)
 _ATTACHED = (Kind.CENTERLINE,)
 _TOUCH = 0.15  # mm
-_MIN_VIEW_LENGTH = 20.0  # mm Gesamtlänge; kleinere Gruppen sind Beiwerk (Hinweislinien, Markierungen)
+_MIN_VIEW_LENGTH = 20.0  # mm of total stroke length; reject smaller groups
 _MIN_VIEW_STROKES = 3
-_MIN_VIEW_SIZE = 5.0  # mm; kleinere Gruppen sind z. B. nicht erkannte Pfeile
+_MIN_VIEW_SIZE = 5.0  # mm; smaller groups can include unrecognized arrowheads
 
 
 def _touches(p: Point, s: Stroke) -> bool:
@@ -23,12 +23,12 @@ def _touches(p: Point, s: Stroke) -> bool:
 
 
 def _mostly_inside(a: BBox, b: BBox) -> bool:
-    """Mindestens die Hälfte der kleineren Box liegt in der größeren."""
+    """Return whether at least half of the smaller box overlaps the larger box."""
     ix = min(a[2], b[2]) - max(a[0], b[0])
     iy = min(a[3], b[3]) - max(a[1], b[1])
     if ix < 0 or iy < 0:
         return False
-    # Ausdehnung mindestens 1 mm, damit waagrechte/senkrechte Einzellinien Fläche haben
+    # Give single horizontal or vertical lines a minimum area.
     def area(x: BBox) -> float:
         return max(x[2] - x[0], 1.0) * max(x[3] - x[1], 1.0)
 
@@ -54,8 +54,8 @@ def group_views(strokes: list[Stroke], raster_bbox: BBox | None) -> list[View]:
     clusters = [[body[i] for i in members] for members in uf.groups(range(len(body))).values()]
     boxes = [union(s.bbox() for s in c) for c in clusters]
 
-    # Gruppen zusammenführen, die überwiegend ineinander liegen (Bohrungen in Platten,
-    # Schraffur in Schnitten). Nur Randberührung reicht nicht, sonst kleben Nachbaransichten.
+    # Merge substantially overlapping groups, such as holes and plate contours.
+    # Contact at a boundary alone must not merge adjacent views.
     merged = True
     while merged:
         merged = False
@@ -82,7 +82,7 @@ def group_views(strokes: list[Stroke], raster_bbox: BBox | None) -> list[View]:
     for s in leftovers:
         s.kind = Kind.UNCLEAR
 
-    # Mittellinien der Ansicht zuordnen, in deren (erweiterter) Box sie liegen
+    # Attach centerlines to the first view whose expanded box contains them.
     for s in strokes:
         if s.kind not in _ATTACHED:
             continue

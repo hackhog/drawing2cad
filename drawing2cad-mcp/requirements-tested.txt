@@ -26,6 +26,7 @@ pydantic_core==2.50.1
 Pygments==2.21.0
 PyJWT==2.15.1
 pypdf==6.10.0
+PyMuPDF==1.28.2
 pytest==9.1.1
 pytest-asyncio==1.4.0
 python-multipart==0.0.32

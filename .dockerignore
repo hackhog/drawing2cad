@@ -1,13 +1,14 @@
-# Nur Extraktor und App gehören ins Image, keine Eingabedaten (data/).
+# Include only application source and package metadata. Exclude input data.
 *
-!extractor/
+!drawing2cad-mcp/
 !app/
 **/.venv
 **/node_modules
 app/src/drawing_demo/static
 **/__pycache__
 **/.pytest_cache
-extractor/out
-extractor/tests
-extractor/scripts
+drawing2cad-mcp/tests
+drawing2cad-mcp/*.local.toml
+drawing2cad-mcp/output
 app/tests
+app/scripts

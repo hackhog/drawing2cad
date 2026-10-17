@@ -2,11 +2,11 @@ import math
 
 import pytest
 
-from drawing_extractor.geometry import angle_diff, circle_through, fit_arcs_into_circles
-from drawing_extractor.model import Arc, Line
-from drawing_extractor.reader import _bezier_to_geometry
+from drawing2cad_mcp.vector.geometry import angle_diff, circle_through, fit_arcs_into_circles
+from drawing2cad_mcp.vector.model import Arc, Line
+from drawing2cad_mcp.vector.reader import _bezier_to_geometry
 
-K = 0.5522847498  # Bézier-Kontrollpunktfaktor für Viertelkreise
+K = 0.5522847498  # Bezier control-point factor for quarter circles
 
 
 def test_circle_through_three_points():

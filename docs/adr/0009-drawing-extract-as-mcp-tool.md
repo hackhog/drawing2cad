@@ -6,6 +6,10 @@ Date: 2026-10-17
 
 Proposed. Uses ADR 0003 (vector extractor) and ADR 0004 (text).
 
+Superseded by [ADR 0012](0012-vector-analysis-in-mcp.md) for packaging, status, process isolation, and timeout behavior.
+The `drawing_extract` call remains available with the same parameters.
+The former package paths and test results below describe the original implementation only.
+
 ## Context
 
 The agent does the CAD work through `drawing2cad-mcp` only (AGENTS.md).

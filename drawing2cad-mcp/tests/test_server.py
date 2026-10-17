@@ -14,8 +14,8 @@ from PIL import Image
 import pytest
 
 from drawing2cad_mcp.config import FreeCADSettings, PdfSettings, ServerSettings, Settings
-from drawing2cad_mcp import pdf as pdf_module
 from drawing2cad_mcp.server import STROKE_KINDS, Application
+from drawing2cad_mcp.vector import Kind
 from test_pdf import make_pdf
 from test_proxy import UPSTREAM
 
@@ -83,19 +83,20 @@ async def test_unknown_disabled_and_outside_root_errors(app):
     assert "outside" in failure.structured_content["error"]["message"]
 
 
-async def test_drawing_extract_without_extractor(app, tmp_path, monkeypatch):
-    monkeypatch.setattr(pdf_module, "drawing_extractor", None)
+async def test_drawing_analysis_is_built_in(app, tmp_path):
     result = await invoke(app, "drawing_extract", path=str(make_pdf(tmp_path / "test.pdf")))
-    assert result.structured_content["error"]["code"] == "EXTRACTOR_UNAVAILABLE"
+    assert not result.is_error, result
+    assert result.structured_content["provenance"]["engine"] == "drawing2cad_mcp.vector"
+    status = (await invoke(app, "drawing2cad_status")).structured_content
+    assert status["drawing_analysis"]["available"]
+    assert status["drawing_analysis"]["execution"] == "isolated_process"
 
 
-def test_stroke_kinds_schema_matches_extractor():
-    extractor = pytest.importorskip("drawing_extractor")
-    assert STROKE_KINDS == [kind.value for kind in extractor.Kind]
+def test_stroke_kinds_schema_matches_vector_engine():
+    assert STROKE_KINDS == [kind.value for kind in Kind]
 
 
 async def test_drawing_extract_on_sample(tmp_path):
-    pytest.importorskip("drawing_extractor")
     if not SAMPLE.is_file():
         pytest.skip("Sample drawing is missing")
     app = Application(Settings(pdf=PdfSettings(allowed_roots=[SAMPLE.parent], output_root=tmp_path / "out")))

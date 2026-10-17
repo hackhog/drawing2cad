@@ -1,4 +1,4 @@
-"""Liest Primitive aus dem PDF: Linien, Bögen (aus Bézierkurven), Schriftzeichen."""
+"""Read PDF lines, circular arc candidates, and filled character paths."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from .geometry import circle_through, fit_arcs_into_circles
 from .model import Arc, Glyph, Line, Point, Stroke
 from .template import PT_TO_MM, in_drawing_area
 
-# Maximal erlaubte Abweichung einer Bézierkurve vom angepassten Kreis (mm)
+# Maximum radial error for a fitted circular arc, in millimeters.
 _ARC_TOL = 0.02
-# Kürzere Linien sind Rauschen (z. B. doppelte Nullsegmente im NX-Export)
+# Ignore short segments, including duplicate zero-length export segments.
 _MIN_LEN = 0.01
 
 
@@ -30,7 +30,7 @@ def _bezier(p0: Point, c1: Point, c2: Point, p3: Point, t: float) -> Point:
 
 
 def _bezier_to_geometry(p0: Point, c1: Point, c2: Point, p3: Point) -> list[Line | Arc]:
-    """Kreisbogen, wenn die Kurve einer ist, sonst Polygonzug."""
+    """Fit a circular arc where possible. Otherwise, return a polyline."""
     mid = _bezier(p0, c1, c2, p3, 0.5)
     circle = circle_through(p0, mid, p3)
     if circle is not None:
@@ -42,7 +42,7 @@ def _bezier_to_geometry(p0: Point, c1: Point, c2: Point, p3: Point) -> list[Line
             am = math.degrees(math.atan2(mid[1] - center[1], mid[0] - center[0]))
             a1 = math.degrees(math.atan2(p3[1] - center[1], p3[0] - center[0]))
             sweep = (a1 - a0) % 360.0
-            # Drehrichtung über den Mittelpunkt der Kurve bestimmen
+            # Use the curve midpoint to determine sweep direction.
             if (am - a0) % 360.0 > sweep:
                 sweep -= 360.0
             return [Arc(center, r, a0, sweep)]
@@ -51,9 +51,19 @@ def _bezier_to_geometry(p0: Point, c1: Point, c2: Point, p3: Point) -> list[Line
 
 
 def _contours(items: list) -> list[list[Point]]:
-    """Zerlegt einen gefüllten Pfad in geschlossene Polygone (neues Polygon bei jedem Sprung)."""
+    """Separate a filled path into polygon contours."""
     contours: list[list[Point]] = []
     for item in items:
+        if item[0] == "re":
+            rect = item[1]
+            corners = [_mm(rect.tl), _mm(rect.tr), _mm(rect.br), _mm(rect.bl)]
+            contours.append(corners + corners[:1])
+            continue
+        if item[0] == "qu":
+            quad = item[1]
+            corners = [_mm(quad.ul), _mm(quad.ur), _mm(quad.lr), _mm(quad.ll)]
+            contours.append(corners + corners[:1])
+            continue
         if item[0] != "l":
             continue
         a, b = _mm(item[1]), _mm(item[2])
@@ -64,10 +74,13 @@ def _contours(items: list) -> list[list[Point]]:
 
 
 def read_pdf(path: Path) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None]:
-    """Gibt Striche und Schriftzeichen im Zeichenbereich zurück, dazu Blattgröße und
-    Bounding Box des eingebetteten Rasterbilds (die schattierte 3D-Ansicht)."""
-    doc = pymupdf.open(path)
-    page = doc[0]
+    """Return strokes, glyphs, sheet size, and the embedded image bounding box.
+    Read page one with the calibrated drawing-area profile."""
+    with pymupdf.open(path) as doc:
+        return _read_page(doc[0])
+
+
+def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None]:
     sheet = (page.rect.width * PT_TO_MM, page.rect.height * PT_TO_MM)
 
     raster = None
@@ -83,7 +96,10 @@ def read_pdf(path: Path) -> tuple[list[Stroke], list[Glyph], tuple[float, float]
             r = d["rect"]
             box = (r.x0 * PT_TO_MM, r.y0 * PT_TO_MM, r.x1 * PT_TO_MM, r.y1 * PT_TO_MM)
             if in_drawing_area(box):
-                glyphs.append(Glyph(box, _contours(d["items"])))
+                contours = _contours(d["items"])
+                if not contours or any(item[0] not in {"l", "re", "qu"} for item in d["items"]):
+                    raise ValueError("The filled path contains unsupported glyph geometry.")
+                glyphs.append(Glyph(box, contours))
             continue
         width = (d.get("width") or 0.0) * PT_TO_MM
         for item in d["items"]:
@@ -96,6 +112,10 @@ def read_pdf(path: Path) -> tuple[list[Stroke], list[Glyph], tuple[float, float]
                 q = item[1]
                 corners = [_mm(q.ul), _mm(q.ur), _mm(q.lr), _mm(q.ll)]
                 parts = [Line(a, b) for a, b in zip(corners, corners[1:] + corners[:1])]
+            elif op == "re":
+                rect = item[1]
+                corners = [_mm(rect.tl), _mm(rect.tr), _mm(rect.br), _mm(rect.bl)]
+                parts = [Line(a, b) for a, b in zip(corners, corners[1:] + corners[:1])]
             else:
                 continue
             for g in parts:
@@ -107,7 +127,7 @@ def read_pdf(path: Path) -> tuple[list[Stroke], list[Glyph], tuple[float, float]
                 else:
                     key = ("a", round(g.center[0], 2), round(g.center[1], 2), round(g.radius, 2),
                            round(g.start_deg % 360, 1), round(g.sweep_deg, 1), round(width, 2))
-                if key in seen:  # NX exportiert manche Segmente doppelt
+                if key in seen:  # NX can export duplicate segments.
                     continue
                 seen.add(key)
                 if in_drawing_area(g.bbox()):

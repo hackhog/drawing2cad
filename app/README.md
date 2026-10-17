@@ -1,95 +1,111 @@
 # drawing-demo
 
-Demo user interface for Drawing2CAD ([ADR 0006](../docs/adr/0006-demo-as-one-container-docker-compose.md)).
-Upload drawing PDFs, look at the result of the extractor (`../extractor`) as an interactive drawing, and examine the review flags.
+This demo uses the PDF service from `drawing2cad-mcp`.
+Upload a drawing PDF to examine its vector analysis and review flags.
+The app imports `PdfService` in the same process. It does not duplicate PDF analysis or expose an MCP protocol endpoint.
 
 ## Build and run
 
-With Docker (recommended, from the repository root):
+From the repository root, run:
 
 ```bash
-docker compose up --build    # → http://localhost:8000
+docker compose up --build
 ```
 
-Without Docker, with [uv](https://docs.astral.sh/uv/) and Node.js 22.12 or later:
+Open `http://localhost:8000`.
+The image contains the app, the MCP package, and Poppler.
+It excludes source drawings and local configuration.
+The container runs with a read-only file system. Temporary uploads and render artifacts use `/tmp`.
+
+For a local installation, use Python 3.12 or later, uv, Node.js 22.12 or later, and Poppler:
 
 ```bash
 cd app/web
-npm ci && npm run build      # React UI → ../src/drawing_demo/static/ (type check included)
+npm ci
+npm run build
 cd ..
 uv sync --locked
-uv run pytest                # sample tests are skipped if the sample drawings are missing
-uv run drawing-demo          # → http://127.0.0.1:8000
+uv run pytest
+uv run drawing-demo
 ```
 
-The API and its tests work also without the UI build. Then only the UI is missing.
-For UI development: `uv run drawing-demo` in one terminal, `cd web && npm run dev` in a second terminal
-(Vite with hot reload, sends `/api` to port 8000).
+Put `pdftoppm` on `PATH`, or set `DRAWING2CAD_PDFTOPPM` to its executable path.
+Without a UI build, the API remains available.
+For UI development, start the API and run `npm run dev` in `web/`.
+Vite forwards `/api` requests to port 8000.
 
-The app does not need an API key, a login, or a network connection at runtime.
+After an MCP source change, refresh the non-editable dependency:
+
+```bash
+uv sync --reinstall-package drawing2cad-mcp
+```
 
 ## User interface
 
-A light dashboard in an app window ([ADR 0008](../docs/adr/0008-demo-ui-light-dashboard.md)) with a guided sequence for the pitch
-([ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md)):
-**1 Drawing → 2 Recognized → 3 Review → 4 3D model**. The UI is React + TypeScript
-([ADR 0010](../docs/adr/0010-demo-ui-in-react-with-3d-viewer.md)).
-The UI text is German, because the pitch audience is German.
+The interface has four steps: **Drawing, Recognized, Review, and 3D model**.
+UI text remains in German.
+See [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md) and
+[ADR 0010](../docs/adr/0010-demo-ui-in-react-with-3d-viewer.md) for the design history.
 
-- **Sidebar:** opens the overview and each uploaded drawing.
-- **Overview page** (start page): tiles for the full batch (*drawings*, *explained* as number or gauge, *texts read*,
-  *to review*) and a table with one row for each PDF (status, explained, views, texts, to review, duration).
-  The table updates while the PDFs are read. Click a row to open the drawing.
-- **Drawing page:** the sheet with the tabs of the sequence, and the review list on the right. The header shows the key numbers.
-  - **1 Drawing:** the original sheet.
-  - **2 Recognized:** the sheet in light gray, with all strokes as SVG in the class colors (the same as the extractor overlay PNG).
-    Recognized views show as numbered frames (3D image marked). Read texts show as boxes (text on hover).
-    You can show and hide each class. Hatching is off at the start.
-  - **3 Review:** locations that a person must examine: unclear strokes (grouped by position),
-    characters that were not read with certainty (`?`), missing views. Click an item to zoom to the location.
-    In step 3, the first item is selected.
-  - **4 3D model:** drag a STEP file from the pipeline to the area, or click it. The server changes it to GLB,
-    the browser shows it in 3D (drag turns, wheel zooms, right drag moves). Each drawing keeps its model.
-- **Batch upload:** select or drag several PDFs at once, also later. The browser sends them to `/api/extract`,
-  with a maximum of 2 at the same time. Each PDF shows *waiting / reading / done / n to review / error*.
-- **Toasts:** each drawing shows a short message when it is read, with the duration and the number of open locations.
+- The overview shows each uploaded drawing and its status.
+- The drawing view shows the original page and the existing stroke classes.
+- The review view marks unclear strokes, unrecognized text characters, and missing views.
+- The model view converts an uploaded STEP file to GLB for display.
+- Batch upload sends a maximum of two PDFs at the same time.
 
-The mouse wheel zooms, drag moves the sheet, double-click shows the full sheet.
-The font (Plus Jakarta Sans) is in `web/src/assets/` (SIL OFL 1.1, license text in `web/public/fonts/`). The app does not use a CDN.
+Use the mouse wheel to zoom. Drag to move the sheet. Double-click to show the full sheet.
+Click a review item to move to its location.
+The UI includes its font and libraries. It does not use a CDN.
 
-## Demo drawing with unclear locations
+## PDF processing
 
-The 9 samples have no open locations. To show "marked, not guessed", `scripts/make_demo_drawing.py` makes a copy of
-Flansch with three defects. The extractor gives exactly three review flags for this drawing:
+The app supplies each upload to `PdfService.extract_drawing` and `PdfService.render_page`.
+Both operations use one temporary source file.
+The app compares their source hashes before it returns a result.
+It removes the source file and render artifacts when the request ends.
+The response includes source and render hashes without temporary server paths.
 
-```bash
-uv run python scripts/make_demo_drawing.py ../resources/Drawing2CAD/Flansch/Flansch_dwg.pdf ../output/demo/Flansch-Demo_dwg.pdf
-```
+The current analysis uses the first PDF page and the BCT/NX drawing profile.
+Pages must be unrotated, with matching CropBox and MediaBox coordinates.
+The MediaBox origin must be zero, and `/UserUnit` must be 1.
+Its stroke classes, outline-glyph templates, and view grouping are heuristic evidence.
+It does not provide general OCR, complete dimension interpretation, or a verified CAD model.
+Review all unclear data before drawing or CAD work.
 
-The result goes to the ignored `output/` directory.
+The app uses Poppler at 102 DPI for the page image.
+The response gives the image scale in pixels per millimeter.
+PDF size, rendering time, and image pixel limits apply through the shared service.
+The PDF upload limit is 20 MiB. The STEP upload limit is 50 MiB.
 
 ## API
 
 | Method | Path | Response |
 |---|---|---|
-| `GET` | `/api/health` | `{"status": "ok", "extractor_schema": 2}` |
-| `POST` | `/api/extract` (multipart, field `file`, max. 20 MB) | `drawing` (extractor JSON), `page_png` (data URI), `page_px_per_mm`, `review` (flags) |
-| `POST` | `/api/model` (multipart, field `file`, STEP, max. 50 MB) | GLB (`model/gltf-binary`), meshed with OpenCASCADE (`cascadio`) |
+| `GET` | `/api/health` | Status and MCP package version |
+| `POST` | `/api/extract` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |
+| `POST` | `/api/model` | GLB with media type `model/gltf-binary` |
 
-Errors: 413 too large, 415 not a PDF or not a STEP file, 422 drawing or STEP cannot be read (the extractor is made for the BCT template).
+Both upload endpoints accept multipart form data in the `file` field.
+Errors use status 413 for excess size, 415 for an incorrect format, and 422 for processing failures.
+A PDF hash mismatch also returns status 422.
+The existing drawing response remains compatible with the React viewer.
 
-## Structure
+The STEP viewer uses `cascadio` for display conversion only.
+It does not create STEP data or verify AP242, editable construction, or semantic PMI.
+The demo does not include a headless FreeCAD worker.
+Use the drawing-first workflow and separate CAD validation for model production.
 
-- `src/drawing_demo/api.py`: FastAPI. Processes the PDF in a temporary directory, changes STEP to GLB, and serves the built UI.
-- `src/drawing_demo/review.py`: review flags from the extractor JSON.
-- `web/`: React UI (Vite, TypeScript). `src/App.tsx` (pages and steps), `src/components/` (sidebar, overview,
-  sheet viewer, review list, 3D viewer), `src/lib/` (API types, upload queue, geometry).
-- `src/drawing_demo/static/`: build output of `web/`, not in Git.
-- `Dockerfile`: two stages (Node builds the UI, Python runs the app). The build context is the repository root,
-  because the extractor is a path dependency.
+## Structure and validation
 
-## Status (17.10.2026)
+- `src/drawing_demo/api.py`: upload limits, shared PDF service calls, STEP display conversion, and static UI routes.
+- `src/drawing_demo/review.py`: review flags derived from drawing data.
+- `web/`: React and TypeScript UI.
+- `src/drawing_demo/static/`: ignored UI build output.
+- `Dockerfile`: Node.js build stage and Python runtime stage.
 
-- All 9 samples work through the UI and the API. The result is the same as the extractor CLI (test).
-- Clean build in a fresh copy without sample data tested (Docker and uv).
-- 3D view of a STEP file in tab 4 (React, ADR 0010). Not included yet: direct connection to the result of the MCP server.
+Run `uv run pytest` for API and review tests.
+Sample-based tests are skipped when their inputs are absent.
+Synthetic tests verify the shared service boundary, hash agreement, and temporary-file cleanup.
+Run `npm run build --prefix web` for the frontend type check and build.
+Run `docker compose build` for the container build.
+These commands describe the test procedure. They do not assert a completed test run.

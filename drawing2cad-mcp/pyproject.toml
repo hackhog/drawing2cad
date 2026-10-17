@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drawing2cad-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "PDF preparation and FreeCAD tools through stdio or Streamable HTTP"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ dependencies = [
   "mcp==2.3.0",
   "pypdf==6.10.0",
   "Pillow==12.3.0",
+  "PyMuPDF==1.28.2",
   "jsonschema>=4.20,<5",
   "pydantic>=2.12,<3",
   "starlette>=1.8,<2",
@@ -27,8 +28,11 @@ drawing2cad-mcp = "drawing2cad_mcp.server:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"drawing2cad_mcp.vector" = ["glyph_templates.json", "py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-# PyMuPDF (SWIG, from the optional drawing_extractor) reports import warnings unrelated to this code.
+# PyMuPDF (SWIG) reports import warnings unrelated to this code.
 filterwarnings = ["ignore:builtin type .* has no __module__ attribute:DeprecationWarning"]

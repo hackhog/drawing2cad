@@ -1,6 +1,6 @@
 import type { StrokeKind } from "./api";
 
-// Farben wie im Overlay-PNG des Extraktors (render.py), damit beide Ansichten gleich lesbar sind
+// Keep the established drawing-class colors for the existing UI.
 export const KINDS: [StrokeKind, string, string][] = [
   ["contour", "Kontur", "#141414"],
   ["hidden", "verdeckt", "#965a00"],

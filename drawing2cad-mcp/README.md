@@ -1,7 +1,7 @@
 # drawing2cad-mcp
 
 This MCP server supplies PDF metadata, embedded text, page images, and detail images.
-With the optional [vector extractor](../extractor/README.md), it also supplies the views, read text, and classified strokes of a vector drawing.
+Its built-in vector analysis supplies views, text from glyph outlines, and classified strokes for a supported drawing profile.
 It also supplies tools from an existing FreeCAD MCP with the prefix `freecad_`.
 
 Agent → **Streamable HTTP or stdio** → **drawing2cad-mcp** → PDF preparation / existing FreeCAD MCP → FreeCAD addon.
@@ -17,7 +17,7 @@ Use the [Streamable HTTP guide](STREAMABLE_HTTP.md) for installation, authentica
 | `pdf_read_text` | `path`, optional `pages`, `max_chars=50000`: embedded text. No OCR. |
 | `pdf_render_page` | `path`, `page=1`, `dpi=150`, `include_image=true`: full page image. |
 | `pdf_crop_region` | `path`, `page`, `bbox`, `dpi=300`, `include_image=true`: detail image. |
-| `drawing_extract` | `path`, `include_strokes=false`, optional `stroke_kinds`: sheet size, views, text read from glyph outlines, and on request the classified strokes of page 1. Needs the optional extractor. |
+| `drawing_extract` | `path`, `include_strokes=false`, optional `stroke_kinds`: sheet size, views, glyph text, and optional classified strokes from page 1. See [Vector analysis](#vector-analysis). |
 | `freecad_*` | All tools found in upstream discovery, with the prefix. The proxy does not maintain static copies of their schemas. |
 
 The installed FreeCAD MCP supplies 17 forwarded tools. This server adds six local tools.
@@ -32,7 +32,7 @@ The server limits large preview images. The `preview` fields give their actual d
 ## Installation
 
 Install Python 3.11 or later and Poppler with `pdftoppm`.
-For `drawing_extract`, use Python 3.12 or later.
+Installation includes PyMuPDF 1.28.2 for vector analysis.
 For CAD work, also install a FreeCAD MCP with a reachable FreeCAD addon.
 This server does not require a GUI. It does not change the operating mode of the upstream FreeCAD server.
 
@@ -44,14 +44,8 @@ py -3.12 -m venv .venv
 Copy-Item drawing2cad-mcp.example.toml drawing2cad-mcp.local.toml
 ```
 
-To enable `drawing_extract`, also install the extractor into the same environment:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e ..\extractor
-```
-
-Without the extractor, `drawing_extract` returns the error `EXTRACTOR_UNAVAILABLE`. All other tools work.
-`drawing2cad_status` shows `extractor.available` and `extractor.version`.
+Vector analysis is part of this package. No second package or CLI installation is necessary.
+`drawing2cad_status` reports the built-in analysis under `drawing_analysis`.
 
 On Linux or macOS, use `python3 -m venv .venv` and `.venv/bin/python`.
 Install Poppler separately, or configure the existing absolute path to `pdftoppm`.
@@ -264,11 +258,10 @@ The skill remains at `skills/drawing2cad`; the JSON examples remain with the MCP
 1. Give only the permitted PDF to `pdf_info`.
 2. Record `source.sha256`.
 3. Call `pdf_read_text` for the necessary pages.
-4. If a page has `status="native_text_missing"`, call `drawing_extract`. This status means that no native text was found on that page.
-   The BCT drawings have no text layer. Their dimensions and labels are vector outlines.
-   `drawing_extract` reads these outlines and gives positions in millimeters on the sheet.
-   A `?` in a text block or a stroke of kind `unclear` is not a fact. Examine it in a detail image.
-   If the extractor is not available or the PDF is a scan, read the page visually.
+4. If page 1 has `status="native_text_missing"`, assess whether it meets the [vector analysis profile](#vector-analysis).
+   For supported vector drawings, call `drawing_extract` to read glyph outlines and sheet coordinates.
+   Examine `?` characters and `unclear` strokes in detail images. Also verify critical values that appear recognized.
+   For scans or unsupported profiles, use page and detail images. Record unresolved data.
 5. Call `pdf_render_page`.
 6. Inspect the returned image.
 7. Create detail images for critical dimensions, for example:
@@ -295,21 +288,44 @@ A higher DPI cannot restore missing image information from a raster source.
 Each call reads its own size-limited PDF snapshot.
 There is no session across documents and no automatic interpretation of drawing dimensions.
 
-`drawing_extract` reads page 1 from the same hashed snapshot as the other tools.
+## Vector analysis
+
+`drawing_extract` reads page 1 from its size-limited source snapshot. The returned hash identifies that snapshot.
 Its coordinates are **millimeters on the sheet**, origin top left, y down. They are not CAD coordinates.
-The extractor does not apply the drawing scale.
+The analysis does not apply the drawing scale or associate dimensions with model features.
 Without `include_strokes=true`, each view gives `stroke_count` instead of `stroke_ids`.
-Measured responses (status 17.10.2026, A3 BCT drawings): approx. 3 to 5 kB without strokes, 290 to 450 kB with all strokes.
-Use `stroke_kinds`, for example `["unclear"]`, to get a small subset.
-The extractor supports the BCT template (A3, NX export). See the [extractor limits](../extractor/README.md).
+Use `stroke_kinds`, for example `["unclear"]`, only with `include_strokes=true` to request a subset.
+View membership and summary counts describe the complete analysis, including when the returned strokes are filtered.
+
+The current profile supports BCT A3 landscape sheets from Siemens NX.
+The profile removes its fixed frame and title block before classification.
+Other layouts can produce missing geometry or incorrect classes, even when their sheet size matches.
+The server rejects unsupported rotation, CropBox, MediaBox origin, and UserUnit values for vector analysis.
+The normal PDF text, page, and crop tools retain their separate page-transform support.
+
+The glyph reader uses the bundled NX glyph templates. It does not perform OCR.
+Unknown characters can appear as `?` or as an incorrect known character.
+The reader does not read stroke text in the title block.
+Obtain the drawing scale, tolerances, and manufacturing notes from verified source observations.
+Unclassified strokes remain `unclear`. Classification is evidence for review, not a verified manufacturing requirement.
+
+The analysis runs in a separate process for each request.
+`pdf.timeout_seconds` limits that process. The service terminates it when the timeout expires.
+The source snapshot and internal response are temporary data. The operation creates no persistent JSON export or colored overlay.
+For visual review, use `pdf_render_page` and `pdf_crop_region`.
+
+Create and review a dimensioned technical drawing from the verified observations.
+Then build the editable 3D model and export STEP AP242 last.
+Vector analysis does not author drawings, build CAD features, or supply semantic PMI.
+See [ADR 0012](../docs/adr/0012-vector-analysis-in-mcp.md) for the feature comparison and package migration.
 
 ## Behavior and limits
 
 - PDF preparation uses pypdf for text and metadata, Poppler for raster images, and Pillow for crops and previews.
-- `drawing_extract` uses the optional `drawing_extractor` package (PyMuPDF). It reads glyph outlines with templates, not with OCR.
+- `drawing_extract` uses the internal `drawing2cad_mcp.vector` module and PyMuPDF in an isolated request process.
 - The server has no OCR or automatic CAD reconstruction.
 - The server verifies resolved PDF paths against permitted directories, file-size limits, page limits, and pixel limits.
-- The Poppler process has a timeout. That timeout does not apply to the pypdf parser or to the vector extractor.
+- Poppler and vector analysis each use `pdf.timeout_seconds`. That timeout does not apply to the in-process pypdf parser.
 - This server is not an isolated service for unrestricted hostile PDF inputs.
 - The proxy preserves schemas, images, resource blocks, structured results, and error status.
 - It is a **tool proxy**. It does not forward upstream resource lists, prompts, sampling, or elicitation.
@@ -334,7 +350,7 @@ $testRun = '../output/tests-' + [guid]::NewGuid().ToString('N')
 ```
 
 Without Poppler, the test suite skips image-render tests.
-Without the extractor or the sample drawings in `../resources/Drawing2CAD/`, it skips the extractor sample tests.
+Without the sample drawings in `../resources/Drawing2CAD/`, it skips the vector sample tests.
 It can skip symbolic-link tests if the operating system does not permit symbolic links.
 The suite uses synthetic PDFs and a harmless MCP test process. It does not change FreeCAD models.
 It tests rotation, CropBox/MediaBox, UserUnit, detail pixels, source identity, errors, transport fidelity, and cancellation without automatic retry.

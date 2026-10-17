@@ -6,6 +6,10 @@ Date: 2026-10-16
 
 Accepted (local part done on 2026-10-16, `app/`).
 
+[ADR 0012](0012-vector-analysis-in-mcp.md) replaces the standalone extractor dependency with the MCP package's PDF service.
+The demo still has its own HTTP API. It does not host the MCP endpoint.
+The original decision below remains historical evidence.
+
 ## Context
 
 For the pitch (Solution & Demo = 17.5 % of the total score), we need a user interface: upload a drawing PDF,

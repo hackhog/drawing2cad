@@ -1,5 +1,5 @@
-"""Datenmodell des Extraktors. Alle Koordinaten in Millimetern auf dem Blatt,
-Ursprung oben links, y zeigt nach unten (wie im PDF-Seitenkoordinatensystem)."""
+"""Vector drawing data in millimeters on the sheet.
+The origin is at the top left. The positive y direction points down."""
 
 from __future__ import annotations
 
@@ -11,16 +11,16 @@ Point = tuple[float, float]
 
 
 class Kind(StrEnum):
-    """Bedeutung eines Strichs, wie der Klassifikator sie einordnet."""
+    """Stroke class assigned by the classification rules."""
 
-    CONTOUR = "contour"  # sichtbare Körperkante
-    HATCH = "hatch"  # Schraffur einer Schnittfläche
-    CENTERLINE = "centerline"  # Strich-Punkt-Linie (Mittel-/Symmetrielinie, Lochkreis)
-    HIDDEN = "hidden"  # Strichlinie (verdeckte Kante)
-    DIMENSION = "dimension"  # Maßlinie oder Hinweislinie mit Pfeil
-    EXTENSION = "extension"  # Maßhilfslinie
-    ARROW = "arrow"  # Maßpfeil (Dreieck samt Füllstrichen)
-    CUTTING_PLANE = "cutting_plane"  # Schnittverlauf mit Pfeilen (A-A, B-B …)
+    CONTOUR = "contour"  # Visible body edge candidate
+    HATCH = "hatch"  # Section hatching
+    CENTERLINE = "centerline"  # Dash-dot line or center mark
+    HIDDEN = "hidden"  # Hidden edge
+    DIMENSION = "dimension"  # Dimension line or leader with an arrow
+    EXTENSION = "extension"  # Extension line
+    ARROW = "arrow"  # Dimension arrowhead and fill strokes
+    CUTTING_PLANE = "cutting_plane"  # Cutting plane with section arrows
     UNCLEAR = "unclear"
 
 
@@ -35,7 +35,7 @@ class Line:
 
     @property
     def angle(self) -> float:
-        """Richtung in Grad, normiert auf [0, 180)."""
+        """Return the direction in degrees, normalized to [0, 180)."""
         a = math.degrees(math.atan2(self.p1[1] - self.p0[1], self.p1[0] - self.p0[0]))
         return a % 180.0
 
@@ -49,8 +49,8 @@ class Line:
 
 @dataclass(slots=True)
 class Arc:
-    """Kreisbogen von start_deg nach end_deg im mathematisch positiven Sinn
-    (im y-nach-unten-System also im Uhrzeigersinn auf dem Bildschirm)."""
+    """Circular arc with a start angle and a signed sweep.
+    A positive sweep is clockwise in sheet coordinates."""
 
     center: Point
     radius: float
@@ -78,7 +78,7 @@ class Arc:
         return abs(math.radians(self.sweep_deg)) * self.radius
 
     def bbox(self) -> tuple[float, float, float, float]:
-        # konservativ: Bounding Box des Vollkreises reicht für Gruppierung
+        # A full circle uses its exact bounding box.
         if self.is_circle:
             cx, cy = self.center
             r = self.radius
@@ -96,12 +96,12 @@ Geometry = Line | Arc
 
 @dataclass(slots=True)
 class Stroke:
-    """Ein gezeichnetes Primitiv (Linie oder Bogen) mit seiner Strichstärke."""
+    """Drawing primitive with its source path and line width."""
 
     id: int
     geom: Geometry
     width_mm: float
-    path_id: int  # Index des PDF-Zeichenpfads, aus dem es stammt
+    path_id: int  # Index of the original PDF drawing path
     kind: Kind = Kind.UNCLEAR
 
     def bbox(self) -> tuple[float, float, float, float]:
@@ -110,8 +110,8 @@ class Stroke:
 
 @dataclass(slots=True)
 class Glyph:
-    """Gefüllter Umriss eines Schriftzeichens (die PDFs haben keine Textebene).
-    `contours` sind geschlossene Polygone, gefüllt nach der Even-Odd-Regel."""
+    """Filled character outline from a PDF without a text layer.
+    Contours are closed polygons with the even-odd fill rule."""
 
     bbox: tuple[float, float, float, float]
     contours: list[list[Point]] = field(default_factory=list)
@@ -122,8 +122,8 @@ class TextBlock:
     id: int
     bbox: tuple[float, float, float, float]
     glyph_count: int
-    text: str = ""  # erkannter Text; "?" steht für ein nicht sicher erkanntes Zeichen
-    angle_deg: float = 0.0  # Leserichtung, 0 = waagrecht, 90 = von unten nach oben lesbar
+    text: str = ""  # A question mark indicates an unrecognized character.
+    angle_deg: float = 0.0  # Reading direction: 0 horizontal, 90 bottom to top
 
 
 @dataclass(slots=True)
@@ -141,4 +141,4 @@ class Drawing:
     strokes: list[Stroke]
     texts: list[TextBlock]
     views: list[View]
-    raster_bbox: tuple[float, float, float, float] | None  # eingebettetes 3D-Bild
+    raster_bbox: tuple[float, float, float, float] | None  # Embedded shaded image

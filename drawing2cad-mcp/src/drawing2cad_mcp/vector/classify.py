@@ -1,17 +1,16 @@
-"""Regelbasierte Einordnung der Striche.
+"""Classify drawing strokes with deterministic rules.
 
-Die Strichstärke allein trägt keine verlässliche Bedeutung: Je nach Zeichnung sind Konturen
-0,18–0,35 mm breit, und Maßlinien können genauso breit sein wie Konturen. Deshalb arbeiten
-die Regeln vor allem geometrisch, in dieser Reihenfolge:
+Line width alone does not identify a stroke class reliably.
+The rules use geometry and the calibrated drawing profile in this order:
 
-1. Schnittverlauf: Stärke ≥ 0,45 mm oder großer Pfeil (Basis > 2 mm) samt Schaft und Strich
-2. Maßpfeile: schmale geschlossene Dreiecke samt ihren Füllstrichen
-3. Maßlinien: Striche durch eine Pfeilspitze in Pfeilrichtung, plus kollineare Fortsetzungen
-4. Maßhilfslinien: quer zur Maßlinie, mit kurzem freiem Überstand, auch über Lücken hinweg
-5. Schraffur: Scharen paralleler Linien mit gleichem Abstand
-6. Strichlinien: unterbrochene Linien/Kreise auf demselben Träger (Strich-Punkt = Mittellinie)
-7. Mittelkreuze: dünne Linien durch Kreismittelpunkte
-8. Rest: Kontur
+1. Cutting planes: thick strokes or large arrows, with their shafts.
+2. Dimension arrows: closed narrow triangles and their fill strokes.
+3. Dimension lines: strokes aligned with arrow tips, including continuations.
+4. Extension lines: transverse lines with a short free end.
+5. Hatching: equally spaced parallel lines.
+6. Dashed lines and circles: classify regular dashes or alternating dash lengths.
+7. Center marks: thin lines through circle centers.
+8. Remaining strokes: contour candidates.
 """
 
 from __future__ import annotations
@@ -23,22 +22,22 @@ from dataclasses import dataclass
 from .geometry import Grid, angle_diff, expand, point_segment_distance
 from .model import Arc, Kind, Line, Point, Stroke
 
-_TOUCH = 0.06  # mm: Punkte gelten als identisch / berührend
+_TOUCH = 0.06  # mm: endpoint contact tolerance
 _CUTTING_PLANE_WIDTH = 0.45  # mm
 _ARROW_MAX_SIDE = 10.0  # mm
 _ARROW_MAX_BASE = 4.5  # mm
-_DIM_ARROW_MAX_BASE = 2.0  # mm; größere Pfeile markieren Schnittverläufe
-_EXTENSION_MAX_GAP = 8.0  # mm; Maßhilfslinien werden an Kreuzungen mit Maßlinien unterbrochen
+_DIM_ARROW_MAX_BASE = 2.0  # mm; larger arrowheads indicate cutting planes
+_EXTENSION_MAX_GAP = 8.0  # mm; gaps occur where extension lines cross dimension lines
 
 
 @dataclass(slots=True)
 class ArrowHead:
     tip: Point
-    direction_deg: float  # Achse Basis → Spitze, modulo 180°
+    direction_deg: float  # Axis from base to tip, modulo 180 degrees
 
 
 def classify(strokes: list[Stroke]) -> list[ArrowHead]:
-    """Setzt `kind` jedes Strichs. Gibt die gefundenen Pfeile zurück."""
+    """Set the kind of each stroke. Return the detected arrowheads."""
     grid = Grid()
     for s in strokes:
         grid.insert(s.id, expand(s.bbox(), _TOUCH))
@@ -76,7 +75,7 @@ def _same(p: Point, q: Point) -> bool:
 
 
 def _in_triangle(p: Point, a: Point, b: Point, c: Point) -> bool:
-    """Punkt liegt im Dreieck oder höchstens _TOUCH von seinem Rand entfernt."""
+    """Return whether a point is inside the triangle or within _TOUCH of an edge."""
 
     def side(p1: Point, p2: Point, p3: Point) -> float:
         return (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1])
@@ -88,8 +87,8 @@ def _in_triangle(p: Point, a: Point, b: Point, c: Point) -> bool:
 
 
 def _same_path(a: Stroke, b: Stroke) -> bool:
-    """Gleicher oder direkt benachbarter PDF-Pfad: NX verteilt manche Pfeilspitzen auf zwei
-    aufeinanderfolgende Pfade (z. B. Maschinenteil, Winkelmaß 25,5°)."""
+    """Accept the same PDF path or an immediately adjacent path.
+    NX can divide one arrowhead between two consecutive paths."""
     return abs(a.path_id - b.path_id) <= 1
 
 
@@ -99,7 +98,7 @@ def _find_arrows(strokes: list[Stroke], grid: Grid) -> list[ArrowHead]:
         g = base.geom
         if not _open(base) or g.length > _ARROW_MAX_BASE:
             continue
-        # zwei Schenkel, die an den Basisenden beginnen und sich in einer Spitze treffen
+        # Find two legs that connect the base endpoints to the same tip.
         legs0 = [s for s in _near(grid, strokes, g.p0) if s is not base and isinstance(s.geom, Line)
                  and _same_path(s, base) and _open(s) and any(_same(e, g.p0) for e in s.geom.endpoints())]
         legs1 = [s for s in _near(grid, strokes, g.p1) if s is not base and isinstance(s.geom, Line)
@@ -109,7 +108,7 @@ def _find_arrows(strokes: list[Stroke], grid: Grid) -> list[ArrowHead]:
             far0 = l0.geom.p1 if _same(l0.geom.p0, g.p0) else l0.geom.p0
             for l1 in legs1:
                 far1 = l1.geom.p1 if _same(l1.geom.p0, g.p1) else l1.geom.p0
-                # gleichschenklig, Basis kürzeste Seite
+                # Require equal leg lengths and a shorter base.
                 if l0 is not l1 and _same_path(l0, l1) and _same(far0, far1) and g.length < l0.geom.length <= _ARROW_MAX_SIDE \
                         and abs(l0.geom.length - l1.geom.length) < 0.05 * l0.geom.length:
                     found = (l0, l1, far0)
@@ -139,7 +138,7 @@ def _find_arrows(strokes: list[Stroke], grid: Grid) -> list[ArrowHead]:
 
 
 def _mark_section_marker(strokes: list[Stroke], grid: Grid, tip: Point, direction: float) -> None:
-    """Schaft des Schnittpfeils und der kurze Strich der Schnittlinie, an dem er endet."""
+    """Mark the section arrow shaft and the short cutting-plane bar at its end."""
     for shaft in _near(grid, strokes, tip):
         g = shaft.geom
         if not (_open(shaft) and isinstance(g, Line) and angle_diff(g.angle, direction) < 2.0
@@ -156,7 +155,7 @@ def _mark_section_marker(strokes: list[Stroke], grid: Grid, tip: Point, directio
 
 
 def _collinear_continuations(s: Stroke, strokes: list[Stroke], grid: Grid, max_gap: float) -> list[Stroke]:
-    """Offene Linien auf derselben Trägergeraden, die höchstens max_gap vor einem Ende von s beginnen."""
+    """Find unclassified lines on the same carrier within max_gap of an endpoint."""
     g = s.geom
     ang, off = g.angle, _offset(g, g.angle)
     out = []
@@ -192,7 +191,7 @@ def _find_dimension_lines(strokes: list[Stroke], grid: Grid, arrows: list[ArrowH
             if hit and aligned:
                 s.kind = Kind.DIMENSION
 
-    # kollineare Fortsetzungen (Maßlinie durch Maßzahl oder Pfeil unterbrochen)
+    # Extend collinear dimension-line pieces across shared endpoints.
     changed = True
     while changed:
         changed = False
@@ -208,7 +207,7 @@ def _find_dimension_lines(strokes: list[Stroke], grid: Grid, arrows: list[ArrowH
 
 
 def _is_free_end(p: Point, owner: Stroke, strokes: list[Stroke], grid: Grid) -> bool:
-    """Kein anderer Körper-Strich berührt diesen Punkt."""
+    """Return whether no other body stroke touches this point."""
     for t in _near(grid, strokes, p):
         if t is owner or t.kind in (Kind.DIMENSION, Kind.ARROW, Kind.EXTENSION, Kind.CUTTING_PLANE):
             continue
@@ -235,7 +234,7 @@ def _find_extension_lines(strokes: list[Stroke], grid: Grid, arrows: list[ArrowH
             dist, t = point_segment_distance(p, g.p0, g.p1)
             if dist > _TOUCH or angle_diff(g.angle, dim_dir) < 30.0:
                 continue
-            # Überstand: das nähere Ende liegt 0,3–6 mm hinter dem Ankerpunkt und ist frei
+            # The nearer endpoint must be free, 0.3 to 6 mm beyond the anchor.
             end = g.p0 if t < 0.5 else g.p1
             overshoot = math.dist(p, end)
             if 0.3 <= overshoot <= 6.0 and _is_free_end(end, s, strokes, grid):
@@ -244,8 +243,8 @@ def _find_extension_lines(strokes: list[Stroke], grid: Grid, arrows: list[ArrowH
 
 
 def _extend_across_gaps(s: Stroke, strokes: list[Stroke], grid: Grid) -> None:
-    """NX unterbricht Maßhilfslinien dort, wo sie eine andere Maßlinie kreuzen. Nur über solche
-    Lücken wird fortgesetzt; eine Lücke zur Körperkante (Normalfall) bleibt eine Grenze."""
+    """Continue extension lines across gaps at other dimension lines.
+    A gap before a body contour remains a boundary."""
     todo = [s]
     while todo:
         cur = todo.pop()
@@ -264,7 +263,7 @@ def _extend_across_gaps(s: Stroke, strokes: list[Stroke], grid: Grid) -> None:
 
 
 def _offset(g: Line, angle_deg: float) -> float:
-    """Senkrechter Abstand der Trägergeraden vom Ursprung."""
+    """Return the perpendicular distance of the carrier line from the origin."""
     a = math.radians(angle_deg)
     return -g.p0[0] * math.sin(a) + g.p0[1] * math.cos(a)
 
@@ -275,8 +274,8 @@ def _along(p: Point, angle_deg: float) -> float:
 
 
 def _find_hatching(strokes: list[Stroke], grid: Grid) -> None:
-    """Eine Linie ist Schraffur, wenn sie parallele Nachbarn im selben Abstand auf beiden
-    Seiten hat (bzw. zwei Nachbarn im Abstand s und 2s)."""
+    """Find parallel neighbors at equal distances on both sides.
+    Also accept two neighbors at distances s and 2s."""
     cands = [s for s in _lines(strokes) if _open(s) and s.geom.length > 0.5]
     by_id = {s.id: s for s in cands}
     hatch: set[int] = set()
@@ -291,7 +290,7 @@ def _find_hatching(strokes: list[Stroke], grid: Grid) -> None:
             if t is None or t is s or angle_diff(t.geom.angle, ang) > 0.5 or t.width_mm != s.width_mm:
                 continue
             tlo, thi = sorted((_along(t.geom.p0, ang), _along(t.geom.p1, ang)))
-            if thi < lo or tlo > hi:  # muss sich in Längsrichtung überlappen
+            if thi < lo or tlo > hi:  # Require overlap along the line direction.
                 continue
             d = _offset(t.geom, ang) - off
             if 0.3 < abs(d) <= 5.0:
@@ -305,15 +304,15 @@ def _find_hatching(strokes: list[Stroke], grid: Grid) -> None:
 
 
 def _dash_kind(pieces: list[float]) -> Kind:
-    """Strich-Punkt-Linie wechselt lange und kurze Striche (bei BCT 14,7 / 3 mm),
-    eine Strichlinie hat gleich lange Striche."""
+    """Alternate long and short strokes indicate a centerline.
+    Equal dash lengths indicate a hidden line."""
     if len(pieces) >= 3 and max(pieces) > 2.5 * min(pieces):
         return Kind.CENTERLINE
     return Kind.HIDDEN
 
 
 def _find_dashed(strokes: list[Stroke]) -> None:
-    # Geraden: Stücke auf demselben Träger mit Lücken dazwischen
+    # Group collinear segments with gaps.
     carriers: dict[tuple, list[Stroke]] = defaultdict(list)
     for s in _lines(strokes):
         if _open(s):
@@ -325,7 +324,7 @@ def _find_dashed(strokes: list[Stroke]) -> None:
         spans = sorted(
             ((sorted((_along(s.geom.p0, ang), _along(s.geom.p1, ang))), s) for s in group), key=lambda x: x[0]
         )
-        # Läufe bilden: Stücke mit Lücke ≤ 4 mm (Überlappung erlaubt, z. B. Mittelkreuze)
+        # Form runs with gaps up to 4 mm. Overlap is permitted.
         run: list[tuple[list[float], Stroke]] = [spans[0]]
         run_end, gaps = spans[0][0][1], 0
         for item in spans[1:] + [None]:
@@ -341,7 +340,7 @@ def _find_dashed(strokes: list[Stroke]) -> None:
             if item is not None:
                 run, run_end, gaps = [item], item[0][1], 0
 
-    # Kreise: mehrere Bogenstücke mit gleichem Mittelpunkt und Radius
+    # Group arc segments with the same center and radius.
     circles: dict[tuple, list[Stroke]] = defaultdict(list)
     for s in strokes:
         if isinstance(s.geom, Arc) and _open(s) and not s.geom.is_circle:
@@ -355,7 +354,7 @@ def _find_dashed(strokes: list[Stroke]) -> None:
 
 
 def _find_center_marks(strokes: list[Stroke]) -> None:
-    """Dünne Linien durch einen Kreismittelpunkt sind Mittellinien (Mittelkreuz)."""
+    """Classify thin lines through circle centers as center marks."""
     contour_width = _dominant_width(strokes)
     centers = [s.geom.center for s in strokes if isinstance(s.geom, Arc)]
     for s in _lines(strokes):
@@ -370,7 +369,7 @@ def _find_center_marks(strokes: list[Stroke]) -> None:
 
 
 def _dominant_width(strokes: list[Stroke]) -> float:
-    """Strichstärke mit der größten Gesamtlänge unter den noch offenen Strichen."""
+    """Return the width with the greatest total length among unclassified strokes."""
     total: dict[float, float] = defaultdict(float)
     for s in strokes:
         if _open(s):

@@ -1,11 +1,11 @@
-"""Pfeilerkennung an synthetischen Strichen (läuft ohne Beispielzeichnungen)."""
+"""Test arrow detection with synthetic strokes."""
 
 import pytest
 
-from drawing_extractor.classify import classify
-from drawing_extractor.model import Kind, Line, Stroke
+from drawing2cad_mcp.vector.classify import classify
+from drawing2cad_mcp.vector.model import Kind, Line, Stroke
 
-# Maßpfeil wie bei BCT: Basis 0,92 mm, Schenkel 3,53 mm, Spitze bei (3,5 | 0), dazu ein Füllstrich
+# Synthetic arrow: 0.92 mm base, 3.53 mm legs, tip at (3.5, 0), and one fill stroke.
 BASE, LEG0, LEG1, FILL = ((0, -0.46), (0, 0.46)), ((0, -0.46), (3.5, 0)), ((0, 0.46), (3.5, 0)), ((0, 0), (3.5, 0))
 
 
@@ -15,7 +15,7 @@ def _arrow(paths: tuple[int, int, int, int]) -> list[Stroke]:
 
 @pytest.mark.parametrize("paths", [(0, 0, 0, 0), (1, 1, 0, 0), (1, 0, 1, 1)])
 def test_arrow_may_span_two_consecutive_paths(paths):
-    """NX verteilt manche Pfeilspitzen auf zwei aufeinanderfolgende PDF-Pfade."""
+    """NX can divide one arrowhead between consecutive PDF paths."""
     strokes = _arrow(paths)
     arrows = classify(strokes)
     assert len(arrows) == 1 and arrows[0].tip == pytest.approx((3.5, 0))
