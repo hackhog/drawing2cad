@@ -20,7 +20,7 @@ Details: [app/README.md](app/README.md).
 | [drawing2cad-mcp/](drawing2cad-mcp/README.md) | Python server, installation, configuration, and tests |
 | [skills/drawing2cad/](skills/drawing2cad/SKILL.md) | Skill, workflow, adapter instructions, and references |
 | [extractor/](extractor/README.md) | Deterministic vector extractor: PDF → classified strokes, views, and read texts (JSON) |
-| [app/](app/README.md) | Demo UI (FastAPI + static HTML/JS): upload PDFs, guided review of the extractor result |
+| [app/](app/README.md) | Demo UI (FastAPI + React): upload PDFs, guided review of the extractor result, 3D model view |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records for extractor and demo UI |
 | `compose.yaml` | Local start of the demo UI with Docker Compose |
 | `resources/` | Original drawings and CAD references for verification |

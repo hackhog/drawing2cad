@@ -5,6 +5,7 @@ Date: 2026-10-17
 ## Status
 
 Accepted. Replaces the visual design of ADR 0007. The sequence and the batch upload of ADR 0007 stay valid.
+Amended by [ADR 0010](0010-demo-ui-in-react-with-3d-viewer.md): React implementation, tab 4 is active.
 
 ## Context
 
