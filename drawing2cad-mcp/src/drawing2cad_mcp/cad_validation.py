@@ -83,6 +83,8 @@ def _cylinders(shape) -> list[dict[str, Any]]:
         concave = sum(radial[i] * normal[i] for i in range(3)) < 0
         cylinders.append({"diameter": float(2 * cylinder.Radius()), "axis_origin": location,
                           "axis_direction": direction, "axial_length": float(surface.LastVParameter() - surface.FirstVParameter()),
+                          "axial_v_min": float(surface.FirstVParameter()),
+                          "axial_v_max": float(surface.LastVParameter()),
                           "concave": concave, "face_index": face_index})
     return cylinders
 
@@ -147,6 +149,17 @@ def _matching_cylinders(cylinders, position, direction, tolerance):
         along = sum(delta[i] * direction[i] for i in range(3))
         distance = math.sqrt(sum((delta[i] - along * direction[i]) ** 2 for i in range(3)))
         if parallel >= 1 - 1e-7 and distance <= tolerance:
+            result.append(cylinder)
+    return result
+
+
+def _cylinders_at_station(cylinders, position, tolerance):
+    """Select cylindrical faces whose axial span contains the source station."""
+    result = []
+    for cylinder in cylinders:
+        station = sum((position[i] - cylinder["axis_origin"][i]) * cylinder["axis_direction"][i]
+                      for i in range(3))
+        if cylinder["axial_v_min"] - tolerance <= station <= cylinder["axial_v_max"] + tolerance:
             result.append(cylinder)
     return result
 
@@ -477,10 +490,14 @@ def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
             direction = axis_vector(expected.axis)
             pool = holes if expected.kind == "hole" else [item for item in cylinders if not item["concave"]]
             candidates = _matching_cylinders(pool, expected.position, direction, expected.tolerance)
+            if expected.kind == "outer_diameter":
+                candidates = _cylinders_at_station(candidates, expected.position, expected.tolerance)
             measured = [item["diameter"] for item in candidates]
+            ambiguous_station = expected.kind == "outer_diameter" and any(
+                abs(item["diameter"] - candidates[0]["diameter"]) > 1e-7 for item in candidates[1:])
             matching = [item for item in candidates if abs(item["diameter"] - expected.expected[0]) <= expected.tolerance
                         and (expected.axial_length is None or abs(item["axial_length"] - expected.axial_length) <= expected.tolerance)]
-            passed = bool(matching)
+            passed = bool(matching) and not ambiguous_station
             entry_positions = []
             if expected.kind == "hole" and expected.entry_position is not None:
                 entry_positions = _hole_entry_positions(shape, matching, cylinders, cones, direction, expected.tolerance)
@@ -548,6 +565,22 @@ def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
         if expected.kind in {"hole", "outer_diameter"}:
             measurements[-1].update(expected_axial_length=expected.axial_length,
                                     actual_axial_lengths=[item["axial_length"] for item in candidates])
+        if expected.kind == "outer_diameter":
+            station = sum(a * b for a, b in zip(expected.position, direction))
+            intervals = []
+            for item in candidates:
+                origin = sum(a * b for a, b in zip(item["axis_origin"], direction))
+                alignment = sum(a * b for a, b in zip(item["axis_direction"], direction))
+                ends = sorted([origin + item["axial_v_min"] * alignment,
+                               origin + item["axial_v_max"] * alignment])
+                intervals.append({"face_index": item["face_index"], "diameter": item["diameter"],
+                                  "start": ends[0], "end": ends[1]})
+            measurements[-1].update(station=station, station_axis=expected.axis,
+                                    actual_station_intervals=intervals)
+            if not candidates:
+                measurements[-1]["reason"] = "No coaxial outer cylinder contains the specified axial station."
+            elif ambiguous_station:
+                measurements[-1]["reason"] = "Different outer diameters meet at the specified axial station."
         if expected.kind == "hole":
             measurements[-1].update(
                 expected_entry_position=expected.entry_position,

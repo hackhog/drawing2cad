@@ -37,6 +37,11 @@ It is not an independent implementation of that kernel.
 Keep external conformance and target-CAD tests separate.
 A hole entry check requires a source-derived `entry_position` and the inward axis.
 Without that check, do not infer the correct entry side from diameter or depth measurements.
+For `outer_diameter`, put `position` on the cylinder axis at the required axial station.
+The check uses the outer cylindrical face at that station.
+It fails if no face contains the station, or if different diameters meet there at a shoulder.
+At a part end, a station on the face boundary is valid.
+For `hole`, `position` identifies the axis. It does not select an axial station.
 
 A technical release records passing geometry checks and an identified source-review attestation.
 Its coverage counts do not prove that every source feature was identified.
