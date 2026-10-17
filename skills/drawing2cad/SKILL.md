@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record evidence, build an editable part description, deliver a dimensioned DXF/PDF drawing, and validate STEP within the live capability scope.
 metadata:
-  version: "0.11.0"
+  version: "0.12.0"
 ---
 
 # drawing2cad
@@ -12,8 +12,10 @@ Use its live schemas. Do not call CAD libraries, a local CAD shell, or another C
 Keep backend-specific code inside maintained server adapters.
 
 The declarative path uses a versioned JSON part description as its editable construction source.
-It exports AP214 geometry and verifies fresh re-import.
-This does not prove editable construction or semantic PMI inside STEP.
+AP214 is the default geometry export and uses fresh re-import.
+The optional AP242 profile adds an application-specific construction adapter and nominal PMI.
+Use [ap242-adapter.md](references/ap242-adapter.md) only when the live service supports it.
+This does not prove native target-CAD history or full AP242 conformance.
 The domain profile also supplies a dimensioned DXF drawing and its PDF inspection copy from supplied 2D view geometry.
 It does not automatically project arbitrary solids or extract sections.
 Drawing and model creation can occur in either order; their final revisions must agree.

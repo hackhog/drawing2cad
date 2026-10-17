@@ -6,7 +6,7 @@
     "output": "docs/diagrams/drawing2cad-overview.html",
     "quality_profile": "showcase",
     "locale": "en",
-    "subtitle": "M2 MCP delivery, web integration, and M3 requirements"
+    "subtitle": "M2 service and initial M3 construction and PMI adapters"
   },
   "components": [
     {
@@ -139,7 +139,7 @@
       "id": "worker",
       "type": "backend",
       "label": "Restricted CAD / drawing",
-      "sublabel": "build123d, OCP, ezdxf, PDF",
+      "sublabel": "build123d, XDE, drafting adapters",
       "pos": [
         1040,
         600
@@ -275,12 +275,12 @@
     },
     {
       "dot": "cyan",
-      "title": "M3: AP242, pending #25",
+      "title": "M3: bounded adapter, #25 open",
       "items": [
-        "AP242 construction and editable import adapters",
-        "STEP-only reconstruction and parameter-change tests",
-        "Semantic and graphical PMI have separate tests",
-        "JSON descriptions and end bodies do not prove these claims"
+        "AP242 with application construction and nominal PMI",
+        "Fresh worker replay and parameter-change checks",
+        "External STEP upload pending; CAD exports in #33",
+        "Independent conformance and viewer acceptance pending"
       ]
     }
   ]
