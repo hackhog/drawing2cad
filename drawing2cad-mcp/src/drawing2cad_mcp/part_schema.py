@@ -293,7 +293,7 @@ class Measurement(ClosedModel):
     )]
     position: tuple[Number, Number, Number] | None = Field(
         default=None,
-        description="Global source anchor. For hole, use a point on the cylinder axis, not the entry surface. For arc_radius, use the circle center, not a point on the arc. For outer_diameter, use the axis at a station within one cylindrical face. For surface, angle, draft, and fillet measurements, use the bounded target face or edge.",
+        description="Global source anchor. For hole, use a point on the cylinder axis, not the entry surface. For arc_radius, use the circle center, not a point on the arc. For outer_diameter, use the axis at a station within one cylindrical face. For cone_angle and cone_width, use the cone axis at a station within the conical face. For surface_radius, line_angle, plane_angle, draft_angle, and fillet_radius, use the bounded target face or edge.",
     )
     axis: AxisName | None = Field(
         default=None,
