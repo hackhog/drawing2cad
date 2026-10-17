@@ -1,0 +1,45 @@
+// Query keys and options for all server data. Components use these through TanStack Query only.
+import { queryOptions } from "@tanstack/react-query";
+import { isActive } from "./release";
+import type { WebApi } from "./webApi";
+
+export const keys = {
+  capabilities: ["capabilities"] as const,
+  sources: ["sources"] as const,
+  source: (id: string) => ["sources", id] as const,
+  analysis: (id: string) => ["analysis", id] as const,
+  runs: (sourceId: string) => ["runs", { sourceId }] as const,
+  run: (id: string) => ["run", id] as const,
+  notes: (runId: string) => ["notes", runId] as const,
+};
+
+const POLL_MS = 600;
+
+export const capabilitiesQuery = (api: WebApi) =>
+  queryOptions({ queryKey: keys.capabilities, queryFn: () => api.capabilities(), staleTime: Infinity });
+
+export const sourcesQuery = (api: WebApi) =>
+  queryOptions({ queryKey: keys.sources, queryFn: () => api.listSources() });
+
+export const sourceQuery = (api: WebApi, id: string) =>
+  queryOptions({ queryKey: keys.source(id), queryFn: () => api.getSource(id) });
+
+// An analysis belongs to one immutable source, so it never becomes stale.
+export const analysisQuery = (api: WebApi, id: string) =>
+  queryOptions({ queryKey: keys.analysis(id), queryFn: () => api.getAnalysis(id), staleTime: Infinity });
+
+export const runsQuery = (api: WebApi, sourceId: string) =>
+  queryOptions({
+    queryKey: keys.runs(sourceId), queryFn: () => api.listRuns(sourceId),
+    refetchInterval: (q) => (q.state.data?.some(isActive) ? POLL_MS : false),
+  });
+
+// Poll only while the job is active. A finished run changes only through a mutation.
+export const runQuery = (api: WebApi, id: string) =>
+  queryOptions({
+    queryKey: keys.run(id), queryFn: () => api.getRun(id),
+    refetchInterval: (q) => (q.state.data && isActive(q.state.data) ? POLL_MS : false),
+  });
+
+export const notesQuery = (api: WebApi, runId: string) =>
+  queryOptions({ queryKey: keys.notes(runId), queryFn: () => api.listNotes(runId) });

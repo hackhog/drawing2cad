@@ -1,0 +1,57 @@
+// Job state of a run: the actual phase from the service, progress, and a structured error.
+import { Check } from "lucide-react";
+import { StatusBadge } from "@/components/Status";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import type { Run, RunPhase } from "@/lib/contract";
+import { time } from "@/lib/format";
+import { PHASE_LABEL, runStatus } from "@/lib/status";
+import { cn } from "@/lib/utils";
+
+const SEQUENCE: RunPhase[] = ["queued", "analyzing", "modeling", "drawing", "validating", "done"];
+
+export function JobCard({ run }: { run: Run }) {
+  const [tone, label] = runStatus(run);
+  const current = SEQUENCE.indexOf(run.phase === "failed" ? "validating" : run.phase);
+  return (
+    <Card className="gap-3 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none">
+      <CardHeader className="flex flex-row items-center justify-between px-0">
+        <CardTitle className="text-sm font-bold">Auftrag</CardTitle>
+        <StatusBadge tone={tone}>{label}</StatusBadge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 px-0">
+        <Progress value={(run.job.progress ?? 0) * 100} aria-label="Fortschritt" className="h-1.5" />
+        <ol className="flex flex-col gap-1">
+          {SEQUENCE.map((phase, i) => {
+            const passed = i < current || run.phase === "done";
+            const here = i === current && run.phase !== "done";
+            return (
+              <li key={phase} className={cn("flex items-center gap-2 text-xs text-faint", (passed || here) && "text-card-foreground", here && "font-semibold")}>
+                <span className={cn("grid size-4 place-items-center rounded-full border text-[9px]",
+                  passed && "border-good bg-good text-white", here && (run.phase === "failed" ? "border-flag bg-flag" : "border-run bg-run dot-run"))}>
+                  {passed && <Check className="size-2.5" />}
+                </span>
+                {PHASE_LABEL[phase]}
+              </li>
+            );
+          })}
+        </ol>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <dt>Auftrag</dt><dd className="truncate font-mono text-[11px]">{run.job.job_id}</dd>
+          <dt>Gestartet</dt><dd>{time(run.job.started_at)}</dd>
+          <dt>Beendet</dt><dd>{run.job.finished_at ? time(run.job.finished_at) : "–"}</dd>
+        </dl>
+        {run.error && (
+          <Alert variant="destructive">
+            <AlertTitle className="line-clamp-none">{run.error.message}</AlertTitle>
+            <AlertDescription>
+              {run.error.recovery && <p>{run.error.recovery}</p>}
+              <code className="text-[11px]">{run.error.code}{run.error.field ? ` · ${run.error.field}` : ""}</code>
+            </AlertDescription>
+          </Alert>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

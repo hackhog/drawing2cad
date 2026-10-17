@@ -1,0 +1,118 @@
+/* Light dashboard style (ADR 0008) with shadcn tokens (ADR 0015). Tailwind supplies the layout;
+   this file holds the theme and the SVG layers of the sheet viewer, which use sheet millimeters. */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("./assets/PlusJakartaSans.woff2") format("woff2");
+  font-weight: 400 800;
+  font-display: swap;
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: #ffffff;
+  --foreground: #2b313a;
+  --card: #ffffff;
+  --card-foreground: #111418;
+  --popover: #ffffff;
+  --popover-foreground: #111418;
+  --primary: #111418;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f2f4;
+  --secondary-foreground: #111418;
+  --muted: #f1f2f4;
+  --muted-foreground: #6b7280;
+  --accent: #f1f2f4;
+  --accent-foreground: #111418;
+  --destructive: #e5484d;
+  --border: #e5e7eb;
+  --input: #d7dbe0;
+  --ring: #9aa1ab;
+  --surface: #f8f9fb;
+  --faint: #9aa1ab;
+  --good: #15803d;
+  --good-bg: #e8f5ec;
+  --bad: #c2410c;
+  --warn-bg: #fff8ef;
+  --warn-line: #f5c48f;
+  --highlight: #e8590c;
+  --highlight-bg: #fdf0e7;
+  --info: #2563a8;
+  --info-bg: #e7f0fb;
+  --run: #2563eb;
+  --run-bg: #e8efff;
+  --flag: #e5484d;
+  --flag-bg: #fdecec;
+}
+
+@theme inline {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-faint: var(--faint);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-bad: var(--bad);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-line: var(--warn-line);
+  --color-highlight: var(--highlight);
+  --color-highlight-bg: var(--highlight-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-run: var(--run);
+  --color-run-bg: var(--run-bg);
+  --color-flag: var(--flag);
+  --color-flag-bg: var(--flag-bg);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html, body, #root { height: 100%; }
+  body { @apply bg-background text-foreground font-sans text-[13px] leading-[1.45] antialiased; }
+}
+
+/* Sheet viewer: SVG layers in sheet mm. The step sets which layers show (ADR 0007). */
+.sheet svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.sheet svg.panning { cursor: grabbing; }
+.sheet path { fill: none; stroke-linecap: butt; stroke-linejoin: round; }
+.sheet .paper { fill: #fff; }
+.sheet .page { opacity: .3; }
+.sheet[data-step="1"] .page { opacity: 1; }
+.sheet[data-step="1"] .overlay { display: none; }
+.sheet .k path { vector-effect: non-scaling-stroke; stroke-width: 1.2; }
+.sheet .k-contour path { stroke-width: 1.6; }
+.sheet .k-unclear path { stroke-width: 2.4; }
+.sheet .view-box { fill: none; stroke: #ff7800; stroke-width: 1.2; vector-effect: non-scaling-stroke; stroke-dasharray: 6 4; }
+.sheet .view-label { fill: #ff7800; font: 600 5px var(--font-sans); }
+.sheet .text-box { fill: rgb(120 120 255 / .12); stroke: rgb(120 120 255 / .7); stroke-width: .8; vector-effect: non-scaling-stroke; }
+.sheet .focus { fill: rgb(229 72 77 / .12); stroke: var(--flag); stroke-width: 2.4; vector-effect: non-scaling-stroke; }
+.sheet .focus-strokes { stroke: var(--flag); stroke-width: 3; vector-effect: non-scaling-stroke; }
+
+@keyframes pulse-dot { 50% { opacity: .3; } }
+.dot-run { animation: pulse-dot 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .dot-run { animation: none; } }

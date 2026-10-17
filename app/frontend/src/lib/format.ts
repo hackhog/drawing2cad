@@ -1,4 +1,4 @@
-import type { ExtractResult } from "./api";
+import type { ExtractResult } from "./drawing";
 
 export const fmt = (n: number) => n.toLocaleString("de-DE");
 export const pct = (x: number) => `${(x * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`;
@@ -9,3 +9,9 @@ export function explainedShare(result: ExtractResult) {
   const explained = strokes - (byKind.unclear ?? 0);
   return { total: strokes, explained, share: strokes ? explained / strokes : 1 };
 }
+
+export const bytes = (n: number) =>
+  n < 1024 * 1024 ? `${(n / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} KB`
+    : `${(n / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
+export const time = (iso: string) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+export const shortHash = (sha: string) => (sha ? sha.slice(0, 12) : "–");
