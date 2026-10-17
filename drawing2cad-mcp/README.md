@@ -79,6 +79,7 @@ Use the live catalog for exact schemas and limits.
 | `domain_schema` | Shared input contracts and public response-record schemas for MCP and web adapters. |
 | `job_submit`, `job_get`, `job_list`, `job_cancel` | Persistent CAD and drawing jobs, idempotent submission, and cancellation requests. |
 | `notes_read`, `notes_update` | Run notes with their own expected revision. |
+| `source_flags_read`, `source_flags_decide`, `source_flags_export` | Review flags of a source page, decisions of a human reviewer, and their export as feedback ([ADR 0019](../docs/adr/0019-review-flag-decisions-in-the-domain-service.md)). |
 | `pdf_info` | PDF hash, page count, page geometry, boxes, and rotation. |
 | `pdf_read_text` | Bounded embedded-text extraction; no OCR. |
 | `pdf_render_page`, `pdf_crop_region` | Page/detail images and artifact hashes. |

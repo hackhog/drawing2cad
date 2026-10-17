@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.16.0"
+  version: "0.17.0"
 ---
 
 # drawing2cad
@@ -15,6 +15,7 @@ metadata:
 1. Call `drawing2cad_status` → `cad_capabilities` → `cad_worker_probe` → `part_schema`; stop CAD work if the sandbox fails.
 2. For each authorized part, call `pdf_info` → `pdf_read_text` → `pdf_render_page`; record its source hash and inspect the images.
 3. If details are unclear, use `pdf_crop_region`; use `drawing_extract` only as supporting evidence.
+   Domain only: call `source_flags_read`. Apply each user decision on a review flag: ignore the flagged strokes, use the assigned stroke class, or use the corrected text. Record a value from a decision as a user decision, not as a source dimension.
 4. If measurement is necessary, call `pdf_calibrate` before `pdf_measure_distance` or `pdf_measure_circle` for the same source and view.
 5. Inventory features and printed dimensions. Infer missing values from drawing geometry. List each as `assumed`, with reason, region, units, and feature.
 6. Prepare the versioned description and independent expected measurements. Call `part_validate` and correct defects until it passes.

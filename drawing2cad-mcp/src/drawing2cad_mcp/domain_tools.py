@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from .cad_tools import CAD_DESCRIPTIONS, CAD_SCHEMAS
 from .measurements_tools import MEASUREMENT_DESCRIPTIONS, MEASUREMENT_SCHEMAS
+from .source_flags import ACTIONS, STROKE_CLASSES
 from .step_tools import STEP_DESCRIPTIONS, STEP_SCHEMAS
 from .vector.model import Kind
 
@@ -93,6 +94,17 @@ _EXTRA = {
     "drawing_extract": (_object({"source_id": ID, "page": PAGE, "include_strokes": {"type": "boolean"},
                                  "stroke_kinds": {"type": "array", "items": {"enum": [k.value for k in Kind]}, "minItems": 1, "uniqueItems": True}}, ["source_id"]),
                         "Analyze native drawing vectors with the limited BCT/NX A3 profile. Verify detected text and dimensions against source images."),
+    "source_flags_read": (_object({"source_id": ID, "page": PAGE}, ["source_id"]),
+        "Read the review flags of a source page: unclear strokes, unreadable text, or missing views of drawing_extract, with stable flag IDs. Each flag includes the user decision, if one exists. Apply a decision as user input: ignore the flagged strokes, use the assigned stroke class, or use the corrected text instead of the extracted text. Record a decision that a construction value uses as a user decision, not as a source dimension. Decisions without a current flag are listed separately."),
+    "source_flags_decide": (_object({"source_id": ID, "page": PAGE, "flag_id": {"type": "string", "pattern": "^(views|strokes-[0-9]+|text-[0-9]+)$"},
+                                     "action": {"enum": [*ACTIONS, "reopen"]}, "stroke_class": {"enum": list(STROKE_CLASSES)},
+                                     "text": {"type": "string", "minLength": 1, "maxLength": 200},
+                                     "note": {"type": "string", "maxLength": 2000},
+                                     "reviewer": {"type": "string", "minLength": 1, "maxLength": 200}},
+                                    ["source_id", "flag_id", "action"]),
+        "Record the decision of a human reviewer on one review flag: ignore it, classify its strokes, or correct its text. reopen removes the decision. An optional note explains the flag for the developers of the analysis. Return the updated flags of the page."),
+    "source_flags_export": (_object({}),
+        "Export all flag decisions of this principal with the flag, region, source identity, and analysis version. The export is labeled feedback for the developers of the vector analysis."),
 }
 for _name, (_schema, _description) in _EXTRA.items():
     DOMAIN_SCHEMAS[_name], DOMAIN_DESCRIPTIONS[_name] = _schema, _description

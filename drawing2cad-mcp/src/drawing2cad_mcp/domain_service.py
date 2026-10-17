@@ -33,6 +33,7 @@ from .domain_tools import DOMAIN_SCHEMAS
 from .drawing_contract import drawing_schema, drawing_validate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import PdfError, PdfService
+from .source_flags import check_decision, review_flags
 from .part_schema import EdgeSelectionDiagnostic
 from .step import StepError, StepService
 
@@ -44,6 +45,8 @@ _HOST_PATH = re.compile(r"(?:\b[A-Za-z]:[\\/]|(?<![\w.])/(?:tmp|opt|usr|home|dat
 # Read-only run operations. During an active operation they return a consistent snapshot without the run lock.
 SNAPSHOT_READS = frozenset({"part_read", "drawing_read", "drawing_validate", "notes_read"})
 MAX_PUBLIC_MESSAGE = 4000
+# Flags are derived from immutable source bytes. The cache prevents a new analysis for each decision.
+FLAG_CACHE_SIZE = 32
 
 
 def _json(value):
@@ -65,6 +68,7 @@ class DomainService:
         self._services_lock = threading.Lock()
         self._cad_slots = threading.BoundedSemaphore(settings.cad.concurrency)
         self._pdf_slots = threading.BoundedSemaphore(settings.server.pdf_concurrency)
+        self._flags = {}
         self.jobs = JobService(self.store.root / "jobs", self._dispatch_job,
                                concurrency=settings.cad.concurrency)
 
@@ -237,6 +241,8 @@ class DomainService:
         if name == "artifact_preview":
             with self._pdf_slots:
                 return self._artifact_preview(ctx, args)
+        if name.startswith("source_flags_"):
+            return self._source_flags(ctx, name, args)
         if name.startswith("pdf_") or name == "drawing_extract":
             with self._pdf_slots:
                 return self._pdf_call(ctx, name, args)
@@ -311,6 +317,62 @@ class DomainService:
             if preview:
                 result["preview"] = self._preview(internal["path"])
         return result
+
+    def _page_flags(self, ctx, source_id, page):
+        """Flags of a source page and the unclear strokes by ID, from the cache or a new analysis."""
+        source = self.store.source_get(ctx, source_id)
+        key = (ctx.subject, source["sha256"], page)
+        with self._services_lock:
+            cached = self._flags.get(key)
+        if cached is None:
+            with self._pdf_slots:
+                drawing = self._pdf_call(ctx, "drawing_extract", {"source_id": source_id, "page": page, "include_strokes": True})
+            cached = (review_flags(drawing), {s["id"]: s for s in drawing["strokes"] if s["kind"] == "unclear"})
+            with self._services_lock:
+                self._flags[key] = cached
+                while len(self._flags) > FLAG_CACHE_SIZE:
+                    self._flags.pop(next(iter(self._flags)))
+        return source, deepcopy(cached[0]), cached[1]
+
+    def _flags_view(self, ctx, source_id, page):
+        source, flags, _ = self._page_flags(ctx, source_id, page)
+        decisions = {d["flag_id"]: d for d in self.store.flag_decisions(ctx, source_id, page)}
+        for flag in flags:
+            flag["decision"] = decisions.pop(flag["flag_id"], None)
+        # A decision without a current flag shows that the analysis now explains the location.
+        return {"source": source, "page": page, "analysis_version": __version__, "flags": flags,
+                "decisions_without_flag": list(decisions.values())}
+
+    def _source_flags(self, ctx, name, args):
+        if name == "source_flags_export":
+            names = {}
+            decisions = []
+            for decision in self.store.flag_decisions(ctx):
+                if decision["source_id"] not in names:
+                    names[decision["source_id"]] = self.store.source_get(ctx, decision["source_id"])["filename"]
+                decisions.append({**decision, "filename": names[decision["source_id"]]})
+            return {"schema_version": 1, "analysis_version": __version__, "exported_at": time.time(), "decisions": decisions}
+        source_id, page = args["source_id"], args.get("page", 1)
+        if name == "source_flags_read":
+            return self._flags_view(ctx, source_id, page)
+        if args["action"] == "reopen":
+            self.store.flag_decision_set(ctx, source_id, page, args["flag_id"], None)
+            return self._flags_view(ctx, source_id, page)
+        source, flags, unclear = self._page_flags(ctx, source_id, page)
+        flag = next((f for f in flags if f["flag_id"] == args["flag_id"]), None)
+        if flag is None:
+            raise DomainError("NOT_FOUND", "The flag does not exist on this source page.", "flag_id",
+                              next_action="Read source_flags_read and use a current flag ID.")
+        reason = check_decision(flag, args["action"], args.get("stroke_class"), args.get("text"))
+        if reason:
+            raise DomainError("INVALID_ARGUMENT", reason, "action")
+        # The decision keeps the flag and its stroke geometry, so the feedback export is complete without the PDF.
+        self.store.flag_decision_set(ctx, source_id, page, flag["flag_id"], {
+            "action": args["action"], "stroke_class": args.get("stroke_class"), "text": args.get("text"),
+            "note": args.get("note") or None, "reviewer": args.get("reviewer"), "decided_at": time.time(),
+            "source_sha256": source["sha256"], "analysis_version": __version__,
+            "flag": {**flag, "strokes": [unclear[i] for i in flag["stroke_ids"]]}})
+        return self._flags_view(ctx, source_id, page)
 
     def _artifact_preview(self, ctx, args):
         metadata = self.store.artifact_get(ctx, args["artifact_id"])

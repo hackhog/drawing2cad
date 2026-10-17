@@ -3,7 +3,7 @@
 This service supplies the web API ([ADR 0012](../../docs/adr/0012-demo-app-as-frontend-and-backend-container.md), [ADR 0018](../../docs/adr/0018-agent-runner-in-the-web-backend.md)).
 It creates one shared domain service (`drawing2cad_mcp.server.Application`, domain profile) for the process.
 Web routes call this service. The backend also mounts its MCP endpoint at `/mcp` for agent runs.
-It derives review flags and converts STEP files to GLB for display.
+It passes review flags and user decisions through and converts STEP files to GLB for display.
 The frontend container serves the UI and forwards only `/api` requests to this service.
 The `/mcp` endpoint accepts loopback hosts only. The backend does not serve static UI files.
 
@@ -38,6 +38,9 @@ uv sync --reinstall-package drawing2cad-mcp
 | `POST` | `/api/sources` | Upload a PDF (multipart field `file`) to the domain service; returns the source record |
 | `GET` | `/api/sources`, `/api/sources/{id}` | Source records: opaque ID, filename, size, SHA-256 |
 | `GET` | `/api/sources/{id}/analysis` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |
+| `GET` | `/api/sources/{id}/flags` | Review flags with the decisions of the user ([ADR 0019](../../docs/adr/0019-review-flag-decisions-in-the-domain-service.md)) |
+| `PUT` | `/api/sources/{id}/flags/{flag_id}` | Record a decision: `action` (`ignore`, `classify`, `correct`, `reopen`), `stroke_class`, `text`, `note` |
+| `GET` | `/api/feedback` | All flag decisions as a JSON download for the developers of the analysis |
 | `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run (503 without model endpoint) |
 | `DELETE` | `/api/sources/{id}` | Delete a source with its web run records (409 `RUN_ACTIVE` while a run is active) |
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
@@ -93,7 +96,6 @@ Tests use a scripted model and do not call a model endpoint.
 - `src/drawing_demo/service.py`: the domain service of the process, its MCP endpoint, uploads, and verified artifact reads.
 - `src/drawing_demo/jobs.py`: web run records (job state, agent trace, domain part run ID).
 - `src/drawing_demo/agent/`: model adapter (`model.py`), runner (`runner.py`), and mapping of domain results to the contract (`mapping.py`).
-- `src/drawing_demo/review.py`: review flags from service results.
 - `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill.
 
 The Docker build context is the repository root because the MCP package is a path dependency.
