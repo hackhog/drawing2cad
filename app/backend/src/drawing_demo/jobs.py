@@ -35,13 +35,15 @@ class JobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
 
-    def add(self, source_id: str) -> dict[str, Any]:
+    def add(self, source_id: str, agent: dict[str, str] | None = None) -> dict[str, Any]:
+        """Create a queued run. `agent` records the model and MCP version that execute it."""
         run_id = "run_" + uuid4().hex
         directory = self.root / run_id
         (directory / "trace").mkdir(parents=True)
         record = {
             "run_id": run_id,
             "source_id": source_id,
+            "agent": agent,
             # The agent must use this prefix for its part runs; drive() rejects other run IDs.
             "part_prefix": "web-" + run_id.removeprefix("run_"),
             "part_run_id": None,

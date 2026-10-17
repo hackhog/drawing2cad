@@ -160,6 +160,7 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     """
     view = {key: record[key] for key in ("run_id", "source_id", "phase", "job", "error")}
     view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
+    view["agent"] = record.get("agent")
     view.update(part=None, review=None, artifacts=[], simulated=False)
     if record["part_run_id"] is None or record["job"]["status"] in ("queued", "running"):
         return view
@@ -230,7 +231,9 @@ def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any
     if not s.runner.available:
         raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modell-Endpunkt konfiguriert (DRAWING2CAD_AGENT_*).",
                            recovery="Endpunkt in .env eintragen und das Backend neu starten.")
-    record = s.jobs.add(_source(s, source_id)["source_id"])
+    assert s.runner.settings is not None
+    record = s.jobs.add(_source(s, source_id)["source_id"],
+                        agent={"model": s.runner.settings.model, "mcp_version": mcp_version})
     s.runner.submit(record["run_id"])
     return run_view(s, record)
 

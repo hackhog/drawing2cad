@@ -43,6 +43,12 @@ export function JobCard({ run }: { run: Run }) {
           <dt>Auftrag</dt><dd className="truncate font-mono text-[11px]">{run.job.job_id}</dd>
           <dt>Gestartet</dt><dd>{time(run.job.started_at)}</dd>
           <dt>Beendet</dt><dd>{run.job.finished_at ? time(run.job.finished_at) : "–"}</dd>
+          {run.agent && (
+            <>
+              <dt>Modell</dt><dd className="truncate font-mono text-[11px]" title={run.agent.model}>{run.agent.model}</dd>
+              <dt>MCP</dt><dd className="font-mono text-[11px]">drawing2cad-mcp {run.agent.mcp_version}</dd>
+            </>
+          )}
         </dl>
         {run.error && (
           <Alert variant="destructive" className="[overflow-wrap:anywhere]">
