@@ -66,7 +66,7 @@ Keep failed artifacts as evidence. A failed drawing cannot receive an accepted r
 After a render pass, independently compare the final source, drawing, and measured model.
 Inspect the complete sheet and necessary detail views for legibility, missing features, and unclear assumptions.
 Compare inner and outer boundaries in each view. Duplicate lines do not prove that both boundaries are present.
-Check section hatching against material regions. Keep hatch strokes outside bores, pockets, and drill-point voids.
+Inspect section hatching against material regions. Keep hatch strokes outside bores, pockets, and drill-point voids.
 Explain uncertainty abbreviations in a visible legend. Keep each marker connected to its affected feature.
 Record `drawing_review` for the exact drawing hash and current model build.
 Repeat affected checks and obtain a new review after a change that invalidates the previous result.
