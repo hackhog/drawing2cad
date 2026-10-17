@@ -69,4 +69,6 @@ async def test_remote_ap242_drawing_release_and_step_only_replay(delivery_app):
             state = await call(session, "part_read", run_id="ap242_remote")
             assert state["part"]["revision"] == 1
             await call(session, "build_from_description", **args)
-            await expect_error(session, "export_step", "DRAWING_REVIEW_REQUIRED", **args, coverage=coverage(source))
+            # A rebuild clears the drawing review. The release states that the drawing is unreviewed.
+            rereleased = await call(session, "export_step", **args, coverage=coverage(source))
+            assert rereleased["release"]["drawing"]["status"] == "unreviewed"

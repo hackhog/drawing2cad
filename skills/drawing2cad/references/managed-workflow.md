@@ -144,7 +144,7 @@ The reviewer must also check features that do not have dimensions, such as a vis
 Do not replace a failed local check with a bounding-box check that does not measure the same feature.
 
 Release requires trusted re-import, passing source-dimension checks, and complete source-review coverage.
-Domain release also requires the current accepted drawing review.
+Domain release does not require a drawing review. The release records the current drawing status and its files, or the reason why no drawing exists.
 An identified acting-agent attestation is sufficient for the metric; a separate reviewer is optional when available.
 Record the actual AP214 schema, units, product identity, and geometry.
 A passed re-import does not prove STEP-only feature reconstruction.

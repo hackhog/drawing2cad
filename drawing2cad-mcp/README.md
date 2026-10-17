@@ -117,7 +117,7 @@ Artifacts are immutable snapshots. A later build does not replace an earlier art
 Failed drawing layouts can return diagnostic PDF and JSON artifacts through `drawing_render`.
 Use `artifact_preview` to inspect the marked PDF. Read the report for label identifiers and rendered bounds in sheet millimeters.
 Diagnostic artifacts retain the drawing hash, description hash, and part revision. They are not accepted technical drawings.
-Correct the identified layout defects and render again. An accepted drawing review and STEP release still require a passing render.
+Correct the identified layout defects and render again. An accepted drawing review requires a passing render. A STEP release links the diagnostic files of a failed drawing and states the failure.
 Malformed declarations fail the maintained Pydantic contract before drawing state changes.
 Schema validation does not establish correct geometry, complete source coverage, or a readable sheet.
 Source and artifact access is scoped to the trusted principal. Source bytes are checked again before use.
@@ -204,7 +204,8 @@ Schema and layout checks cannot prove that the source was interpreted correctly 
 Use `drawing_validate`, then `drawing_render`. Inspect the returned PDF artifact and layout report.
 Either drawing or model can be created first. After the model build, record `drawing_review` for the exact drawing hash, current part revision, construction-source hashes, reviewer, decision, and reason.
 A model rebuild invalidates the earlier drawing review, including a rebuild of the same revision.
-STEP release requires current drawing artifacts, passing layout checks, and an accepted review bound to the current model candidate.
+The STEP release requires the validated model, not the drawing. `release.drawing.status` is `accepted`, `unreviewed`, `rejected`, `failed`, or `missing`, with the drawing files or the reason.
+A drawing render or review does not invalidate the release. Call `export_step` again to record the new drawing status; `drawing_current` in `part_read` shows whether the recorded status is still current.
 The review is an identified attestation; automatic CAD equivalence remains `not_tested`.
 
 ## Validation and milestone limits

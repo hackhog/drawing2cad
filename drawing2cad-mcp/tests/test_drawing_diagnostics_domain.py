@@ -57,16 +57,17 @@ def test_layout_diagnostics_are_bound_private_and_not_deliverable(domain):
     with pytest.raises(DomainError) as error:
         review(service, source, drawing["drawing_sha256"])
     assert error.value.code == "DRAWING_REVIEW_CONFLICT"
-    with pytest.raises(DomainError) as error:
-        call(service, "export_step", coverage=coverage(source))
-    assert error.value.code == "CURRENT_DRAWING_REQUIRED"
+    # The STEP release states the failed drawing and links its diagnostic files.
+    failed = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
+    assert failed["status"] == "failed" and failed["defects"]
+    assert {item["role"] for item in failed["artifacts"]} == {"drawing_diagnostic_preview", "drawing_diagnostic_report"}
     state = service.call(CTX, "part_read", {"run_id": "plate"})
-    assert state["part"]["release"] is None
+    assert state["part"]["release"]["drawing"]["status"] == "failed"
     corrected = call(service, "drawing_render", drawing_spec=spec)
     assert corrected["status"] == "pass"
     assert not corrected["drawing"].get("diagnostic_only", False)
     review(service, source, corrected["drawing"]["drawing_sha256"])
-    assert call(service, "export_step", coverage=coverage(source))["status"] == "pass"
+    assert call(service, "export_step", coverage=coverage(source))["release"]["drawing"]["status"] == "accepted"
 
 
 @pytest.mark.parametrize("change", ["unknown", "coordinate", "scale", "dimension", "stale", "nan"])
@@ -142,8 +143,9 @@ def test_bad_worker_diagnostics_are_never_published(domain, monkeypatch, fault):
     with pytest.raises(DomainError):
         call(service, "drawing_render", drawing_spec=overlapping_spec(spec))
     assert service.call(CTX, "artifact_list", {"run_id": "plate"}) == before
-    with pytest.raises(DomainError):
-        call(service, "export_step", coverage=coverage(source))
+    # The release states the failed drawing and links no unverified diagnostic file.
+    drawing = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
+    assert drawing["status"] == "failed" and drawing["artifacts"] == []
 
 
 def test_preview_eligibility_uses_all_defects_before_truncation(domain):
