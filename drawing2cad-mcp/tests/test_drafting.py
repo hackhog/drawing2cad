@@ -57,6 +57,52 @@ def test_drawing_contract_binds_part_and_declares_limits():
     assert "automatic CAD projection" in schema["unsupported"]
 
 
+def test_schema_distinguishes_absolute_sheet_and_local_view_positions():
+    result = drawing_schema()
+    coordinates = result["coordinates"]
+    assert coordinates["sheet_origin"] == "bottom_left"
+    assert coordinates["positive_y"] == "up"
+    assert coordinates["frame_order"] == ["xmin", "ymin", "xmax", "ymax"]
+    assert "views[].frame" in coordinates["absolute_sheet_fields"]
+    definitions = result["schema"]["$defs"]
+    assert "Absolute sheet bounds" in definitions["View"]["properties"]["frame"]["description"]
+    assert "Absolute sheet" in definitions["Note"]["properties"]["position"]["description"]
+    assert "Local view" in definitions["Marker"]["properties"]["position"]["description"]
+    assert "Local view" in definitions["LinearDimension"]["properties"]["label_position"]["description"]
+
+
+def test_scaled_nonzero_origin_preserves_absolute_frame_notes_and_dimension_values(tmp_path):
+    ezdxf = pytest.importorskip("ezdxf")
+    description, spec = drawing_fixture()
+    spec["views"][0]["scale"] = 0.5
+    spec["uncertainty_markers"] = [{"id": "scaled_marker", "view_id": "top", "primitive_id": "hole_circle",
+                                    "position": [0, 50], "text": "Review hole", "evidence_ids": ["drawing"]}]
+    validated = drawing_validate(spec, description, 1)
+    assert validated["status"] == "pass", validated
+    resolved = validated["resolved"]
+    assert list(resolved["views"][0]["frame"]) == [15, 85, 150, 190]
+    labels = {label["id"]: label for label in resolved["labels"]}
+    assert labels["overall_length"]["position"] == [60, 114]
+    assert labels["note_0"]["position"] == [15, 40]
+    assert labels["top_label"]["position"] == [17, 186]
+    assert resolved["uncertainty_markers"][0]["position"] == [45, 145]
+    assert resolved["uncertainty_markers"][0]["target"] == [60, 127.5]
+    result = render_drawing(spec, description, 1, tmp_path)
+    assert result["status"] == "pass", result
+    entities = ezdxf.readfile(tmp_path / "drawing.dxf").modelspace()
+    circle = list(entities.query('CIRCLE[layer=="VISIBLE"]'))[0]
+    assert tuple(circle.dxf.center) == pytest.approx([60, 127.5, 0])
+    assert circle.dxf.radius == 2
+    dimension = list(entities.query("DIMENSION"))[0]
+    assert dimension.get_measurement() == 30
+    assert dimension.override().get("dimlfac") == 2
+    note = next(entity for entity in entities.query("TEXT") if entity.dxf.text == "Synthetic test geometry")
+    assert tuple(note.dxf.insert) == pytest.approx([15, 40, 0])
+    leader = list(entities.query('LINE[layer=="UNCERTAINTY"]'))[0]
+    assert tuple(leader.dxf.start) == pytest.approx([45, 145, 0])
+    assert tuple(leader.dxf.end) == pytest.approx([60, 127.5, 0])
+
+
 @pytest.mark.parametrize("mutation,code", [
     (lambda s: s.update(part_revision=2), "stale_binding"),
     (lambda s: s.update(description_sha256="0" * 64), "stale_binding"),

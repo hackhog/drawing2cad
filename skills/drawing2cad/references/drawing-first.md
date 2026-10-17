@@ -28,6 +28,10 @@ The same DXF entities supply the PDF render.
 A DXF file with text and line segments alone does not prove dimension semantics.
 
 Read `drawing_schema` for the supported declaration. Bind it to the current part revision and description hash.
+Read its coordinate rules before sheet layout. Sheet positions use mm from the bottom-left corner, with +Y upward.
+View origins, view frames, and note positions are absolute sheet coordinates. A frame is `[xmin, ymin, xmax, ymax]`; do not add the view origin to it.
+Geometry and dimension or uncertainty-marker positions use local view coordinates. Apply `sheet_point = origin + scale * local_point` to check their sheet positions.
+Reserve space for generated view labels, section notes, dimensions, and the sheet title. Check transformed bounds against both the absolute view frame and the sheet margin.
 Supply view geometry, dimensions, manufacturing notes, and uncertainty markers with evidence references.
 Use `drawing_validate`, then `drawing_render`. Keep its returned DXF, PDF, and layout-report hashes.
 The adapter does not derive arbitrary projections or sections from the solid.

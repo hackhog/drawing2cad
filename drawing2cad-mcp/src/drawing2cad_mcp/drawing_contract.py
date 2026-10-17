@@ -24,6 +24,8 @@ class DrawingRef(ClosedModel):
 
 Scalar = Number | DrawingRef
 ModelPoint = tuple[Scalar, Scalar]
+LOCAL_POINT_DESCRIPTION = "Local view (x, y) coordinates in unscaled mm. Sheet position = view.origin + view.scale * this point."
+SHEET_POINT_DESCRIPTION = "Absolute sheet (x, y) position in mm, from the bottom-left corner; +X points right and +Y points up. No view transform applies."
 
 
 class Primitive(ClosedModel):
@@ -35,22 +37,22 @@ class Primitive(ClosedModel):
 
 class Line(Primitive):
     type: Literal["line"]
-    start: ModelPoint
-    end: ModelPoint
+    start: ModelPoint = Field(description=LOCAL_POINT_DESCRIPTION)
+    end: ModelPoint = Field(description=LOCAL_POINT_DESCRIPTION)
 
 
 class Circle(Primitive):
     type: Literal["circle"]
-    center: ModelPoint
-    radius: Scalar
+    center: ModelPoint = Field(description=LOCAL_POINT_DESCRIPTION)
+    radius: Scalar = Field(description="Radius in unscaled view mm. The sheet radius is view.scale * radius.")
 
 
 class Arc(Primitive):
     type: Literal["arc"]
-    center: ModelPoint
-    radius: Scalar
-    start_angle: Scalar
-    end_angle: Scalar
+    center: ModelPoint = Field(description=LOCAL_POINT_DESCRIPTION)
+    radius: Scalar = Field(description="Radius in unscaled view mm. The sheet radius is view.scale * radius.")
+    start_angle: Scalar = Field(description="Angle in degrees, counterclockwise from the local +X direction.")
+    end_angle: Scalar = Field(description="Angle in degrees, counterclockwise from the local +X direction.")
 
 
 Geometry = Annotated[Line | Circle | Arc, Field(discriminator="type")]
@@ -64,8 +66,8 @@ class Anchor(ClosedModel):
 class Dimension(ClosedModel):
     id: Identifier
     evidence_ids: EvidenceIds
-    expected: Scalar
-    label_position: ModelPoint
+    expected: Scalar = Field(description="Unscaled measured value in mm, or degrees for an angular dimension. View scale does not change this value.")
+    label_position: ModelPoint = Field(description=LOCAL_POINT_DESCRIPTION)
 
 
 class LinearDimension(Dimension):
@@ -93,10 +95,13 @@ class View(ClosedModel):
     id: Identifier
     label: Text
     kind: Literal["orthographic", "section", "detail"]
-    orientation: Literal["front", "top", "right", "left", "bottom", "rear", "custom"]
-    origin: Point
-    frame: tuple[Number, Number, Number, Number]
-    scale: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)] = 1.0
+    orientation: Literal["front", "top", "right", "left", "bottom", "rear", "custom"] = Field(
+        description="Declared view direction. This label does not rotate geometry or create a projection.")
+    origin: Point = Field(description=SHEET_POINT_DESCRIPTION + " This is the sheet position of local view point (0, 0).")
+    frame: tuple[Number, Number, Number, Number] = Field(
+        description="Absolute sheet bounds [xmin, ymin, xmax, ymax] in mm, from the bottom-left corner. Do not translate or scale these bounds by view.origin or view.scale. Keep geometry, dimensions, and labels inside this frame and the sheet margin. Reserve space for the view label at [xmin+2, ymax-4] and any section note at [xmin+2, ymin+3].")
+    scale: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)] = Field(default=1.0,
+        description="Positive factor from local view mm to sheet mm. Applies to geometry and dimension/marker positions, not frames, notes, or text height.")
     geometry: Annotated[list[Geometry], Field(min_length=1, max_length=300)]
     dimensions: Annotated[list[Dim], Field(max_length=100)]
     section_note: Text | None = None
@@ -104,7 +109,7 @@ class View(ClosedModel):
 
 class Note(ClosedModel):
     text: Text
-    position: Point
+    position: Point = Field(description=SHEET_POINT_DESCRIPTION)
     evidence_ids: EvidenceIds
 
 
@@ -113,15 +118,15 @@ class Marker(ClosedModel):
     view_id: Identifier
     primitive_id: Identifier
     text: Text
-    position: ModelPoint
+    position: ModelPoint = Field(description=LOCAL_POINT_DESCRIPTION + " Use the referenced view_id.")
     evidence_ids: EvidenceIds
 
 
 class Sheet(ClosedModel):
-    width: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False)] = 297.0
-    height: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False)] = 210.0
-    margin: Annotated[float, Field(ge=5, le=30, allow_inf_nan=False)] = 10.0
-    text_height: Annotated[float, Field(ge=1.8, le=5, allow_inf_nan=False)] = 2.5
+    width: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False)] = Field(default=297.0, description="Sheet width in mm along +X.")
+    height: Annotated[float, Field(ge=100, le=1200, allow_inf_nan=False)] = Field(default=210.0, description="Sheet height in mm along +Y.")
+    margin: Annotated[float, Field(ge=5, le=30, allow_inf_nan=False)] = Field(default=10.0, description="Inset in sheet mm from each sheet edge.")
+    text_height: Annotated[float, Field(ge=1.8, le=5, allow_inf_nan=False)] = Field(default=2.5, description="Text height in sheet mm. View scale does not change it.")
 
 
 class DrawingSpec(ClosedModel):
@@ -152,6 +157,14 @@ def description_digest(description: dict[str, Any]) -> str:
 
 def drawing_schema() -> dict[str, Any]:
     return {"schema_version": DRAWING_SCHEMA_VERSION, "schema": DrawingSpec.model_json_schema(),
+            "coordinates": {"sheet_origin": "bottom_left", "sheet_units": "mm", "positive_x": "right", "positive_y": "up",
+                            "view_transform": "sheet_point = view.origin + view.scale * local_point",
+                            "absolute_sheet_fields": ["views[].origin", "views[].frame", "notes[].position"],
+                            "local_view_fields": ["views[].geometry", "views[].dimensions[].label_position", "uncertainty_markers[].position"],
+                            "frame_order": ["xmin", "ymin", "xmax", "ymax"],
+                            "generated_labels": {"view": "[frame.xmin+2, frame.ymax-4]",
+                                                 "section_note": "[frame.xmin+2, frame.ymin+3]",
+                                                 "title": "[margin+2, margin+3]", "units": "[margin+2, margin+9]"}},
             "scope": "Supplied 2D view geometry. Native DXF dimensions and a PDF from the same entities.",
             "unsupported": ["automatic CAD projection", "automatic section extraction", "automatic source interpretation",
                             "automatic drawing-to-solid equivalence", "semantic PMI", "general GD&T validation"]}
