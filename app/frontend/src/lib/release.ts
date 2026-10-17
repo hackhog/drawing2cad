@@ -34,3 +34,13 @@ export const isReleased = (state: Delivery, run: Run, artifact: Artifact): boole
   state.released && artifact.model_revision === run.part?.revision;
 
 export const isActive = (run: Run) => run.job.status === "queued" || run.job.status === "running";
+
+/** A draft belongs to the current revision of a finished run that the service did not release. */
+export const isDraft = (state: Delivery, run: Run, artifact: Artifact): boolean =>
+  !isReleased(state, run, artifact) && !isActive(run) && artifact.model_revision === run.part?.revision;
+
+/** The latest released or draft artifact of a role. The service lists artifacts in creation order. */
+export const latestShown = (run: Run, role: Artifact["role"]): Artifact | undefined => {
+  const state = delivery(run);
+  return run.artifacts.findLast((a) => a.role === role && (isReleased(state, run, a) || isDraft(state, run, a)));
+};

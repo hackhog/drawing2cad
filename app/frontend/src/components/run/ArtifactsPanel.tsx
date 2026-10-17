@@ -1,5 +1,6 @@
 // Deliverables of a run. Artifacts of a released run with the current revision are released.
-// A finished run without release keeps its current-revision outputs as marked diagnostic artifacts; stale artifacts stay locked.
+// A finished run without release keeps its current-revision outputs as marked drafts, so a person can review the drawing;
+// stale artifacts stay locked.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +14,7 @@ import type { Artifact, ArtifactRole, Run } from "@/lib/contract";
 import { recoveryFor } from "@/lib/errors";
 import { bytes, shortHash } from "@/lib/format";
 import { capabilitiesQuery } from "@/lib/queries";
-import { delivery, isActive, isReleased } from "@/lib/release";
+import { delivery, isDraft, isReleased, latestShown } from "@/lib/release";
 
 const ROLE: Record<ArtifactRole, string> = {
   drawing_pdf: "Technische Zeichnung (PDF)", drawing_dxf: "Technische Zeichnung (DXF)", step: "3D-Modell (STEP)",
@@ -38,10 +39,10 @@ export function ArtifactsPanel({ run }: { run: Run }) {
     onError: (err) => toast.error("Download fehlgeschlagen", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const released = (a: Artifact) => isReleased(state, run, a);
-  // A diagnostic artifact belongs to the current revision of a finished run that the service did not release.
-  const diagnostic = (a: Artifact) => !released(a) && !isActive(run) && a.model_revision === revision;
-  const preview = run.artifacts.find((a) => a.role === "step" && (released(a) || diagnostic(a)));
-  const drawing = run.artifacts.find((a) => a.role === "drawing_pdf" && released(a));
+  const diagnostic = (a: Artifact) => isDraft(state, run, a);
+  // A draft drawing is shown for review: the drawing review needs a person who can see the drawing.
+  const preview = latestShown(run, "step");
+  const drawing = latestShown(run, "drawing_pdf");
 
   return (
     <div className="flex flex-col gap-4">
@@ -84,9 +85,9 @@ export function ArtifactsPanel({ run }: { run: Run }) {
       </ul>
 
       <section className="grid grid-cols-2 gap-3 max-[1200px]:grid-cols-1">
-        <Preview title={`Zeichnung${drawing ? ` · Rev. ${drawing.model_revision}` : ""}`}>
+        <Preview title={`Zeichnung${drawing ? ` · Rev. ${drawing.model_revision} · ${released(drawing) ? "freigegeben" : "Entwurf, nicht freigegeben"}` : ""}`}>
           {drawing && !run.simulated ? <BlobView artifact={drawing} kind="pdf" />
-            : <Empty text={run.simulated ? "Keine Zeichnungsvorschau für simulierte Ergebnisse." : "Keine freigegebene Zeichnung."} />}
+            : <Empty text={run.simulated ? "Keine Zeichnungsvorschau für simulierte Ergebnisse." : "Noch keine Zeichnung erstellt."} />}
         </Preview>
         <Preview title={`Modell${preview ? ` · Rev. ${preview.model_revision} · ${released(preview) ? "freigegeben" : "Diagnose, nicht freigegeben"}` : ""}`}>
           {preview ? <BlobView artifact={preview} kind="glb" />

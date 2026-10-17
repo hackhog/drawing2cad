@@ -3,7 +3,8 @@
 import { describe, expect, it } from "vitest";
 import { ApiFailure } from "../errors";
 import { FixtureApi } from "../fixtureApi";
-import { delivery, isReleased } from "../release";
+import type { Artifact } from "../contract";
+import { delivery, isReleased, latestShown } from "../release";
 
 const pdf = (name = "platte.pdf") => new File(["%PDF-1.7\n%synthetic\n"], name, { type: "application/pdf" });
 
@@ -75,6 +76,17 @@ describe("run lifecycle", () => {
     expect(run.review?.release_state).toBe("blocked");
     expect(delivery(run).released).toBe(false);
     expect(delivery(run).reasons[0]).toMatch(/Prüfung ist fehlgeschlagen/);
+  });
+
+  it("shows the latest draft drawing of the current revision, but not a stale one", async () => {
+    const { run } = await finishedRun("fail-case.pdf");
+    const pdf = (id: string, revision: number): Artifact => ({ artifact_id: id, role: "drawing_pdf", media_type: "application/pdf",
+      filename: `${id}.pdf`, sha256: "0".repeat(64), byte_count: 1, source_sha256: "1".repeat(64), model_revision: revision });
+    const current = run.part!.revision;
+    const drafts = { ...run, artifacts: [pdf("first", current), pdf("latest", current), pdf("stale", current - 1)] };
+    expect(latestShown(drafts, "drawing_pdf")?.artifact_id).toBe("latest");
+    expect(latestShown({ ...drafts, artifacts: [pdf("stale", current - 1)] }, "drawing_pdf")).toBeUndefined();
+    expect(latestShown({ ...drafts, job: { ...drafts.job, status: "running" } }, "drawing_pdf")).toBeUndefined();
   });
 
   it("does not report a failed check for a valid build without release", async () => {
