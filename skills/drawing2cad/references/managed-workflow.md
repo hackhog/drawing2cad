@@ -3,6 +3,7 @@
 This reference describes the shared domain service and its maintained part tools.
 Use the live schemas for exact argument types, limits, and required fields.
 The installed server can differ from the skill version.
+Use [verification-loop.md](verification-loop.md) for structured validation errors, rendered layout diagnostics, and correction retries.
 
 ## Discovery and validation
 

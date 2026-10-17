@@ -593,7 +593,7 @@ class DomainService:
         if not self.settings.cad.enabled:
             raise DomainError("CAD_DISABLED", "Enable the restricted worker before drawing creation.")
         report = drawing_validate(spec, state["description"], state["revision"])
-        if report["status"] != "pass":
+        if report["status"] != "pass" and not report.get("diagnostic_eligible"):
             report.pop("resolved", None)
             return report
         # Invalidate first, including when the worker fails or the process exits.
@@ -606,22 +606,43 @@ class DomainService:
         result = cad.runner.run("drawing", drawing_spec=spec, description=state["description"], revision=state["revision"])
         if result.get("status") != "pass":
             drawing.update(status="fail", report=self._public(result))
+            if result.get("diagnostic_only") is True:
+                expected_binding = {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
+                                    "drawing_sha256": drawing["drawing_sha256"]}
+                if any(result.get(key) != value for key, value in expected_binding.items()):
+                    raise DomainError("INVALID_WORKER_ARTIFACT", "The diagnostic does not match the current drawing binding.")
+                files = self._drawing_worker_files(cad, result, (
+                    ("drawing-diagnostic.pdf", "application/pdf", "drawing_diagnostic_preview"),
+                    ("drawing-diagnostic.json", "application/json", "drawing_diagnostic_report")))
+                report_path = files[1][0]
+                if report_path.stat().st_size > 4 * 1024 * 1024:
+                    raise DomainError("INVALID_WORKER_ARTIFACT", "The diagnostic report exceeds its size limit.")
+                try:
+                    diagnostic = json.loads(report_path.read_text(encoding="utf-8"))
+                    encoded = _json(diagnostic)
+                except (ValueError, TypeError, RecursionError):
+                    raise DomainError("INVALID_WORKER_ARTIFACT", "The diagnostic report is invalid.") from None
+                if (not isinstance(diagnostic, dict) or diagnostic.get("diagnostic_only") is not True
+                        or diagnostic.get("status") != "fail"
+                        or any(diagnostic.get(key) != value for key, value in expected_binding.items())
+                        or _json(self._public(diagnostic)) != encoded):
+                    raise DomainError("INVALID_WORKER_ARTIFACT", "The diagnostic report has invalid public data or binding.")
+                drawing["diagnostic_only"] = True
+                # Verify every file before publishing any diagnostic artifact.
+                for path, media, role in files:
+                    drawing["artifacts"].append(self.store.artifact_register(
+                        ctx, path, role, state["run_id"], state["revision"], media, path.name))
+                drawing["report"].pop("artifacts", None)
             self._save_drawing(directory, drawing)
-            return {"status": "fail", "drawing": drawing}
+            return {"status": "fail", "run_id": state["run_id"], "revision": state["revision"], "drawing": drawing}
         if result.get("checks", {}).get("rendered_layout") != "pass":
             raise DomainError("DRAWING_LAYOUT_REQUIRED", "The drawing worker must pass the rendered layout check.")
-        workdir = Path(result.get("worker", {}).get("work_dir", ""))
-        if not workdir.is_absolute() or not workdir.is_relative_to(cad.runner.storage) or workdir.resolve() != workdir:
-            raise DomainError("INVALID_WORKER_ARTIFACT", "The drawing worker directory is invalid.")
-        for filename, media in (("drawing.dxf", "image/vnd.dxf"), ("drawing.pdf", "application/pdf")):
-            path = workdir / filename
-            self.store._check_path(path)
-            expected = next((item for item in result.get("artifacts", []) if item.get("name") == filename), None)
-            if not expected or expected.get("path") != str(path):
-                raise DomainError("INVALID_WORKER_ARTIFACT", "The drawing worker did not return its fixed artifact paths.")
-            self.store._verify(path, expected["bytes"], expected["sha256"])
-            drawing["artifacts"].append(self.store.artifact_register(ctx, path, "technical_drawing", state["run_id"],
-                                                                    state["revision"], media, filename))
+        files = self._drawing_worker_files(cad, result, (
+            ("drawing.dxf", "image/vnd.dxf", "technical_drawing"),
+            ("drawing.pdf", "application/pdf", "technical_drawing")))
+        for path, media, role in files:
+            drawing["artifacts"].append(self.store.artifact_register(ctx, path, role, state["run_id"],
+                                                                    state["revision"], media, path.name))
         public_report = self._public(result)
         public_report.pop("artifacts", None)
         drawing["artifacts"].append(self._register_json(ctx, directory, public_report, "drawing-report.json",
@@ -629,6 +650,26 @@ class DomainService:
         drawing.update(status="pass", report=public_report)
         self._save_drawing(directory, drawing)
         return {"status": "pass", "run_id": state["run_id"], "revision": state["revision"], "drawing": drawing}
+
+    def _drawing_worker_files(self, cad, result, files):
+        """Verify fixed private paths and file hashes before artifact publication."""
+        workdir = Path(result.get("worker", {}).get("work_dir", ""))
+        if not workdir.is_absolute() or not workdir.is_relative_to(cad.runner.storage) or workdir.resolve() != workdir:
+            raise DomainError("INVALID_WORKER_ARTIFACT", "The drawing worker directory is invalid.")
+        verified = []
+        for filename, media, role in files:
+            path = workdir / filename
+            self.store._check_path(path)
+            matches = [item for item in result.get("artifacts", []) if item.get("name") == filename]
+            expected = matches[0] if len(matches) == 1 else None
+            if (not expected or expected.get("path") != str(path)
+                    or type(expected.get("bytes")) is not int or not 0 < expected["bytes"] <= 32 * 1024 * 1024
+                    or not isinstance(expected.get("sha256"), str) or len(expected["sha256"]) != 64
+                    or (role.startswith("drawing_diagnostic_") and expected.get("role") != role)):
+                raise DomainError("INVALID_WORKER_ARTIFACT", "The drawing worker did not return its fixed artifact paths.")
+            self.store._verify(path, expected["bytes"], expected["sha256"])
+            verified.append((path, media, role))
+        return verified
 
     def _review(self, ctx, cad, directory, state, args):
         drawing = self._drawing(directory, state)

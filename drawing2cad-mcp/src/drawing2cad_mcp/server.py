@@ -250,6 +250,14 @@ class Application:
                     "available": drafting_available, "backend": "ezdxf-pymupdf",
                     "scope": "supplied_view_geometry_and_native_dimensions",
                     "automatic_model_projection": False,
+                    "layout_diagnostics": {
+                        "available": drafting_available,
+                        "tool": "drawing_render",
+                        "preview_tool": "artifact_preview",
+                        "scope": "label_identifiers_and_rendered_sheet_bounds",
+                        "outputs": ["diagnostic_pdf", "diagnostic_report"],
+                        "release_eligible": False,
+                    },
                 }
             result["domain_services"]["remote_storage"] = {"available": True, "schema": "drawing2cad.domain/1"}
             result["domain_services"]["jobs"] = {"available": True, "cancellation": "cooperative"}

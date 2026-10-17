@@ -6,7 +6,7 @@
     "output": "docs/diagrams/drawing2cad-overview.html",
     "quality_profile": "showcase",
     "locale": "en",
-    "subtitle": "Headless delivery, AP242 analysis, and stored PMI inspection"
+    "subtitle": "Headless delivery, drawing diagnostics, and AP242 inspection"
   },
   "components": [
     {
@@ -111,7 +111,7 @@
       "id": "worker",
       "type": "backend",
       "label": "Restricted CAD / drawing",
-      "sublabel": "build123d, XDE, PMI views, drafting",
+      "sublabel": "CAD, PMI views, drawing diagnostics",
       "pos": [
         1040,
         600

@@ -103,6 +103,19 @@ Section geometry and its identifying note must be supplied and independently rev
 Automatic drawing-to-solid equivalence, general GD&T validation, and semantic PMI are unsupported.
 Layout success does not prove correct source interpretation or sufficient views.
 
+### Diagnostic output for failed layouts
+
+Issue 41 adds collision identifiers and actual rendered bounds to drawing reports.
+The restricted worker can produce a marked diagnostic PDF when a valid declaration fails its layout checks.
+The domain service verifies fixed artifact paths, sizes, hashes, and revision bindings before it registers these artifacts.
+The existing authenticated artifact interface supplies the PDF and JSON report.
+Diagnostic artifact roles remain separate from accepted technical drawing roles.
+They cannot satisfy drawing review or STEP release.
+
+Agents use these diagnostics in a correction loop: validate the declaration, render, inspect reported defects, correct them, and render again.
+Independent source and visual reviews follow the passing render.
+Pydantic validates the declaration structure and bounded values. It does not prove geometric or manufacturing correctness.
+
 ### Drawing and model release
 
 Either drawing or model can be created first.
