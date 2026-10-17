@@ -41,8 +41,7 @@ def classify(strokes: list[Stroke]) -> list[ArrowHead]:
     """Set the kind of each stroke. Return the detected arrowheads."""
     grid = Grid()
     for s in strokes:
-        # Conservative arc boxes only add query candidates; each rule still tests the geometry.
-        grid.insert(s.id, expand(index_box(s), _TOUCH))
+        grid.insert(s.id, expand(s.bbox(), _TOUCH))
 
     for s in strokes:
         if s.width_mm >= _CUTTING_PLANE_WIDTH:
@@ -54,7 +53,7 @@ def classify(strokes: list[Stroke]) -> list[ArrowHead]:
     _find_hatching(strokes, grid)
     _find_dashed(strokes)
     _find_center_marks(strokes)
-    _extend_centerlines(strokes, grid)
+    _extend_centerlines(strokes)
     for s in strokes:
         if s.kind is Kind.UNCLEAR:
             s.kind = Kind.CONTOUR
@@ -376,10 +375,14 @@ _DASH_LIMIT = 1.2  # A continuation is at most this factor longer than the longe
 _MAX_DASH = 25.0  # mm: upper limit for one centerline dash
 
 
-def _extend_centerlines(strokes: list[Stroke], grid: Grid) -> None:
+def _extend_centerlines(strokes: list[Stroke]) -> None:
     """Classify a free dash on the carrier of a nearby centerline as a centerline piece.
     The last dash of a centerline can stand alone, for example where filled dashes end the run.
     A part edge touches or crosses other strokes, or is longer than the dashes; it stays a contour candidate."""
+    # A separate index with conservative arc boxes, so that contact checks find tangent arcs.
+    grid = Grid()
+    for s in strokes:
+        grid.insert(s.id, expand(index_box(s), _TOUCH))
     carriers: dict[tuple, list[tuple[float, float]]] = defaultdict(list)
     for s in _lines(strokes):
         if s.kind is Kind.CENTERLINE:
