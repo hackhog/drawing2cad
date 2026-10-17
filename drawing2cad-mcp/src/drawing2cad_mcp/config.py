@@ -40,6 +40,8 @@ class ServerSettings(BaseModel):
     preview_max_pixels: int = Field(default=4000000, gt=0, le=16000000, strict=True)
     preview_max_bytes: int = Field(default=6000000, gt=0, le=12000000, strict=True)
     pdf_concurrency: int = Field(default=2, ge=1, le=4, strict=True)
+    expose_freecad_proxy: bool = False
+    max_step_bytes: int = Field(default=33554432, gt=0, le=268435456, strict=True)
 
 
 class HTTPSettings(BaseModel):

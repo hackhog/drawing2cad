@@ -1,7 +1,7 @@
 # drawing2cad
 
 This project supplies tools and a reproducible agent workflow to reconstruct CAD models from technical PDF drawings.
-The Python MCP prepares PDFs, analyzes drawing vectors, and gives access to the existing FreeCAD MCP through one interface.
+The Python MCP prepares PDFs, analyzes drawing vectors, inspects STEP content, and manages workflow evidence through one interface. A FreeCAD development proxy is optional.
 Clients can use Streamable HTTP at `/mcp` or the existing stdio transport.
 The skill specifies model construction, source evidence, unresolved dimensions, and tests of CAD and STEP outputs.
 
@@ -58,7 +58,7 @@ Existing stdio clients can keep their configuration. The default transport remai
 Load the complete [drawing2cad skill](skills/drawing2cad/SKILL.md), including its references, in the agent that uses the MCP.
 MCP registration supplies tools. The agent must also load the skill instructions.
 
-The MCP supplies PDF metadata, text, vector analysis, page images, detail images, and FreeCAD tools.
+The MCP supplies PDF metadata, text, vector analysis, page images, detail images, STEP inspection, and managed evidence tools. Read [delivery artifacts and backends](skills/drawing2cad/references/delivery-and-backends.md) for the target DXF, AP242, editability, and PMI requirements. CAD execution remains a separate adapter capability.
 The demo API uses the same Python PDF service. There is no separate extractor package or CLI.
 See [ADR 0013](docs/adr/0013-vector-analysis-in-mcp.md) for the feature comparison and migration decision.
 The HTTP transport does not supply a headless CAD worker, web interface, or download service.

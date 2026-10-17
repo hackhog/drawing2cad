@@ -12,9 +12,10 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolRequestParams
 from PIL import Image
 import pytest
+import drawing2cad_mcp
 
 from drawing2cad_mcp.config import FreeCADSettings, PdfSettings, ServerSettings, Settings
-from drawing2cad_mcp.server import STROKE_KINDS, Application
+from drawing2cad_mcp.server import LOCAL_TOOLS, STROKE_KINDS, Application
 from drawing2cad_mcp.vector import Kind
 from test_pdf import make_pdf
 from test_proxy import UPSTREAM
@@ -41,15 +42,16 @@ async def test_status_and_pdf_work_without_freecad(app, tmp_path):
     assert json.loads(result.content[0].text) == result.structured_content
     status = await invoke(app, "drawing2cad_status")
     assert status.structured_content["freecad"]["configured"] is False
-    assert len((await app.on_list_tools(None)).tools) == 6
+    assert len((await app.on_list_tools(None)).tools) == len(LOCAL_TOOLS)
 
 
 async def test_unavailable_enabled_upstream_does_not_block_pdf(tmp_path):
     app = Application(Settings(pdf=PdfSettings(allowed_roots=[tmp_path], output_root=tmp_path / "out"),
+                               server=ServerSettings(expose_freecad_proxy=True),
                                freecad=FreeCADSettings(command="drawing2cad-nonexistent-test-command")))
     source = make_pdf(tmp_path / "test.pdf")
     async with app.lifespan(app.server):
-        assert len((await app.on_list_tools(None)).tools) == 6
+        assert len((await app.on_list_tools(None)).tools) == len(LOCAL_TOOLS)
         assert not (await invoke(app, "pdf_info", path=str(source))).is_error
         status = (await invoke(app, "drawing2cad_status")).structured_content
         assert status["freecad"]["configured"]
@@ -150,14 +152,17 @@ async def test_full_stdio_facade_preserves_proxy_and_pdf(tmp_path):
     config.write_text(
         f'[pdf]\nallowed_roots=[{quote(str(tmp_path))}]\noutput_root={quote(str(tmp_path / "out"))}\n'
         f'[freecad]\nenabled=true\ncommand={quote(sys.executable)}\n'
-        f'args=["-u","-c",{quote(UPSTREAM)}]\n', encoding="utf8")
+        f'args=["-u","-c",{quote(UPSTREAM)}]\n[server]\nexpose_freecad_proxy=true\n', encoding="utf8")
     parameters = StdioServerParameters(command=sys.executable,
-                                      args=["-m", "drawing2cad_mcp", "--config", str(config)])
+                                      args=["-m", "drawing2cad_mcp", "--config", str(config)],
+                                      env={"PYTHONPATH": str(Path(drawing2cad_mcp.__file__).resolve().parents[1])})
     async with stdio_client(parameters) as streams:
         async with ClientSession(*streams) as session:
             await session.initialize()
             catalog = (await session.list_tools()).tools
-            assert len(catalog) == 11
+            assert len(catalog) == len(LOCAL_TOOLS) + 5
+            capabilities = await session.call_tool("cad_capabilities", {})
+            assert capabilities.structured_content["workflow"]["available"]
             echo = next(tool for tool in catalog if tool.name == "freecad_echo")
             assert echo.output_schema["required"] == ["value"]
             result = await session.call_tool("freecad_echo", {"value": "facade round trip"})

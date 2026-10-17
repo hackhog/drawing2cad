@@ -1,3 +1,3 @@
-"""PDF preparation and a transparent FreeCAD tool proxy."""
+"""Drawing preparation, STEP inspection, and managed workflow evidence."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

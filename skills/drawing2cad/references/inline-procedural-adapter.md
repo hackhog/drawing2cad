@@ -1,5 +1,8 @@
 # Inline AP242 procedural construction adapter
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 Calculate edge fingerprints from `e.copy(True, False).BoundBox`, without copied triangulation. Display triangulation can change bounding-box extremes. Keep the 1e-6 matching tolerance and curve-distance checks in both directions.
 
 This reference contains reusable adapter code only. It supplies no part data, historical results, or case-specific test functions. The generic representation label below replaces a former case-specific label. Revalidate the changed code before use. No live CAD test was run during this cleanup.

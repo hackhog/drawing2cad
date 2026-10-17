@@ -14,7 +14,7 @@ Other modes use only applicable phases.
 Do not invent missing evidence retrospectively.
 
 The production workflow must run on a fully headless server through `drawing2cad-mcp`.
-No phase can require an open FreeCAD GUI or a GUI dispatcher.
+No phase can require an open CAD GUI or a GUI dispatcher.
 Test drawing rendering and PMI presentation separately from geometric computation.
 An optional web client can submit jobs and display server artifacts. It does not execute required CAD phases.
 Existing GUI-based development tests do not prove this deployment.
@@ -24,7 +24,7 @@ Existing GUI-based development tests do not prove this deployment.
 - **Interpretation:** An LLM or person reads only permitted drawings, collects evidence, and proposes a construction. Origin, construction, and undimensioned details can vary. Record the model identifier and methods as provenance. They do not guarantee quality.
 - **Contract verification:** A reviewer requires fully referenced data, open decisions, necessary capabilities, and predefined tests. The fixed contract separates interpretation from replay.
 - **Deterministic core:** An adapter evaluates explicit relations and operations in stable order. It reads data, not executable code generated from source documents. An unknown operator causes a traceable error.
-- **CAD execution:** The current execution profile permits only FreeCAD-MCP. Other CAD systems are possible adapter targets. They are not implemented alternatives. Native types, geometry kernels, and neutral-format mappings each require separate tests.
+- **CAD execution:** Use only drawing2cad-mcp. The server selects a backend with the necessary verified capabilities. FreeCAD is an optional development adapter. Native types, geometry kernels, and neutral-format mappings each require separate tests. Read [delivery-and-backends.md](delivery-and-backends.md) for delivery requirements and candidate limits.
 - **Verification and review:** Independent readers compare actual results. The LLM must not estimate missing measurements or references. It must not replace them with plausible success reports.
 
 A different LLM does not require new drawing interpretation if the next step uses the fixed contract.
@@ -88,7 +88,7 @@ A successful BREP export must not hide missing register or marker transport.
 If the adapter supports only an external register, identify the result as a limited candidate.
 It does not meet a requirement for a fully self-contained AP242 master.
 
-The interfaces below are a working contract, not a newly implemented SDK.
+The full workflow below is a working contract. Only the managed evidence subset and STEP inspection tools in [managed-workflow.md](managed-workflow.md) are implemented as domain tools.
 Adapt existing inline blocks to these roles through explicit inputs.
 A block with fixed case paths or names is a regression test.
 A copy of that block is not a generic adapter.

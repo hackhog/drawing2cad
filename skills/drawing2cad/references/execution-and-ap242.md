@@ -1,5 +1,8 @@
 # MCP execution and AP242 representation
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 ## Process control without script files
 
 The complete production pipeline must run on a headless server. This requirement includes drawing authoring, full-sheet rendering, editable 3D construction, AP242 and semantic-PMI export, and fresh reconstruction and edit tests. No phase can require FreeCADGui, a Qt GUI dispatcher, Xvfb, or an offscreen FreeCAD GUI. These requirements do not state that the current proxy implements such a worker.

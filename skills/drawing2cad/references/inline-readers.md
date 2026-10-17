@@ -1,5 +1,8 @@
 # Inline readers: adapter components
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 These code blocks document inline calls through the FreeCAD proxy of `drawing2cad-mcp`. Do not create script files from them. Define the functions in a fresh Python process. Supply the path, expected representation, and expected PMI count explicitly.
 
 The blocks read STEP and create declarative data. They do not create CAD documents. Use the skill for the native rebuild and its geometric verification.

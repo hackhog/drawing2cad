@@ -21,7 +21,7 @@ import uvicorn
 from drawing2cad_mcp.config import HTTPSettings, PdfSettings, ServerSettings, Settings
 from drawing2cad_mcp.http import create_http_app
 from drawing2cad_mcp.proxy import FreeCADProxy
-from drawing2cad_mcp.server import Application
+from drawing2cad_mcp.server import LOCAL_TOOLS, Application
 from test_pdf import make_pdf
 from test_proxy import UPSTREAM
 
@@ -118,11 +118,13 @@ async def test_http_status_and_pdf_text_use_real_mcp(http_application, tmp_path)
     async with running_server(http_application) as url:
         async with mcp_session(url) as session:
             tools = (await session.list_tools()).tools
-            assert len(tools) == 6
+            assert len(tools) == len(LOCAL_TOOLS)
             assert "drawing_extract" in {tool.name for tool in tools}
             status = await session.call_tool("drawing2cad_status", {})
             assert status.structured_content["freecad"]["configured"] is False
             assert not status.is_error
+            capabilities = await session.call_tool("cad_capabilities", {})
+            assert not capabilities.structured_content["domain_services"]["ap242_export"]["available"]
             info = await session.call_tool("pdf_info", {"path": str(source)})
             text = await session.call_tool("pdf_read_text", {"path": str(source)})
             assert not info.is_error and not text.is_error
@@ -131,6 +133,19 @@ async def test_http_status_and_pdf_text_use_real_mcp(http_application, tmp_path)
             assert text.structured_content["source"] == info.structured_content["source"]
             assert "Dimension 42 mm" in text.structured_content["pages"][0]["text"]
             assert text.structured_content["pages"][1]["status"] == "native_text_missing"
+            run = await session.call_tool("workflow_create_run", {
+                "run_id": "http-evidence", "mode": "new_drawing", "units": "mm",
+                "sources": [{"path": str(source), "sha256": info.structured_content["source"]["sha256"],
+                             "role": "construction_source"}],
+            })
+            assert not run.is_error
+            readiness = await session.call_tool("workflow_check_readiness", {
+                "run_id": "http-evidence", "phase": "export",
+            })
+            assert not readiness.structured_content["ready"]
+            assert "CAD_VALIDATION_UNAVAILABLE" in {
+                defect["code"] for defect in readiness.structured_content["defects"]
+            }
     assert http_application.lifespan_starts == http_application.lifespan_closes == 1
 
 
@@ -168,6 +183,7 @@ async def test_http_pdf_render_returns_image_and_artifact(http_application, tmp_
 
 
 async def test_http_clients_share_proxy_until_server_shutdown(http_application):
+    http_application.settings.server.expose_freecad_proxy = True
     proxy = FreeCADProxy(sys.executable, ["-u", "-c", UPSTREAM])
     proxy.close = AsyncMock(wraps=proxy.close)
     http_application.proxy = proxy
@@ -177,7 +193,7 @@ async def test_http_clients_share_proxy_until_server_shutdown(http_application):
                 first_tools, remaining_tools = await asyncio.gather(
                     first.list_tools(), remaining.list_tools(),
                 )
-                assert len(first_tools.tools) == len(remaining_tools.tools) == 11
+                assert len(first_tools.tools) == len(remaining_tools.tools) == len(LOCAL_TOOLS) + 5
                 tool = next(item for item in first_tools.tools if item.name == "freecad_echo")
                 assert tool.output_schema["required"] == ["value"]
                 assert tool.meta["custom"]["preserve"] == 7

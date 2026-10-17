@@ -169,8 +169,9 @@ After an interrupted call, inspect the model before you repeat that call.
 ```
 
 The result must contain `transport: "streamable-http"`.
-With FreeCAD disabled, the catalog contains six local tools, including `drawing_extract`.
-With FreeCAD enabled, it also contains the tools discovered from the upstream, with the `freecad_` prefix.
+The local catalog contains PDF, STEP inspection, capability, and managed workflow tools.
+To expose development tools with the `freecad_` prefix, set both `freecad.enabled=true` and `server.expose_freecad_proxy=true`.
+Raw proxy calls bypass managed evidence gates. They are hidden by default.
 The upstream determines their number and schemas.
 
 `freecad.connected` confirms the upstream MCP connection.
@@ -294,7 +295,7 @@ HTTP transport does not change the evidence or review requirements.
 | HTTP 403 | Compare the supplied Origin header with `allowed_origins`. |
 | HTTP 404 | Use `/mcp`; the service has no `/sse`, download, or health route. |
 | HTTP 413 | Reduce the request body below the 4 MiB limit. |
-| Only six tools | Verify `freecad.enabled`, the launcher, its arguments, and the refreshed status. |
+| No `freecad_*` tools | For the optional development profile, verify `server.expose_freecad_proxy`, `freecad.enabled`, the launcher, its arguments, and refreshed status. |
 | Vector analysis rejects the page layout | Use the normal PDF image tools. The vector profile requires an unrotated, uncropped page with unit UserUnit. |
 | `catalog_stale=true` | Restore the upstream connection, then refresh status and list the tools again. |
 | FreeCAD tool fails after discovery | Verify addon access separately; upstream MCP discovery does not prove CAD execution. |

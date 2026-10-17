@@ -32,8 +32,10 @@
 - Mark radii without dimensions and all unclear details. Keep approved assumptions identified as assumptions.
 - Keep model operations and parameters editable. A STEP end body alone does not meet the construction-history or semantic-PMI requirement.
 - Test AP242 content, reconstruction from STEP alone, and changes through import adapters separately.
-- Use only `drawing2cad-mcp` and its FreeCAD proxy for PDF preparation and CAD execution. You can send inline code to the MCP.
-- The production target is a fully headless server. All required phases must work without a FreeCAD GUI session or GUI dispatcher.
+- Use only `drawing2cad-mcp` for PDF preparation and CAD execution. Keep the skill independent of the CAD backend. FreeCAD is an optional adapter behind this interface.
+- Require separate evidence for drawing creation, editable construction, STEP AP242, semantic PMI, and graphical PMI. A parameter table alone does not prove editable construction.
+- Keep backend-specific execution code in maintained MCP adapters. Inline code through the MCP remains permitted for a verified development fallback.
+- The production target is a fully headless server. All required phases must work without a CAD GUI session or GUI dispatcher.
 - Test drawing creation and rendering, editable construction, AP242, PMI, reconstruction, and validation on that server. A GUI bridge is a development path only.
 - Do not create ad hoc model scripts, macros, or executable helper files. This restriction does not prohibit authorized development of versioned MCP server code.
 - Use only permitted sources. Do not use verification resources as unreported construction inputs. Keep original resources unchanged.

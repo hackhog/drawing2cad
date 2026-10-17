@@ -1,5 +1,8 @@
 # Review marker injection: generic layout inputs, Schema 1
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 The input check validates mm units, the amb3_ namespace, unique IDs, target solids, review classes, and view groups. It also examines finite display and anchor coordinates, RGB values, and the text and source-hash fields used here. It does not provide complete general JSON schema validation. All checks occur before document mutation.
 
 This code is documentation. Execute it only as inline Python through the FreeCAD proxy of `drawing2cad-mcp`. It is not a script file.

@@ -47,6 +47,10 @@ Relative configuration paths refer to the TOML file folder. Tool calls use absol
 
 `pages` is a list of unique page numbers. DPI is an integer from 36 to 600. The range for `max_chars` is 1 to 1000000. If `truncated=true`, request more pages or a smaller selection. A text limit does not confirm that the complete drawing sheet was examined. The live catalog is authoritative for schemas.
 
+## Managed evidence and STEP tools
+
+Start with `cad_capabilities` and use [managed-workflow.md](managed-workflow.md) for the implemented state and STEP tools. These tools work without FreeCAD. They do not supply drawing authoring or CAD validation. Backend-specific execution remains an optional development profile.
+
 ## Start a model run
 
 For `new_drawing`, create and verify the dimensioned technical drawing before the 3D build in step 6.
@@ -99,7 +103,7 @@ The PNG artifact retains the full generated resolution. The preview directly inc
 
 ## FreeCAD through the same interface
 
-The proxy discovers the upstream catalog. It exposes each tool as `freecad_<Originalname>`. For example, `execute_code`, `get_rpc_status`, and `list_documents` become `freecad_execute_code`, `freecad_get_rpc_status`, and `freecad_list_documents`. The namespace added by the agent host can differ. The actual catalog is authoritative. Input schemas, images, structured results, and error status remain upstream content.
+The proxy is hidden by default. The explicit development setting `server.expose_freecad_proxy=true` enables discovery of the configured upstream catalog. It exposes each tool as `freecad_<Originalname>`. For example, `execute_code`, `get_rpc_status`, and `list_documents` become `freecad_execute_code`, `freecad_get_rpc_status`, and `freecad_list_documents`. The namespace added by the agent host can differ. The actual catalog is authoritative. Input schemas, images, structured results, and error status remain upstream content.
 
 The proxy serializes forwarded calls within one proxy process. Other proxy processes or direct FreeCAD clients can still change the same FreeCAD state. Coordinate agent tasks on the same document. Supply complete inputs. A client timeout or cancellation does not reverse CAD mutations that already started. Do not repeat such a call without inspection. First examine status and the actual document and artifact state.
 

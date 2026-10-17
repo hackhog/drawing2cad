@@ -2,7 +2,8 @@
 
 This MCP server supplies PDF metadata, embedded text, page images, and detail images.
 Its built-in vector analysis supplies views, text from glyph outlines, and classified strokes for a supported drawing profile.
-It also supplies tools from an existing FreeCAD MCP with the prefix `freecad_`.
+It also supplies maintained STEP inspection tools and a persistent evidence workflow.
+A configured FreeCAD proxy can be exposed explicitly for development. It is hidden by default.
 
 Agent → **Streamable HTTP or stdio** → **drawing2cad-mcp** → PDF preparation / existing FreeCAD MCP → FreeCAD addon.
 
@@ -20,7 +21,8 @@ Use the [Streamable HTTP guide](STREAMABLE_HTTP.md) for installation, authentica
 | `drawing_extract` | `path`, `include_strokes=false`, optional `stroke_kinds`: sheet size, views, glyph text, and optional classified strokes from page 1. See [Vector analysis](#vector-analysis). |
 | `freecad_*` | All tools found in upstream discovery, with the prefix. The proxy does not maintain static copies of their schemas. |
 
-The installed FreeCAD MCP supplies 17 forwarded tools. This server adds six local tools.
+Use the live catalog for the exact tool set. Local tools do not depend on FreeCAD.
+The development proxy retains the discovered upstream schemas.
 For example, `execute_code` becomes `freecad_execute_code`. Its arguments do not change.
 The client can add a server namespace before the tool name.
 
@@ -28,6 +30,17 @@ PDF results contain machine-readable `structuredContent` and the same metadata a
 Page and detail results also contain a PNG image block for direct inspection by an agent.
 A separate local image viewer is not necessary. The full PNG stays available at `artifact.path`.
 The server limits large preview images. The `preview` fields give their actual dimensions and scale factor.
+
+## Managed evidence and STEP inspection
+
+Call `cad_capabilities` before a run. Use the [managed workflow guide](../skills/drawing2cad/references/managed-workflow.md) for exact inputs, state transitions, recovery, and STEP tools.
+The workflow validates structural evidence and review attestations. It does not create drawings or execute CAD.
+Build, comparison, and export readiness remain unavailable until a verified backend exists.
+STEP readers inspect limited profiles. They do not prove full EXPRESS conformity, geometric validity, or general PMI support.
+
+The raw proxy is hidden by default. To use it for development, set `server.expose_freecad_proxy=true` and configure `freecad.enabled=true`.
+Raw upstream calls bypass managed workflow gates. Previous proxy deployments need this explicit opt-in.
+A metadata append writes a new STEP candidate without overwrite. It is not an AP242 CAD export.
 
 ## Installation
 
@@ -57,7 +70,7 @@ Set the TOML configuration:
 
 - `[pdf]`: permitted source directories, output directory, and optional absolute Poppler path. Without that path, the server searches `PATH` for `pdftoppm`.
 - `[freecad]`: set `enabled=true`, the existing MCP launcher in `command`, and its `args`. Optional fields are `env` and `cwd`. For PDF work alone, set `enabled=false`.
-- `[server]`: transport, preview limits, and PDF concurrency. The default transport is `stdio`.
+- `[server]`: transport, preview limits, PDF concurrency, `max_step_bytes`, and optional `expose_freecad_proxy`. The default transport is `stdio`.
 - `[http]`: listener address, port, permitted Host and Origin headers, and the bearer-token environment variable.
 
 Relative **configuration paths** use the TOML directory as their base. PDF tool calls use **absolute file paths**.

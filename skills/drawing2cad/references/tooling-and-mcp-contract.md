@@ -1,6 +1,8 @@
 # Tool inventory, common MCP interface, and CAD service design
 
-`drawing2cad-mcp` combines PDF preparation and the configured FreeCAD MCP. See [drawing2cad-mcp.md](drawing2cad-mcp.md) for use instructions. The live catalog contains local PDF tools and dynamically forwarded `freecad_*` tools. The table below describes the current upstream interface. The `cad_*` tools in Sections 6–9 remain a **design proposal, not an implementation**. AP242 functions remain documented inline components. There is no general drawing parser or universal parametric STEP service.
+This is the optional FreeCAD development profile and a historical adapter inventory. The normal skill uses the backend-neutral MCP tools in [managed-workflow.md](managed-workflow.md). Do not load this inventory for ordinary evidence or STEP inspection calls.
+
+`drawing2cad-mcp` supplies PDF preparation, maintained STEP readers, and managed evidence tools. It can expose the configured FreeCAD MCP as an explicit development option. See [drawing2cad-mcp.md](drawing2cad-mcp.md) for use instructions. The live catalog contains local PDF tools and dynamically forwarded `freecad_*` tools. The table below describes the current upstream interface. The `cad_*` tools in Sections 6–9 remain a **design proposal, not an implementation**. AP242 functions remain documented inline components. There is no general drawing parser or universal parametric STEP service.
 
 The implemented client transports are stdio and Streamable HTTP at `/mcp`.
 The configured FreeCAD upstream still uses stdio. HTTP clients share one upstream proxy in each server process.
@@ -12,7 +14,7 @@ The transport adds no job store, artifact download service, browser interface, o
 
 The complete production pipeline must run on a headless server. It must prepare the PDF, create and verify the dimensioned drawing, and build editable 3D operations. It must then export AP242 with semantic PMI, reconstruct from STEP alone, test parameter changes, and render verification images. No phase can require FreeCADGui, a Qt GUI dispatcher, Xvfb, or an offscreen FreeCAD GUI. A browser client can show server outputs. It must not supply a required CAD execution step.
 
-[model-agnostic-workflow.md](model-agnostic-workflow.md) defines the process and mandatory evidence. [model-contract.md](model-contract.md) defines model content. Use the FreeCAD tools of the common MCP for CAD work. Inline Python is permitted. Do not create ad hoc `.py`, `.FCMacro`, `.ps1`, `.bat`, or other executable model helper files. The versioned Python server requested by the user is a separate software component. Its PDF path allowlist does not constrain arbitrary Python code in the FreeCAD proxy.
+[model-agnostic-workflow.md](model-agnostic-workflow.md) defines the process and mandatory evidence. [model-contract.md](model-contract.md) defines model content. For this optional profile only, use FreeCAD tools through the common MCP. The default workflow does not require this backend. Inline Python is permitted. Do not create ad hoc `.py`, `.FCMacro`, `.ps1`, `.bat`, or other executable model helper files. The versioned Python server requested by the user is a separate software component. Its PDF path allowlist does not constrain arbitrary Python code in the FreeCAD proxy.
 
 ## 1. Evidence and inventory limits
 
@@ -153,7 +155,7 @@ The optional desktop tree view in [inline-linear-history-view.md](inline-linear-
 
 ## 6. Future CAD service design: common data types
 
-All `cad_*` names and schemas below are **design proposals, not callable tools**. They are not part of the implemented PDF and FreeCAD proxy. A future domain service can expose these endpoints through versioned adapters. This would replace arbitrary Python execution with declarative inputs.
+The execution names and schemas below are **design proposals, not callable tools**. The separate `cad_capabilities` discovery tool is implemented; it does not execute CAD. They are not part of the implemented PDF and FreeCAD proxy. A future domain service can expose these endpoints through versioned adapters. This would replace arbitrary Python execution with declarative inputs.
 
 Type conventions: `Id` is a bounded stable string. `Hash` is SHA256 in 64 hexadecimal characters. `Vec3` contains three finite numbers. Reject unknown fields by default. JSON model data must not contain Python, import paths, shell commands, or executable expression strings. Represent permitted formulas as typed ASTs with named operators, dimension validation, and cycle detection.
 

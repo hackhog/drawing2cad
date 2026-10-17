@@ -1,5 +1,8 @@
 # Linear view of native operations
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 A native `App::DocumentObjectGroup` can show original operations as direct children in an explicit order. Their `Base`, `Tool`, and profile dependencies remain. When an operation is expanded, these dependencies are also accessible. Expand the group and collapse its operations to produce the default linear view. This creates no link copies or new final solids.
 
 The group is a FreeCAD user interface view. It does not add a construction operation or change the STEP DAG. Get the order from the verified operation graph. For a STEP-only repeat run, create this view from ordered logical IDs after the constructive rebuild. No additional geometry data or Python module is necessary in the saved FCStd.

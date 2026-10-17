@@ -1,5 +1,8 @@
 # Inline reader: numeric PMI and semantic text properties
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 This reader extends the nominal reader. It supports `PROPERTY_DEFINITION` for a thread designation and a general positive radius specification. It preserves STEP geometry references and all presentation polylines. Also compare expected IDs, values, types, references, and note meanings with the model contract. Other semantic properties, tolerances, and datum systems are not generally supported.
 
 Execute the code only in memory through the FreeCAD proxy of `drawing2cad-mcp`. `read_step_pmi_extended(step_path, expected_count)` returns `annotations` and separate `metadata_properties`. The import requires only STEP. It does not require the original model contract or FCStd. Use the contract afterward for an independent check of expected results.

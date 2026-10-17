@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drawing2cad-mcp"
-version = "0.3.0"
-description = "PDF preparation and FreeCAD tools through stdio or Streamable HTTP"
+version = "0.4.0"
+description = "Drawing preparation, STEP inspection, and workflow evidence through MCP"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -29,6 +29,7 @@ drawing2cad-mcp = "drawing2cad_mcp.server:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"drawing2cad_mcp.adapters" = ["origins.json"]
 "drawing2cad_mcp.vector" = ["glyph_templates.json", "py.typed"]
 
 [tool.pytest.ini_options]

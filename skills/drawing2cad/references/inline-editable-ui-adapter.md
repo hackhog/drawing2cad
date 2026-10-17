@@ -1,5 +1,8 @@
 # Editable user interface from AP242: inline adapter
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 First, load the parser, geometry, and import functions from `inline-procedural-adapter.md` inline. Also load `read_adapter_properties` from `inline-review-envelope.md`. Then execute the following block inline through the FreeCAD proxy of `drawing2cad-mcp`. No script file is necessary.
 
 Entry point: `hist3_rebuild_editable(step_path, fcstd_path=None, docname="AP242NativeRebuild")`. The STEP file is the only model source. The adapter reads user interface metadata from its named property.

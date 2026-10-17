@@ -1,0 +1,33 @@
+{
+  "revision": "drawing2cad.step-adapters/1",
+  "sources": {
+    "inline-procedural-adapter.md": {
+      "source_sha256": "5c153de78add48fa2ee3eddba308870f7292821956d855a5bc1da8cb3c1712ad",
+      "block_sha256": "6c886b38fed8c32d7f5a8f95db3659cfb3404553ea65088f4b1f277fe68bb7a9",
+      "block_index": 0,
+      "import_block_sha256": "06848c691fa6a0912867f328a85b0499ca1af00f9c0bafe8820915ca14f9d5d6"
+    },
+    "inline-review-envelope.md": {
+      "source_sha256": "f2699dd405999d5217d75fbff2224e13efc6db5f5505b9fbd9ecdee0051a2fd9",
+      "block_sha256": "2f644184ddec9e8d56b4f8dad96639112be0d89348d1e0ac90287fed8b59bf04",
+      "block_index": 0
+    },
+    "inline-property-pmi-reader.md": {
+      "source_sha256": "6f1008d46e7eded8c58c8cfea8a0839b7e6f8ee8e831fcabf2765255b354a692",
+      "block_sha256": "17ee07fd9984de9162bb62e6d44c622b6b4945b59ef63d2b9a4d5cb4f8b2545b",
+      "block_index": 0
+    }
+  },
+  "changes": [
+    "File access and exact byte hashes are managed by StepService.",
+    "Shared bounded Part21 parser replaces the PMI reader parser.",
+    "Procedural decoding has no CAD imports and uses iterative graph traversal.",
+    "Review output is validated in memory before exclusive atomic publication.",
+    "Part21 byte bounds use UTF-8 bytes and reject Boolean limit values.",
+    "Procedural numeric scalars and reference lists reject mismatched token types.",
+    "Nonfinite JSON constants and duplicate JSON keys are rejected.",
+    "Nominal measures use explicit length or plane-angle types matched to dimension families and unit classes.",
+    "JSON floating-point overflow is rejected during metadata decoding.",
+    "The service validates a bounded HEADER and single DATA exchange grammar; it does not validate EXPRESS."
+  ]
+}

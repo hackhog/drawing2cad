@@ -1,5 +1,8 @@
 # Inline container for adapter and review data
 
+This is an optional FreeCAD development-adapter reference. It is not a dependency of the backend-neutral skill. Prefer the maintained tools in [managed-workflow.md](managed-workflow.md) when they cover the operation. Revalidate any remaining inline fallback before use.
+
+
 This extension stores user interface mappings and review markers in the same STEP master model. Construction remains in the evaluable standard operation entities. Preserve all original PMI and verify their meanings separately.
 
 The additional JSON properties contain **application-specific adapter data**. They are not standardized parametric STEP constraints or additional drawing requirements. An external CAD adapter must explicitly implement these schemas.

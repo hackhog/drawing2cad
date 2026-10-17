@@ -21,6 +21,9 @@ transport = "stdio"
 preview_max_pixels = 4000000
 preview_max_bytes = 6000000
 pdf_concurrency = 2
+# Development only: bypasses managed workflow evidence gates.
+expose_freecad_proxy = false
+max_step_bytes = 33554432
 
 [http]
 # Use --transport streamable-http, or set server.transport to streamable-http.

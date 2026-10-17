@@ -110,7 +110,7 @@
       "id": "mcp",
       "type": "backend",
       "label": "drawing2cad-mcp",
-      "sublabel": "PDF service and CAD proxy",
+      "sublabel": "PDF, STEP, evidence gates",
       "pos": [
         670,
         440
@@ -138,7 +138,7 @@
       "id": "freecad",
       "type": "external",
       "label": "FreeCAD MCP",
-      "sublabel": "upstream CAD tools",
+      "sublabel": "optional development proxy",
       "pos": [
         680,
         630
@@ -230,7 +230,7 @@
       "id": "proxy",
       "from": "mcp",
       "to": "freecad",
-      "label": "stdio proxy"
+      "label": "explicit stdio opt-in"
     },
     {
       "id": "export",
@@ -275,10 +275,10 @@
       "dot": "cyan",
       "title": "MCP scope",
       "items": [
-        "Streamable HTTP clients share one FreeCAD proxy and CAD state",
-        "The MCP runtime is separate from the demo HTTP backend",
-        "HTTP transport does not make the FreeCAD upstream headless",
-        "Headless CAD and semantic AP242 need separate validation"
+        "Managed gates check evidence, revisions and dependencies",
+        "STEP readers inspect limited construction and PMI profiles",
+        "The optional raw proxy bypasses managed evidence gates",
+        "CAD authoring, export and headless validation remain separate"
       ]
     }
   ]
