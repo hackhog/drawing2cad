@@ -2,18 +2,19 @@
 // While the settings are open, the settings sections replace the drawings. The footer opens the settings.
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutGrid, Settings } from "lucide-react";
+import { Bot, LayoutGrid, Settings, type LucideIcon } from "lucide-react";
 import type { Capabilities } from "@/lib/contract";
 import { useApi } from "@/lib/apiContext";
 import { partName } from "@/lib/format";
 import { analysisQuery, capabilitiesQuery, flagsQuery, sourcesQuery } from "@/lib/queries";
-import { SETTINGS_SECTIONS } from "@/lib/settings";
+import { SETTINGS_SECTIONS, type SettingsSection } from "@/lib/settings";
 import { analysisStatus, uploadStatus, type Tone } from "@/lib/status";
 import { useUploads } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 import { StatusDot } from "./Status";
 
 const ITEM = "flex w-full items-center gap-2.5 rounded-lg px-2 py-[7px] text-left hover:bg-accent";
+const SECTION_ICONS: Record<SettingsSection, LucideIcon> = { agent: Bot };
 const CURRENT = "data-[status=active]:bg-highlight-bg data-[status=active]:font-semibold data-[status=active]:text-card-foreground";
 
 function agentLabel(caps: Capabilities | undefined): [Tone, string] {
@@ -43,13 +44,18 @@ export function Sidebar() {
 
       {settings ? <SettingsSections /> : <Drawings flagDecisions={!!caps?.flag_decisions} />}
 
-      <footer className="mt-auto pt-2.5">
-        <Link to="/settings/$section" params={{ section: "agent" }} title={label}
-          className="flex w-full items-center gap-2 border-t px-2 py-2.5 text-xs text-muted-foreground hover:bg-accent data-[status=active]:font-semibold data-[status=active]:text-card-foreground">
-          <Settings className="size-3.5 flex-none" aria-hidden="true" />
-          <StatusDot tone={tone} />
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          <span className="sr-only">Einstellungen</span>
+      <footer className="mt-auto border-t pt-1">
+        {/* Same layout as the user block below: round icon, title, and one line of status. */}
+        <Link to="/settings/$section" params={{ section: "agent" }} title={label} className={cn(ITEM, CURRENT, "my-1.5 gap-2.5")}>
+          <span aria-hidden="true" className="grid size-8 flex-none place-items-center rounded-full bg-muted text-muted-foreground">
+            <Settings className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <strong className="block font-bold text-card-foreground">Einstellungen</strong>
+            <small className="flex items-center gap-1.5 text-[11.5px] font-normal text-muted-foreground">
+              <StatusDot tone={tone} /><span className="min-w-0 truncate">{label}</span>
+            </small>
+          </span>
         </Link>
         <div className="flex items-center gap-2.5 border-t px-2 pt-3 pb-1 max-[1000px]:hidden">
           <span aria-hidden="true" className="grid size-8 flex-none place-items-center rounded-full bg-highlight-bg text-[11.5px] font-bold text-bad">KO</span>
@@ -65,13 +71,16 @@ function SettingsSections() {
     <>
       <p className="mx-2 mt-2 mb-1.5 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">Einstellungen</p>
       <ul aria-label="Einstellungen">
-        {SETTINGS_SECTIONS.map((section) => (
-          <li key={section.id}>
-            <Link to="/settings/$section" params={{ section: section.id }} className={cn(ITEM, CURRENT, "font-medium")}>
-              {section.label}
-            </Link>
-          </li>
-        ))}
+        {SETTINGS_SECTIONS.map((section) => {
+          const Icon = SECTION_ICONS[section.id];
+          return (
+            <li key={section.id}>
+              <Link to="/settings/$section" params={{ section: section.id }} className={cn(ITEM, CURRENT, "font-medium")}>
+                <Icon className="size-4 text-muted-foreground" />{section.label}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </>
   );

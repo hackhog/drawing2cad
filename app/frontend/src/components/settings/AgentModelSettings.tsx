@@ -1,8 +1,8 @@
 // Settings section "KI-Modell": select the profile for new runs, and create, change, check, or delete profiles.
 // A key goes to the server only when a profile is saved. The server never sends it back, and the browser does not store it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, CircleX, Pencil, Plus, Plug, Trash2 } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { ChevronDown, CircleCheck, CircleX, Pencil, Plus, Plug, Trash2 } from "lucide-react";
+import { useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,8 @@ const API_LABEL: Record<AgentApi, string> = { chat: "Chat Completions", response
 const EFFORTS = ["", "none", "minimal", "low", "medium", "high"];
 const NO_AGENT = "Lokal, ohne KI";
 const ROW = "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2.5 has-[:checked]:border-primary has-[:checked]:bg-highlight-bg";
-const SELECT = "h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+// Same height, border, and focus ring as Input; the own chevron replaces the native arrow of each browser.
+const SELECT = "h-9 w-full appearance-none rounded-md border border-input bg-transparent pr-9 pl-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 type Editing = { name: string | null } | null;
 
@@ -172,10 +173,20 @@ function CheckResult({ result }: { result: ConnectionCheck }) {
 
 function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="grid gap-1.5">
+    // content-start: fields in one row keep their label and input at the same height, also when only one has a hint.
+    <div className="grid content-start gap-1.5">
       <Label htmlFor={id} className="text-xs font-semibold">{label}</Label>
       {children}
       {hint && <small className="text-[11px] text-muted-foreground">{hint}</small>}
+    </div>
+  );
+}
+
+function Select({ className, ...props }: ComponentProps<"select">) {
+  return (
+    <div className="relative">
+      <select className={cn(SELECT, className)} {...props} />
+      <ChevronDown aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
     </div>
   );
 }
@@ -224,34 +235,34 @@ function ProfileForm({ profile, taken, onDone }: {
                 placeholder={text.label} onChange={(e) => setName(e.target.value)} />
             </Field>
             <Field id="profile-model" label={text.model.label}>
-              <Input id="profile-model" value={form.model} required placeholder={text.model.placeholder} className="font-mono"
+              <Input id="profile-model" value={form.model} required placeholder={text.model.placeholder}
                 onChange={(e) => set({ model: e.target.value })} />
             </Field>
           </div>
           {text.endpoint && (
             <Field id="profile-endpoint" label={text.endpoint.label} hint={text.endpoint.hint}>
               <Input id="profile-endpoint" type="url" value={form.endpoint} required placeholder={text.endpoint.placeholder}
-                className="font-mono" onChange={(e) => set({ endpoint: e.target.value })} />
+                onChange={(e) => set({ endpoint: e.target.value })} />
             </Field>
           )}
           <Field id="profile-key" label="API-Key" hint={text.key}>
             <Input id="profile-key" type="password" value={form.api_key} required={!profile?.key_set} autoComplete="new-password"
-              placeholder={profile?.key_set ? "Gespeichert – leer lassen, um ihn zu behalten" : ""} className="font-mono"
+              placeholder={profile?.key_set ? "Gespeichert – leer lassen, um ihn zu behalten" : ""}
               onChange={(e) => set({ api_key: e.target.value })} />
           </Field>
           <div className="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
             {form.provider !== "openrouter" && (
               <Field id="profile-api" label="Schnittstelle" hint="Manche Modelle (zum Beispiel gpt-6.1-sol) nutzen Werkzeuge nur über die Responses API.">
-                <select id="profile-api" className={SELECT} value={form.api} onChange={(e) => set({ api: e.target.value as AgentApi })}>
+                <Select id="profile-api" value={form.api} onChange={(e) => set({ api: e.target.value as AgentApi })}>
                   {(Object.keys(API_LABEL) as AgentApi[]).map((value) => <option key={value} value={value}>{API_LABEL[value]}</option>)}
-                </select>
+                </Select>
               </Field>
             )}
             <Field id="profile-effort" label="Reasoning-Aufwand" hint="Optional. Leer sendet keinen Wert. „Testen“ prüft ihn zusammen mit einem Werkzeug.">
-              <select id="profile-effort" className={SELECT} value={form.reasoning_effort ?? ""}
+              <Select id="profile-effort" value={form.reasoning_effort ?? ""}
                 onChange={(e) => set({ reasoning_effort: e.target.value || null })}>
                 {EFFORTS.map((value) => <option key={value} value={value}>{value || "—"}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <div className="flex gap-2">
