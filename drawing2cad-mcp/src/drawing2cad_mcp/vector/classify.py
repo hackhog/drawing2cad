@@ -412,7 +412,7 @@ def _extend_centerlines(strokes: list[Stroke]) -> None:
 _CONTOUR_MIN_WIDTH = 0.3  # mm: thinner lines are dimension, hatch, or center lines
 
 
-_THICK_TO_THIN = 1.25  # ISO 128 line groups use thick lines twice as wide as thin lines. The margin accepts rounded widths.
+_THICK_TO_THIN = 1.25  # Detection limit. ISO 128 thick lines are nominally twice as wide as thin lines.
 _MIN_ARROWHEADS = 4  # Two dimensions. Fewer arrow-like triangles do not identify the thin width.
 
 
