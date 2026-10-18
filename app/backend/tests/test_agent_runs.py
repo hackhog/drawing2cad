@@ -14,6 +14,7 @@ import uvicorn
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
+from drawing2cad_mcp.local_model_client import DOMAIN_SKILL_REFERENCES
 from drawing_demo import api
 from drawing_demo.agent import model as model_module
 from drawing_demo.agent import runner as runner_module
@@ -121,6 +122,9 @@ def environment(tmp_path, monkeypatch):
     monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
     skill = tmp_path / "SKILL.md"
     skill.write_text("skill")
+    (tmp_path / "references").mkdir()
+    for name in DOMAIN_SKILL_REFERENCES:
+        (tmp_path / "references" / name).write_text(name)
     monkeypatch.setenv("DRAWING2CAD_SKILL_PATH", str(skill))
     for name in ("BASE_URL", "MODEL", "API_KEY", "PROFILES"):
         monkeypatch.delenv("DRAWING2CAD_AGENT_" + name, raising=False)
