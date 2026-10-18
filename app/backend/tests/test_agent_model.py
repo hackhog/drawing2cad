@@ -344,3 +344,59 @@ def test_the_connection_check_reports_the_status_and_body(monkeypatch):
     fake_endpoint(monkeypatch, httpx2.Response(401, text="invalid key"))
     result = model.check_connection(ModelSettings("https://example.test/v1", "m", "k"))
     assert result == {"ok": False, "message": "HTTP 401: invalid key"}
+
+
+class BodyStream(httpx2.SyncByteStream):
+    """A response body that sends `chunks` and then raises `error`, if any. `sent` counts the sent chunks."""
+
+    def __init__(self, chunks, error=None):
+        self.chunks, self.error, self.sent = chunks, error, 0
+
+    def __iter__(self):
+        for chunk in self.chunks:
+            self.sent += 1
+            yield chunk
+        if self.error is not None:
+            raise self.error
+
+
+@pytest.mark.parametrize("error", [httpx2.ReadTimeout("stalled"), httpx2.RemoteProtocolError("peer closed")])
+def test_a_failure_while_the_body_is_read_is_retried(monkeypatch, error):
+    outcomes = [httpx2.Response(200, stream=BodyStream([b'{"choices": '], error)), OK_CHAT]
+    seen = fake_endpoint(monkeypatch, outcomes)
+    monkeypatch.setattr(model, "RETRY_DELAY_SECONDS", 0)
+    assert make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 60)["message"]["content"] == "ok"
+    assert len(seen) == 2
+
+
+def test_failures_while_the_body_is_read_stop_after_the_attempt_limit(monkeypatch):
+    seen = fake_endpoint(monkeypatch, [httpx2.Response(200, stream=BodyStream([b"{"], httpx2.ReadTimeout("stalled")))
+                                       for _ in range(model.ATTEMPTS)])
+    monkeypatch.setattr(model, "RETRY_DELAY_SECONDS", 0)
+    with pytest.raises(RuntimeError, match="did not answer"):
+        make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 60)
+    assert len(seen) == model.ATTEMPTS
+
+
+def test_the_connection_check_reports_a_failure_while_the_body_is_read(monkeypatch):
+    fake_endpoint(monkeypatch, httpx2.Response(200, stream=BodyStream([b"{"], httpx2.ReadTimeout("stalled"))))
+    result = model.check_connection(ModelSettings("https://example.test/v1", "m", "k"))
+    assert result["ok"] is False and result["message"].startswith("APITimeoutError")
+
+
+def test_an_error_body_is_read_only_up_to_the_error_limit(monkeypatch):
+    chunk = b"e" * (16 * 1024)
+    stream = BodyStream([chunk] * 1280)  # 20 MiB
+    fake_endpoint(monkeypatch, httpx2.Response(400, stream=stream))
+    with pytest.raises(RuntimeError, match="HTTP 400: e{4096}$"):
+        make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 60)
+    assert stream.sent * len(chunk) <= model.MAX_ERROR_BYTES
+
+
+def test_the_connection_check_reads_an_error_body_only_up_to_the_error_limit(monkeypatch):
+    chunk = b"e" * (16 * 1024)
+    stream = BodyStream([chunk] * 1280)
+    fake_endpoint(monkeypatch, httpx2.Response(429, stream=stream))
+    result = model.check_connection(ModelSettings("https://example.test/v1", "m", "k"))
+    assert result == {"ok": False, "message": "HTTP 429: " + "e" * 2000}
+    assert stream.sent * len(chunk) <= model.MAX_ERROR_BYTES

@@ -20,12 +20,16 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx2
-from openai import APIConnectionError, APIStatusError, Omit, OpenAI
+from openai import (
+    DEFAULT_CONNECTION_LIMITS, APIConnectionError, APIStatusError, APITimeoutError, DefaultHttpxClient, Omit, OpenAI,
+)
 
 log = logging.getLogger(__name__)
 
 # The SDK has no response size limit. A streamed read stops after this limit.
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# Error messages contain at most 4096 characters of an error body.
+MAX_ERROR_BYTES = 64 * 1024
 ENV_PREFIX = "DRAWING2CAD_AGENT_"
 # A profile name is also part of its variable names, for example Foundry -> DRAWING2CAD_AGENT_FOUNDRY_MODEL.
 PROFILE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9]{0,31}")
@@ -279,13 +283,45 @@ SDK_ARGUMENTS = {
 }
 
 
-def client_for(settings: ModelSettings, transport: Any = None) -> OpenAI:
+class _ErrorBodyLimit(httpx2.BaseTransport):
+    """Read at most MAX_ERROR_BYTES of an error response before the SDK reads it.
+
+    The SDK reads the complete body of an error response to make its exception. Error messages use 4096 characters only.
+    """
+
+    def __init__(self, transport: httpx2.BaseTransport):
+        self._transport = transport
+
+    def handle_request(self, request: httpx2.Request) -> httpx2.Response:
+        response = self._transport.handle_request(request)
+        if response.status_code < 400:
+            return response
+        body = bytearray()
+        try:
+            for chunk in response.iter_bytes():
+                body += chunk
+                if len(body) >= MAX_ERROR_BYTES:
+                    break
+        finally:
+            response.close()
+        # The body is decoded, so the encoding and length headers of the original body do not apply.
+        headers = [(k, v) for k, v in response.headers.multi_items()
+                   if k.lower() not in ("content-encoding", "content-length", "transfer-encoding")]
+        return httpx2.Response(response.status_code, headers=headers, content=bytes(body[:MAX_ERROR_BYTES]),
+                               request=request, extensions=response.extensions)
+
+    def close(self) -> None:
+        self._transport.close()
+
+
+def client_for(settings: ModelSettings, transport: httpx2.BaseTransport | None = None) -> OpenAI:
     """An OpenAI SDK client for the endpoint of the profile. The SDK does not retry; `make_model_call` does.
 
     `transport` replaces the network connection of the SDK, for example with an httpx2.MockTransport in tests.
     """
+    network = transport if transport is not None else httpx2.HTTPTransport(limits=DEFAULT_CONNECTION_LIMITS)
     return OpenAI(api_key=settings.api_key, base_url=settings.base_url, max_retries=0,
-                  http_client=httpx2.Client(transport=transport) if transport is not None else None)
+                  http_client=DefaultHttpxClient(transport=_ErrorBodyLimit(network)))
 
 
 def _auth_headers(settings: ModelSettings) -> dict[str, Any]:
@@ -312,10 +348,17 @@ def _post(client: OpenAI, settings: ModelSettings, path: str, body: dict[str, An
                                                  extra_headers=_auth_headers(settings) or None,
                                                  timeout=timeout) as response:
         raw = bytearray()
-        for chunk in response.iter_bytes():
-            raw += chunk
-            if len(raw) > MAX_RESPONSE_BYTES:
-                break
+        try:
+            for chunk in response.iter_bytes():
+                raw += chunk
+                if len(raw) > MAX_RESPONSE_BYTES:
+                    break
+        except httpx2.TimeoutException as error:
+            # The SDK converts transport errors only until the headers arrive. Errors during the body read get the
+            # same SDK types, so that the retry policy and the connection check handle them.
+            raise APITimeoutError(response.http_request) from error
+        except httpx2.RequestError as error:
+            raise APIConnectionError(message=f"{type(error).__name__}: {error}", request=response.http_request) from error
     return bytes(raw[:MAX_RESPONSE_BYTES + 1])
 
 
