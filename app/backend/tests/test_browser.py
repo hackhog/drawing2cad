@@ -104,22 +104,27 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
     page.get_by_role("tab", name="Review").click()
     expect(page.get_by_text("Report: part created, not built.")).to_be_visible()
 
-    # The note starts with the agent report and keeps the report in the review tab after a change.
+    # The note starts with the agent report as rendered Markdown and keeps the report in the review tab after a change.
     page.get_by_role("tab", name="Notes").click()
+    notes = page.get_by_role("tabpanel")
+    expect(notes.get_by_text("Report: part created, not built.")).to_be_visible()
+    page.get_by_role("button", name="Edit").click()
     note = page.get_by_label("Run note")
     expect(note).to_have_value("Report: part created, not built.")
     note.fill("Clarify the edge radius with design.")
     page.get_by_role("button", name="Save note").click()
     expect(page.get_by_text("Revision 2")).to_be_visible()
+    expect(notes.get_by_text("Clarify the edge radius with design.")).to_be_visible()
 
     # A change from elsewhere makes the edited revision stale: the UI shows the conflict and reloads the newer note.
     with httpx2.Client(base_url=site, trust_env=False) as client:
         assert client.put(f"/api/runs/{run_id}/note", json={"expected_revision": 2, "text": "From elsewhere."}).status_code == 200
+    page.get_by_role("button", name="Edit").click()
     note.fill("My change")
     page.get_by_role("button", name="Save note").click()
     expect(page.get_by_text("Revision has changed", exact=False).or_(page.get_by_text("A newer state exists", exact=False))).to_be_visible()
     page.get_by_role("button", name="Reload").click()
-    expect(note).to_have_value("From elsewhere.")
+    expect(notes.get_by_text("From elsewhere.")).to_be_visible()
     page.get_by_role("tab", name="Review").click()
     expect(page.get_by_text("Report: part created, not built.")).to_be_visible()
 
