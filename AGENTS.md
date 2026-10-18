@@ -17,6 +17,9 @@
 - Agents must not add themselves as authors, co-authors, or collaborators.
 - Do not add agent attribution to commit trailers, pull request text, issue text, or review comments.
 - This prohibition includes `Co-Authored-By:` trailers and "Generated with ..." text that identifies an agent.
+- A work item is work that changes files under version control or creates GitHub content.
+- Local work without changes to versioned files is not a work item. It needs no issue and no branch. Examples are to start the system, run tests, and read files.
+- Keep generated files and local configuration of local work in ignored locations. Obey the existing `.gitignore` rules.
 - Start each work item from a GitHub issue. If no issue exists, create one with `gh issue create`.
 - Before work starts, assign the issue to the authenticated GitHub user with `gh issue edit <number> --add-assignee @me`.
 - Verify the assignment on GitHub before work starts. Use the person's account, not an agent identity.
