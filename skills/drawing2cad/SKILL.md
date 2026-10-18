@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.19.0"
+  version: "0.20.0"
 ---
 
 # drawing2cad
@@ -18,7 +18,7 @@ metadata:
    Domain only: call `source_flags_read`. Apply each user decision on a review flag: ignore the flagged strokes, use the assigned stroke class, or use the corrected text. Record a value from a decision as a user decision, not as a source dimension.
 4. If measurement is necessary, call `pdf_calibrate` before `pdf_measure_distance` or `pdf_measure_circle` for the same source and view.
 5. Inventory features and printed dimensions, including each printed fillet and chamfer. Infer missing values from drawing geometry. Record assumptions with reason, region, units, and feature.
-6. Prepare the versioned description and independent expected measurements. Call `part_validate` and correct defects until it passes.
+6. Prepare the versioned description and source measurements. Call `part_validate`; use its calculated volumes and extents. Correct defects until it passes.
 7. Call `part_create` with a distinct `run_id`, description, authorized sources, and a suitable `step_budget`; retain the returned revision.
 8. Call `build_from_description` with `run_id`, `expected_revision`, and `export_profile="ap214"`.
 9. Inspect every measurement, solid check, fresh-worker import, and agreement result. Compare the features with the source inventory.
@@ -86,6 +86,7 @@ The local-path metric result does not satisfy the complete-service drawing requi
 - Use [tolerances-and-changes.md](references/tolerances-and-changes.md) for tolerance evidence and validated parameter changes.
 - For drafted walls and inside fillets, use [draft-and-fillets.md](references/draft-and-fillets.md) for construction, edge selection, and measurements.
 - Use [verification-loop.md](references/verification-loop.md) for validation, diagnostic previews, and targeted corrections.
+- Use [computed-expected.md](references/computed-expected.md) for calculated volumes and extents. Do not calculate these values by hand.
 - Use [drawing-delivery.md](references/drawing-delivery.md) for domain drawing delivery and isolated STEP-only tests.
 - Use [validation.md](references/validation.md) and [delivery-and-backends.md](references/delivery-and-backends.md) to distinguish acceptance claims.
 - Load [target-format-exports.md](references/target-format-exports.md) only for requested native NX or SOLIDWORKS derivatives.

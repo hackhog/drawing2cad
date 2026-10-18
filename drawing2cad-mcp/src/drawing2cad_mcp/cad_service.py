@@ -313,7 +313,13 @@ class CadService:
         return {"status": "pass", "schema": pmi_schema()}
 
     def part_validate(self, description):
-        return validate_description(description)
+        result = validate_description(description)
+        if result["status"] == "pass":
+            from .expected_values import compute_expected
+            from .part_schema import PartDescription
+
+            result["computed_expected"] = compute_expected(PartDescription.model_validate(description))
+        return result
 
     def part_create(self, **arguments):
         self._validate("part_create", arguments)

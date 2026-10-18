@@ -627,8 +627,16 @@ def measure_shape(shape, part: PartDescription) -> dict[str, Any]:
                 entry_side="not_tested" if expected.entry_position is None else ("pass" if passed else "fail"),
                 entry_scope="Explicit entry uses the inward axis and connected full cylindrical/conical faces with planar opening rims. A stepped bore has one entry at its outer opening; an internal shoulder is not an entry. Other transitions are unsupported.")
     checks.extend(measurements)
+    from .expected_values import compute_expected
+    from .expected_checks import compare_expected
+
+    computed = compute_expected(part)
+    computed_checks = compare_expected(computed["final"], {
+        "volume_mm3": volume, "bbox_min": list(bounds.min),
+        "bbox_max": list(bounds.max), "bbox_size": size}, part.measurements)
+    checks.extend(computed_checks)
     checks.append({"check": "drawing_measurements", "status": "not_tested" if not measurements else ("pass" if all(item["status"] == "pass" for item in measurements) else "fail"), "reason": "Expected values are supplied drawing evidence; their interpretation requires source review."})
-    return {"status": "fail" if any(item["status"] == "fail" for item in checks) else "pass", "checks": checks, "measured": {"bbox_min": list(bounds.min), "bbox_max": list(bounds.max), "bbox_size": size, "volume_mm3": volume, "solid_count": solids, "holes": holes, "outer_cylinders": [item for item in cylinders if not item["concave"]], "circular_edges": circular_edges, "cones": cones}}
+    return {"status": "fail" if any(item["status"] == "fail" for item in checks) else "pass", "checks": checks, "computed_expected": computed["final"], "measured": {"bbox_min": list(bounds.min), "bbox_max": list(bounds.max), "bbox_size": size, "volume_mm3": volume, "solid_count": solids, "holes": holes, "outer_cylinders": [item for item in cylinders if not item["concave"]], "circular_edges": circular_edges, "cones": cones}}
 
 
 def validate_step(step_path: str | Path, description: dict[str, Any]) -> dict[str, Any]:
