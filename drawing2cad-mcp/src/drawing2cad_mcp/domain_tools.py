@@ -93,7 +93,7 @@ _EXTRA = {
     "drawing_extract": (_object({"source_id": ID, "page": PAGE, "include_strokes": {"type": "boolean"},
                                  "stroke_kinds": {"type": "array", "items": {"enum": [k.value for k in Kind]}, "minItems": 1, "uniqueItems": True},
                                  "stroke_offset": {"type": "integer", "minimum": 0},
-                                 "stroke_limit": {"type": "integer", "minimum": 1, "maximum": 2000}}, ["source_id"]),
+                                 "stroke_limit": {"type": "integer", "minimum": 1, "maximum": 50000}}, ["source_id"]),
                         "Analyze native drawing vectors with the detected template profile (BCT A3, CAx A3, or A4 portrait). With include_strokes, strokes come in pages of stroke_limit (default 500); use strokes_page.next_offset. Verify detected text and dimensions against source images."),
 }
 for _name, (_schema, _description) in _EXTRA.items():

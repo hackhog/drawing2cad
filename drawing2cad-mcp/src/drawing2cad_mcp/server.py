@@ -77,7 +77,7 @@ LOCAL_TOOLS = [
                       "stroke_kinds": {"type": "array", "items": {"enum": STROKE_KINDS}, "minItems": 1, "uniqueItems": True,
                                        "description": "Return only strokes of these kinds. Requires include_strokes=true."},
                       "stroke_offset": {"type": "integer", "minimum": 0, "default": 0, "description": "First matching stroke of the page. Use strokes_page.next_offset."},
-                      "stroke_limit": {"type": "integer", "minimum": 1, "maximum": 2000, "default": 500, "description": "Number of strokes in one page."}}, ["path"]),
+                      "stroke_limit": {"type": "integer", "minimum": 1, "maximum": 50000, "default": 500, "description": "Number of strokes in one page. Keep the default unless the complete list is necessary."}}, ["path"]),
            "dependentSchemas": {"stroke_kinds": {"properties": {"include_strokes": {"const": True}}, "required": ["include_strokes"]}}}),
 ]
 LOCAL_TOOLS.extend(_tool(name, STEP_DESCRIPTIONS[name], schema,
