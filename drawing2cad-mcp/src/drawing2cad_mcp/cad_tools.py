@@ -6,7 +6,7 @@ _ID = {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"}
 _HASH = {"type": "string", "pattern": "^[a-f0-9]{64}$"}
 _RUN = {"run_id": _ID}
 _REVISION = {**_RUN, "expected_revision": {"type": "integer", "minimum": 1}}
-_PART = {"type": "object", "minProperties": 6, "maxProperties": 11,
+_PART = {"type": "object", "minProperties": 6, "maxProperties": 12,
          "description": "A part description that conforms to the full contract returned by part_schema."}
 _FEATURE = {"type": "object", "minProperties": 3, "maxProperties": 16,
             "required": ["id", "type", "evidence_ids"], "properties": {
@@ -35,7 +35,7 @@ def _object(properties, required=None):
 
 CAD_SCHEMAS = {
     "part_schema": _object({}),
-    "part_validate": _object({"description": {"type": "object", "maxProperties": 11}}),
+    "part_validate": _object({"description": {"type": "object", "maxProperties": 12}}),
     "part_create": _object({**_RUN, "description": _PART, "sources": {"type": "array", "items": _SOURCE, "minItems": 1, "maxItems": 100}, "step_budget": {"type": "integer", "minimum": 5, "maximum": 100}}, ["run_id", "description", "sources"]),
     "part_read": _object(_RUN),
     "part_update": _object({**_REVISION, "description": _PART}),

@@ -7,7 +7,7 @@ import math
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-PART_SCHEMA_VERSION = "1.2"
+PART_SCHEMA_VERSION = "1.3"
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")]
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-100000, le=100000, strict=True)]
 Positive = Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False, strict=True)]
@@ -365,8 +365,62 @@ class ReviewFlag(ClosedModel):
     evidence_ids: EvidenceIds
 
 
+class ToleranceBase(ClosedModel):
+    id: Identifier
+    raw_text: Annotated[str, Field(min_length=1, max_length=500)]
+    evidence_ids: EvidenceIds
+    confidence: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False, strict=True)]
+    resolution: Literal["resolved", "review_required"]
+    scope: Literal["parameter", "part", "unassigned"]
+    parameter_name: Identifier | None = None
+    unit: Literal["mm", "deg", "dimensionless"] | None = None
+    printed_nominal: Number | None = None
+
+
+class DeviationTolerance(ToleranceBase):
+    kind: Literal["deviation"]
+    lower_deviation: Number
+    upper_deviation: Number
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.lower_deviation > self.upper_deviation:
+            raise ValueError("Deviation bounds must be ordered.")
+        return self
+
+
+class LimitsTolerance(ToleranceBase):
+    kind: Literal["limits"]
+    lower_limit: Number
+    upper_limit: Number
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.lower_limit > self.upper_limit:
+            raise ValueError("Limit bounds must be ordered.")
+        return self
+
+
+class FitTolerance(ToleranceBase):
+    kind: Literal["fit"]
+    designation: Annotated[str, Field(min_length=1, max_length=80)]
+
+
+class GeneralTolerance(ToleranceBase):
+    kind: Literal["general"]
+    designation: Annotated[str, Field(min_length=1, max_length=160)]
+
+
+class UnclearTolerance(ToleranceBase):
+    kind: Literal["unclear"]
+    reason: Annotated[str, Field(min_length=1, max_length=500)]
+
+
+ToleranceType = Annotated[DeviationTolerance | LimitsTolerance | FitTolerance | GeneralTolerance | UnclearTolerance, Field(discriminator="kind")]
+
+
 class PartDescription(ClosedModel):
-    schema_version: Literal["1.0", "1.1", "1.2"]
+    schema_version: Literal["1.0", "1.1", "1.2", "1.3"]
     name: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$")]
     units: Literal["mm"]
     coordinate_system: Literal["right_handed_xyz"]
@@ -374,6 +428,7 @@ class PartDescription(ClosedModel):
     parameters: Annotated[list[Parameter], Field(max_length=1000)] = Field(default_factory=list)
     features: Annotated[list[FeatureType], Field(min_length=1, max_length=500)]
     measurements: Annotated[list[Measurement], Field(max_length=1000)] = Field(default_factory=list)
+    tolerances: Annotated[list[ToleranceType], Field(max_length=1000)] = Field(default_factory=list, exclude_if=lambda value: not value)
     review_flags: Annotated[list[ReviewFlag], Field(max_length=2000)] = Field(default_factory=list)
     expected_solids: Literal[1] = 1
 
@@ -422,7 +477,7 @@ _MEASUREMENT_EXAMPLES = {
 def _pointer(parts: tuple | list, description: Any) -> str:
     # Pydantic adds union branch names. They are not keys in the input JSON.
     current, tokens = description, []
-    branches = {"box", "cylinder", "extrusion", "profile_extrusion", "profile", "line", "three_point_arc", "hole", "pocket", "cut", "chamfer", "fillet", "polygon", "float", "constrained-float", "ValueRef"}
+    branches = {"box", "cylinder", "extrusion", "profile_extrusion", "profile", "line", "three_point_arc", "hole", "pocket", "cut", "chamfer", "fillet", "polygon", "float", "constrained-float", "ValueRef", "deviation", "limits", "fit", "general", "unclear"}
     for item in parts:
         if isinstance(current, dict) and item not in current and item in branches:
             continue
@@ -461,7 +516,7 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
     def defect(code, pointer, message):
         defects.append({"code": code, "pointer": pointer, "message": message})
 
-    for collection in ("evidence", "parameters", "features", "measurements", "review_flags"):
+    for collection in ("evidence", "parameters", "features", "measurements", "tolerances", "review_flags"):
         seen = set()
         for index, item in enumerate(getattr(part, collection)):
             key = item.name if collection == "parameters" else item.id
@@ -470,7 +525,7 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
             seen.add(key)
     evidence = {item.id: item for item in part.evidence}
     parameters = {item.name: item for item in part.parameters}
-    for collection in ("parameters", "features", "measurements", "review_flags"):
+    for collection in ("parameters", "features", "measurements", "tolerances", "review_flags"):
         for index, item in enumerate(getattr(part, collection)):
             for ref in item.evidence_ids:
                 if ref not in evidence:
@@ -492,8 +547,8 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
     for index, feature in enumerate(part.features):
         if isinstance(feature, HoleFeature) and feature.thread is not None and feature.thread.length is not None:
             pointer = f"/features/{index}/thread/length"
-            if part.schema_version != "1.2":
-                defect("schema_version", pointer, "Explicit thread length requires schema_version 1.2.")
+            if part.schema_version not in {"1.2", "1.3"}:
+                defect("schema_version", pointer, "Explicit thread length requires schema_version 1.2 or later.")
             try:
                 length = resolve(feature.thread.length, part)
                 depth = resolve(feature.depth, part)
@@ -560,7 +615,26 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
                         continue
                     if number <= 0:
                         defect("invalid_dimension", f"/features/{index}/profile/{field}", "Profile dimensions must be positive.")
-    targets = set(parameters) | {item.id for item in part.features} | set(evidence)
+    targets = set(parameters) | {item.id for item in part.features} | {item.id for item in part.tolerances} | set(evidence)
+    if part.tolerances and part.schema_version != "1.3":
+        defect("schema_version", "/tolerances", "Tolerances require schema_version 1.3.")
+    open_flags = {flag.target_id for flag in part.review_flags if flag.status == "open"}
+    for index, tolerance in enumerate(part.tolerances):
+        pointer = f"/tolerances/{index}"
+        if tolerance.scope == "parameter":
+            parameter = parameters.get(tolerance.parameter_name)
+            if parameter is None:
+                defect("unknown_parameter", pointer + "/parameter_name", "A parameter tolerance requires an existing parameter_name.")
+            elif tolerance.unit != parameter.unit:
+                defect("parameter_unit", pointer + "/unit", "Tolerance and parameter units must agree.")
+        elif tolerance.parameter_name is not None:
+            defect("invalid_scope", pointer + "/parameter_name", "Only parameter scope uses parameter_name.")
+        if isinstance(tolerance, (DeviationTolerance, LimitsTolerance)) and tolerance.unit is None:
+            defect("missing_unit", pointer + "/unit", "Numeric tolerance bounds require a unit.")
+        if (tolerance.scope == "unassigned" or isinstance(tolerance, UnclearTolerance) or tolerance.resolution == "review_required") and tolerance.id not in open_flags:
+            defect("missing_review_flag", pointer, "An unresolved tolerance requires an open review flag.")
+        if isinstance(tolerance, UnclearTolerance) and tolerance.resolution != "review_required":
+            defect("invalid_resolution", pointer + "/resolution", "An unclear tolerance requires review.")
     for index, measurement in enumerate(part.measurements):
         if part.schema_version == "1.0" and measurement.kind in {"draft_angle", "fillet_radius"}:
             defect("schema_version", f"/measurements/{index}", "This measurement requires schema_version 1.1.")
