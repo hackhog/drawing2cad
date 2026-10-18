@@ -2,7 +2,7 @@
 
 Screenshots of earlier Drawing2CAD UI states (Oct 16–18, 2026), in chronological order, for the pitch deck.
 
-- `00_kontaktbogen.png`: contact sheet of all states at a glance
+- `00_contact-sheet.png`: contact sheet of all states at a glance
 - `NN_MMDD-HHMM_description.png`: individual screenshots
 
 | Files | When | State |
