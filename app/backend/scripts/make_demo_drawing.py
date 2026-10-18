@@ -11,7 +11,7 @@ wie sie in alten, von Hand nachbearbeiteten Zeichnungen vorkommen:
 Die Positionen sind auf den Flansch zugeschnitten (Blatt-mm, Ursprung oben links). Das Ergebnis ist erzeugt und gehört
 deshalb nach `output/` (ignoriert, kommt nicht ins Docker-Image).
 
-    uv run python scripts/make_demo_drawing.py ../../resources/Drawing2CAD/Flansch/Flansch_dwg.pdf ../../output/demo/Flansch-Demo_dwg.pdf
+    poetry run python scripts/make_demo_drawing.py ../../resources/Drawing2CAD/Flansch/Flansch_dwg.pdf ../../output/demo/Flansch-Demo_dwg.pdf
 """
 
 from __future__ import annotations

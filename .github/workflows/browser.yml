@@ -28,15 +28,16 @@ jobs:
         run: npm ci --no-audit --no-fund && npm run build
       - name: Install Poppler
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
         with:
-          version: 0.11.1
           python-version: '3.12'
+      - name: Install Poetry
+        run: pipx install --python "$(command -v python)" poetry==2.4.1  # Same version as app/backend/Dockerfile.
       - name: Browser tests
         working-directory: app/backend
         run: |
           set -o pipefail
-          uv sync --locked
-          uv run pytest tests/test_browser.py -q -rs | tee result.txt
+          poetry install
+          poetry run pytest tests/test_browser.py -q -rs | tee result.txt
           # A skipped browser test is a failure in CI: Chrome and the UI build must be present.
           ! grep -q skipped result.txt

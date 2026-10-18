@@ -1,5 +1,10 @@
 """Exercise AP242 and bounded replay through a real remote MCP connection."""
 
+import os
+
+import pytest
+
+from drawing2cad_mcp.adapters.stepcode import capabilities as stepcode_capabilities
 from drawing2cad_mcp.drawing_contract import description_digest
 from test_drafting import drawing_fixture
 from test_http import running_server
@@ -8,6 +13,11 @@ from test_remote_delivery import (delivery_app, delivery_session, call, upload,
 
 
 async def test_remote_ap242_drawing_release_and_step_only_replay(delivery_app):
+    # An AP242 release requires the independent STEPcode analyzer. Only the MCP image contains it.
+    if not stepcode_capabilities()["available"]:
+        if os.environ.get("DRAWING2CAD_REQUIRE_STEPCODE") == "1":
+            pytest.fail("The required independent STEPcode analyzer is unavailable.")
+        pytest.skip("The independent STEPcode executable requires its Linux image.")
     async with running_server(delivery_app) as url:
         async with delivery_session(url) as session:
             source = await upload(session, source_pdf_bytes())

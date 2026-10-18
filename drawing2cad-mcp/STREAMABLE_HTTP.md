@@ -42,7 +42,7 @@ The host-installation commands below are optional development setup. They use po
 
 ## 1. Prepare a host installation
 
-Install Python 3.11 or later and Poppler with `pdftoppm`.
+Install Python 3.11 or later (earlier than 3.15), Poetry 2.4.1, and Poppler with `pdftoppm`.
 For CAD operations, use the supported Linux sandbox and install the package with its `cad` extra.
 Prefer the maintained Docker image. Host installation must not bypass worker restrictions.
 Use a client that supports MCP Streamable HTTP.
@@ -51,13 +51,13 @@ Run the commands from the repository root.
 For an existing installation, update its dependencies and migrate its local configuration.
 First, enter the `drawing2cad-mcp` directory.
 Run only the package installation command to update its dependencies.
+An existing pip environment in `.venv` is not a Poetry environment. Remove that `.venv` directory before the first `poetry install`.
 
 For a new Windows installation:
 
 ```powershell
 Set-Location drawing2cad-mcp
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -c requirements-tested.txt -e ".[test]"
+poetry install --extras test
 Copy-Item drawing2cad-mcp.example.toml drawing2cad-mcp.local.toml
 ```
 
@@ -65,10 +65,11 @@ For a new Linux or macOS installation:
 
 ```bash
 cd drawing2cad-mcp
-python3 -m venv .venv
-.venv/bin/python -m pip install -c requirements-tested.txt -e '.[test]'
+poetry install --extras test
 cp drawing2cad-mcp.example.toml drawing2cad-mcp.local.toml
 ```
+
+Poetry installs the locked versions from `poetry.lock` into `.venv` in the `drawing2cad-mcp` directory.
 
 The remaining commands use the `drawing2cad-mcp` directory.
 Installation includes the vector analysis module and its pinned PyMuPDF dependency. No separate extractor package is necessary.

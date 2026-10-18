@@ -4,15 +4,20 @@
 #   docker compose build   or   docker build -f app/backend/Dockerfile .
 FROM python:3.12-slim
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
+# Poetry has its own environment, separate from the application environment.
+# Use the same Poetry version as the CI workflows.
+ARG POETRY_VERSION=2.4.1
+RUN python -m venv /opt/poetry \
+    && /opt/poetry/bin/pip install --no-cache-dir "poetry==${POETRY_VERSION}" \
+    && ln -s /opt/poetry/bin/poetry /usr/local/bin/poetry
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends poppler-utils libseccomp2 libgl1 libglu1-mesa libxrender1 libxext6 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=never \
+ENV POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_CACHE_DIR=/tmp/poetry-cache \
     PYTHONUNBUFFERED=1
 
 WORKDIR /src
@@ -24,7 +29,12 @@ COPY skills/drawing2cad/references/drawing-delivery.md skills/drawing2cad/refere
      skills/drawing2cad/references/
 
 WORKDIR /src/app/backend
-RUN uv sync --locked --no-dev --no-editable \
+# Install the locked runtime dependencies without the dev group. Poetry installs the MCP path
+# dependency from a built wheel (develop = false). Install the backend package from a wheel too.
+RUN poetry install --only main --no-root --compile \
+    && poetry build --format wheel --output /tmp/dist \
+    && .venv/bin/python -m pip install --no-cache-dir --no-deps /tmp/dist/*.whl \
+    && rm -rf /tmp/dist /tmp/poetry-cache \
     && useradd --system --uid 10001 --no-create-home demo \
     && mkdir /data && chown demo:demo /data
 

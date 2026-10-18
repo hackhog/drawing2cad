@@ -9,14 +9,19 @@ The `/mcp` endpoint accepts loopback hosts only. The backend does not serve stat
 
 ## Build, test, and run
 
-Use Python 3.12 or later, [uv](https://docs.astral.sh/uv/), and Poppler:
+Use Python 3.12 or later, but earlier than 3.15, [Poetry](https://python-poetry.org/) 2.4.1, and Poppler.
+CI and the image use Python 3.12 and Poetry 2.4.1.
+The lock file covers Python versions earlier than 3.15, because build123d 0.13.0 requires them.
 
 ```bash
 cd app/backend
-uv sync --locked
-uv run pytest
-uv run drawing-demo
+poetry install
+poetry run pytest
+poetry run drawing-demo
 ```
+
+`poetry install` installs the locked dependencies and the dev group (pytest, Playwright).
+For a production installation without the dev group, use `poetry install --only main`.
 
 Put `pdftoppm` on `PATH`, or set `DRAWING2CAD_PDFTOPPM` to its executable path.
 The health endpoint is `http://127.0.0.1:8000/api/health`.
@@ -26,12 +31,24 @@ It covers upload, run start, job state, review, parameter display, the run note 
 It does not cover a released STEP or drawing download, because the scripted model does not build a model.
 Run `npm run build` in `app/frontend` first. Without the UI build or Google Chrome, these tests are skipped.
 
-The MCP package is a non-editable path dependency.
-After a change in `../../drawing2cad-mcp`, run:
+The MCP package is a non-editable path dependency with the `cad` extra.
+`poetry install` does not install a changed MCP source again while the version stays the same.
+After a change in `../../drawing2cad-mcp`, remove the installed copy and install it again:
 
 ```bash
-uv sync --reinstall-package drawing2cad-mcp
+poetry run python -m pip uninstall -y drawing2cad-mcp
+poetry install
 ```
+
+The backend lock records the version and the dependencies of the MCP package.
+After a change to the version or the dependencies of the MCP package, update the backend lock:
+
+```bash
+poetry lock
+poetry install
+```
+
+Commit the changed `poetry.lock`. The backend CI job stops if the lock is out of date.
 
 ## API
 
@@ -108,7 +125,7 @@ Tests use a scripted model and do not call a model endpoint.
 - `src/drawing_demo/jobs.py`: web run records (job state, agent trace, domain part run ID).
 - `src/drawing_demo/measurements.py`: review measurements per source (review time, manual-effort estimate).
 - `src/drawing_demo/agent/`: model adapter (`model.py`), runner (`runner.py`), and mapping of domain results to the contract (`mapping.py`).
-- `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill.
+- `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill. Poetry installs the locked runtime dependencies.
 
 The Docker build context is the repository root because the MCP package is a path dependency.
 The image excludes input drawings and local configuration.

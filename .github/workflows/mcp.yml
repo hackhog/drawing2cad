@@ -1,0 +1,82 @@
+# Test drawing2cad-mcp through Poetry, check its distributions, and test its container image.
+# This workflow needs no secrets. It does not commit or deploy artifacts.
+name: MCP
+
+on:
+  pull_request:
+    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.github/workflows/mcp.yml']
+  push:
+    branches: [main]
+    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.github/workflows/mcp.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: drawing2cad-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Poppler and the CAD runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils libseccomp2 libgl1 libglu1-mesa libxrender1 libxext6
+      # Use the system Python 3.12 of the runner, not actions/setup-python. The CAD sandbox permits reads
+      # below /usr and the environment, but not below /opt/hostedtoolcache, where setup-python puts the standard library.
+      - name: Install Poetry
+        run: pipx install --python /usr/bin/python3.12 poetry==2.4.1  # Same version as drawing2cad-mcp/Dockerfile.
+      - run: poetry env use /usr/bin/python3.12
+      # poetry install stops if pyproject.toml and poetry.lock do not agree.
+      - run: poetry install --extras "cad test"
+      - name: Lock file is unchanged
+        run: git diff --exit-code poetry.lock
+      - name: Test suite
+        run: |
+          set -o pipefail
+          poetry run pytest -q -rs -p no:cacheprovider | tee "$RUNNER_TEMP/result.txt"
+          # A skip for an unavailable sandbox is a failure in CI: the headless CAD path must run.
+          ! grep -E '^SKIPPED.*sandbox' "$RUNNER_TEMP/result.txt"
+      - name: Distributions contain the package data and the console command
+        run: |
+          poetry build --output "$RUNNER_TEMP/dist"
+          python - "$RUNNER_TEMP/dist" <<'EOF'
+          import glob, sys, tarfile, zipfile
+          data = ["drawing2cad_mcp/adapters/origins.json", "drawing2cad_mcp/vector/glyph_templates.json",
+                  "drawing2cad_mcp/vector/py.typed"]
+          (wheel,) = glob.glob(sys.argv[1] + "/*.whl")
+          names = zipfile.ZipFile(wheel).namelist()
+          missing = [n for n in data if n not in names]
+          entry = next(n for n in names if n.endswith(".dist-info/entry_points.txt"))
+          if "drawing2cad-mcp=drawing2cad_mcp.server:main" not in zipfile.ZipFile(wheel).read(entry).decode().replace(" ", ""):
+              missing.append("console command drawing2cad-mcp")
+          (sdist,) = glob.glob(sys.argv[1] + "/*.tar.gz")
+          sdist_names = tarfile.open(sdist).getnames()
+          missing += [f"sdist {n}" for n in data if not any(s.endswith("/src/" + n) for s in sdist_names)]
+          if missing:
+              sys.exit(f"Missing from the distributions: {missing}")
+          print("Wheel and sdist contain", data, "and the console command.")
+          EOF
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the test image
+        run: docker build -f drawing2cad-mcp/Dockerfile --target test -t drawing2cad-mcp:ci-test .
+      - name: Test suite in the test image
+        # Some tests read repository files outside the package. Mount the checkout read-only.
+        run: |
+          set -o pipefail
+          docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/drawing2cad-mcp \
+            drawing2cad-mcp:ci-test -q -rs -p no:cacheprovider tests | tee "$RUNNER_TEMP/result.txt"
+          # The image has the sandbox libraries and the STEPcode executable. A skip for them is a failure.
+          ! grep -E '^SKIPPED.*(sandbox|STEPcode)' "$RUNNER_TEMP/result.txt"
+      - name: Build the production image
+        run: docker build -f drawing2cad-mcp/Dockerfile --target production -t drawing2cad-mcp:ci .
+      - name: Production entry point starts
+        run: docker run --rm --network none --entrypoint drawing2cad-mcp drawing2cad-mcp:ci --help
