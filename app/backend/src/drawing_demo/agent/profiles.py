@@ -59,8 +59,8 @@ def endpoint_for(provider: Provider, endpoint: str) -> str:
         return OPENROUTER_BASE_URL
     parts = urlsplit(endpoint.strip())
     if parts.scheme != "https" or not parts.hostname:
-        raise ServiceError(422, "INVALID_PROFILE", "Der Endpunkt muss eine https-URL sein.", field="endpoint",
-                           recovery="Die URL der Ressource eintragen, zum Beispiel https://<ressource>.openai.azure.com.")
+        raise ServiceError(422, "INVALID_PROFILE", "The endpoint must be an https URL.", field="endpoint",
+                           recovery="Enter the URL of the resource, for example https://<resource>.openai.azure.com.")
     if provider == "azure":
         return f"https://{parts.netloc}/openai/v1"
     return f"https://{parts.netloc}{parts.path}".rstrip("/")
@@ -98,8 +98,8 @@ class ProfileStore:
     def select(self, name: str | None) -> None:
         with self._lock:
             if name is not None and name not in self._profiles:
-                raise ServiceError(422, "UNKNOWN_PROFILE", f"Unbekanntes Modellprofil: {name}", field="name",
-                                   recovery="Ein Profil aus der Liste der Einstellungen wählen.")
+                raise ServiceError(422, "UNKNOWN_PROFILE", f"Unknown model profile: {name}", field="name",
+                                   recovery="Choose a profile from the list in the settings.")
             self._active = name
             self._save()
 
@@ -107,24 +107,24 @@ class ProfileStore:
              reasoning_effort: str | None) -> None:
         """Create or change a UI profile. Without `api_key`, a changed profile keeps its key."""
         if not PROFILE_NAME.fullmatch(name):
-            raise ServiceError(422, "INVALID_PROFILE", "Der Name braucht 1 bis 40 Zeichen: Buchstaben, Ziffern, Leerzeichen, . _ -.",
+            raise ServiceError(422, "INVALID_PROFILE", "The name needs 1 to 40 characters: letters, digits, spaces, . _ -.",
                                field="name")
         if not model.strip():
-            raise ServiceError(422, "INVALID_PROFILE", "Das Modell fehlt.", field="model",
-                               recovery="Bei Azure AI Foundry den Namen des Deployments eintragen.")
+            raise ServiceError(422, "INVALID_PROFILE", "The model is missing.", field="model",
+                               recovery="For Azure AI Foundry, enter the name of the deployment.")
         if api not in ("chat", "responses"):
-            raise ServiceError(422, "INVALID_PROFILE", "Die Schnittstelle muss chat oder responses sein.", field="api")
+            raise ServiceError(422, "INVALID_PROFILE", "The interface must be chat or responses.", field="api")
         if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS:
-            raise ServiceError(422, "INVALID_PROFILE", "Unbekannter Reasoning-Aufwand.", field="reasoning_effort")
+            raise ServiceError(422, "INVALID_PROFILE", "Unknown reasoning effort.", field="reasoning_effort")
         base_url = endpoint_for(provider, endpoint)
         with self._lock:
             current = self._profiles.get(name)
             if current and current.origin == "env":
-                raise ServiceError(409, "PROFILE_READ_ONLY", f"Das Profil {name} kommt aus der Server-Konfiguration.",
-                                   field="name", recovery="Einen anderen Namen wählen oder die .env des Servers ändern.")
+                raise ServiceError(409, "PROFILE_READ_ONLY", f"The profile {name} comes from the server configuration.",
+                                   field="name", recovery="Choose a different name or change the server .env.")
             key = (api_key or "").strip() or (current.settings.api_key if current else "")
             if not key:
-                raise ServiceError(422, "INVALID_PROFILE", "Der API-Key fehlt.", field="api_key")
+                raise ServiceError(422, "INVALID_PROFILE", "The API key is missing.", field="api_key")
             header = "api-key" if provider == "azure" else "Authorization"
             settings = ModelSettings(base_url, model.strip(), key, header, reasoning_effort, api)
             self._profiles[name] = Profile(settings, provider, "ui")
@@ -136,10 +136,10 @@ class ProfileStore:
         with self._lock:
             profile = self._profiles.get(name)
             if profile is None:
-                raise ServiceError(404, "NOT_FOUND", f"Unbekanntes Modellprofil: {name}")
+                raise ServiceError(404, "NOT_FOUND", f"Unknown model profile: {name}")
             if profile.origin == "env":
-                raise ServiceError(409, "PROFILE_READ_ONLY", f"Das Profil {name} kommt aus der Server-Konfiguration.",
-                                   recovery="Das Profil in der .env des Servers entfernen.")
+                raise ServiceError(409, "PROFILE_READ_ONLY", f"The profile {name} comes from the server configuration.",
+                                   recovery="Remove the profile from the server .env.")
             del self._profiles[name]
             if self._active == name:
                 self._active = next(iter(self._profiles), None)

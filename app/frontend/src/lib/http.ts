@@ -40,11 +40,11 @@ export function uploadFile<T>(
       if (responseType === "blob") { resolve(xhr.response as T); return; }
       // A proxy or the SPA fallback can answer 2xx with HTML. Report it instead of a pending upload.
       try { resolve(JSON.parse(xhr.responseText) as T); } catch {
-        reject(new ApiFailure({ code: "PROCESSING_FAILED", message: "Antwort des Servers nicht lesbar." }, xhr.status));
+        reject(new ApiFailure({ code: "PROCESSING_FAILED", message: "Server response not readable." }, xhr.status));
       }
     };
-    xhr.onerror = () => reject(new ApiFailure({ code: "NETWORK_ERROR", message: "Server nicht erreichbar." }));
-    xhr.onabort = () => reject(new ApiFailure({ code: "UPLOAD_ABORTED", message: "Upload abgebrochen." }));
+    xhr.onerror = () => reject(new ApiFailure({ code: "NETWORK_ERROR", message: "Server not reachable." }));
+    xhr.onabort = () => reject(new ApiFailure({ code: "UPLOAD_ABORTED", message: "Upload aborted." }));
     const body = new FormData();
     body.append("file", file);
     xhr.send(body);
@@ -60,7 +60,7 @@ export async function sha256Hex(data: ArrayBuffer): Promise<string> {
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try { res = await fetch(path, init); } catch {
-    throw new ApiFailure({ code: "NETWORK_ERROR", message: "Server nicht erreichbar." });
+    throw new ApiFailure({ code: "NETWORK_ERROR", message: "Server not reachable." });
   }
   if (!res.ok) throw failure(res.status, await res.text(), res.statusText);
   return (res.status === 204 ? undefined : await res.json()) as T;
@@ -69,7 +69,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export async function requestBlob(path: string): Promise<Blob> {
   let res: Response;
   try { res = await fetch(path); } catch {
-    throw new ApiFailure({ code: "NETWORK_ERROR", message: "Server nicht erreichbar." });
+    throw new ApiFailure({ code: "NETWORK_ERROR", message: "Server not reachable." });
   }
   if (!res.ok) throw failure(res.status, await res.text(), res.statusText);
   return res.blob();

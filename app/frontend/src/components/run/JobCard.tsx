@@ -19,11 +19,11 @@ export function JobCard({ run }: { run: Run }) {
   return (
     <Card className="gap-3 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0">
-        <CardTitle className="text-sm font-bold">Auftrag</CardTitle>
+        <CardTitle className="text-sm font-bold">Job</CardTitle>
         <StatusBadge tone={tone}>{label}</StatusBadge>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-0">
-        <Progress value={(run.job.progress ?? 0) * 100} aria-label="Fortschritt" className="h-1.5" />
+        <Progress value={(run.job.progress ?? 0) * 100} aria-label="Progress" className="h-1.5" />
         <ol className="flex flex-col gap-1">
           {SEQUENCE.map((phase, i) => {
             const passed = i < current || run.phase === "done";
@@ -40,19 +40,25 @@ export function JobCard({ run }: { run: Run }) {
           })}
         </ol>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-          <dt>Auftrag</dt><dd className="truncate font-mono text-[11px]">{run.job.job_id}</dd>
-          <dt>Gestartet</dt><dd>{time(run.job.started_at)}</dd>
-          <dt>Beendet</dt><dd>{run.job.finished_at ? time(run.job.finished_at) : "–"}</dd>
+          <dt>Job</dt><dd className="truncate font-mono text-[11px]">{run.job.job_id}</dd>
+          <dt>Started</dt><dd>{time(run.job.started_at)}</dd>
+          <dt>Finished</dt><dd>{run.job.finished_at ? time(run.job.finished_at) : "–"}</dd>
           {run.iterations && (
             <>
-              <dt>Runden</dt><dd>{run.iterations.model_turns}</dd>
-              <dt>Werkzeuge</dt><dd>{run.iterations.tool_requests} von {run.iterations.step_budget} Aufrufen</dd>
+              <dt>Turns</dt><dd>{run.iterations.model_turns}</dd>
+              <dt>Tools</dt><dd>{run.iterations.tool_requests} of {run.iterations.step_budget} calls</dd>
             </>
           )}
           {run.agent && (
             <>
-              {run.agent.profile && <><dt>Profil</dt><dd className="truncate">{run.agent.profile}</dd></>}
-              <dt>Modell</dt><dd className="truncate font-mono text-[11px]" title={run.agent.model}>{run.agent.model}</dd>
+              {run.agent.profile && <><dt>Profile</dt><dd className="truncate">{run.agent.profile}</dd></>}
+              <dt>Model</dt><dd className="truncate font-mono text-[11px]" title={run.agent.model}>{run.agent.model}</dd>
+              {run.agent.reasoning_effort !== undefined && (
+                <><dt>Reasoning</dt><dd className="font-mono text-[11px]">{run.agent.reasoning_effort ?? "not set"}</dd></>
+              )}
+              {run.agent.skill_version !== undefined && (
+                <><dt>Skill</dt><dd className="font-mono text-[11px]">drawing2cad {run.agent.skill_version ?? "unversioned"}</dd></>
+              )}
               <dt>MCP</dt><dd className="font-mono text-[11px]">drawing2cad-mcp {run.agent.mcp_version}</dd>
             </>
           )}

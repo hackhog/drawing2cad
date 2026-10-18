@@ -60,7 +60,7 @@ uv sync --reinstall-package drawing2cad-mcp
 ## User interface
 
 The UI uses React, TanStack Router, TanStack Query, and shadcn ([ADR 0015](../docs/adr/0015-web-ui-on-tanstack-shadcn-with-service-adapter.md)).
-UI text remains in German. See [frontend/README.md](frontend/README.md) for routes, service adapters, and the structure.
+UI text is English ([ADR 0022](../docs/adr/0022-ui-text-in-english.md)). See [frontend/README.md](frontend/README.md) for routes, service adapters, and the structure.
 
 - The overview shows each uploaded drawing, its upload progress, and its status.
 - The drawing page has the four steps **Drawing, Recognized, Review, and 3D model** ([ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-and-batch-upload.md)).

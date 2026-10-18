@@ -47,7 +47,7 @@ class ServiceError(Exception):
 
 
 def not_found(identifier: str) -> ServiceError:
-    return ServiceError(404, "NOT_FOUND", f"Unbekannte Kennung: {identifier}")
+    return ServiceError(404, "NOT_FOUND", f"Unknown ID: {identifier}")
 
 
 def checked_id(identifier: str, prefix: str) -> str:
@@ -105,6 +105,6 @@ class DomainBackend:
                 break
         data = b"".join(chunks)
         if sha256(data).hexdigest() != metadata["sha256"]:
-            raise ServiceError(502, "ARTIFACT_HASH_MISMATCH", "Der Inhalt passt nicht zum gespeicherten Hash.",
-                               recovery="Erneut laden. Bleibt der Fehler, den Lauf wiederholen.")
+            raise ServiceError(502, "ARTIFACT_HASH_MISMATCH", "The content does not match the stored hash.",
+                               recovery="Load again. If the error persists, repeat the run.")
         return metadata, data

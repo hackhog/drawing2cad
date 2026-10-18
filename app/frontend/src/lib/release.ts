@@ -18,15 +18,15 @@ export function delivery(run: Run): Delivery {
   const revisionsAgree = revision !== null && outputs.length > 0 && outputs.every((a) => a.model_revision === revision);
   const reasons: string[] = [];
   const state = run.review?.release_state ?? "draft";
-  if (state === "stale") reasons.push("Ergebnisse gehören zu einer älteren Revision und werden neu erzeugt.");
+  if (state === "stale") reasons.push("Results belong to an older revision and are being recreated.");
   // "blocked" also covers a valid build without release; name a failed check only when one failed.
   const failed = run.review?.validation.some((v) => v.status === "fail") ?? false;
-  if (state === "blocked") reasons.push(failed ? "Eine Prüfung ist fehlgeschlagen. Die Ergebnisse sind gesperrt."
-    : "Modell gebaut, aber nicht freigegeben: Die STEP-Freigabe fehlt.");
-  if (state === "draft") reasons.push("Noch keine geprüften Ergebnisse.");
+  if (state === "blocked") reasons.push(failed ? "A check failed. The results are locked."
+    : "Model built, but not released: the STEP release is missing.");
+  if (state === "draft") reasons.push("No reviewed results yet.");
   // These checks guard against an inconsistent service state; the reported state already explains the other cases.
-  if (state === "released" && outputs.length && !revisionsAgree) reasons.push("Zeichnung und Modell gehören nicht zur aktuellen Revision.");
-  if (state === "released" && failed) reasons.push("Mindestens eine Prüfung ist fehlgeschlagen.");
+  if (state === "released" && outputs.length && !revisionsAgree) reasons.push("Drawing and model do not belong to the current revision.");
+  if (state === "released" && failed) reasons.push("At least one check failed.");
   return { released: state === "released" && revisionsAgree && reasons.length === 0, revisionsAgree, reasons };
 }
 

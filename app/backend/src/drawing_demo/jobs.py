@@ -36,8 +36,8 @@ class JobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
 
-    def add(self, source_id: str, agent: dict[str, str] | None = None) -> dict[str, Any]:
-        """Create a queued run. `agent` records the model and MCP version that execute it."""
+    def add(self, source_id: str, agent: dict[str, str | None] | None = None) -> dict[str, Any]:
+        """Create a queued run. `agent` records the model, its reasoning effort, and the skill and MCP versions that execute it."""
         run_id = "run_" + uuid4().hex
         directory = self.root / run_id
         (directory / "trace").mkdir(parents=True)
@@ -98,5 +98,5 @@ class JobStore:
             if run["job"]["status"] in ("queued", "running"):
                 self.update(run["run_id"], phase="failed", failed_phase=run["phase"],
                             job={"status": "failed", "finished_at": now()}, error={
-                    "code": "RUN_INTERRUPTED", "message": "Der Server wurde während des Laufs neu gestartet.",
-                    "field": None, "recovery": "Lauf erneut starten."})
+                    "code": "RUN_INTERRUPTED", "message": "The server was restarted during the run.",
+                    "field": None, "recovery": "Start the run again."})

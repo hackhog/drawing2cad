@@ -18,9 +18,9 @@ import type { ParameterChange, WebApi } from "./webApi";
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const PHASES: RunPhase[] = ["queued", "analyzing", "modeling", "drawing", "validating"];
 const OUTPUTS: [ArtifactRole, string, string][] = [
-  ["drawing_pdf", "application/pdf", "zeichnung"],
-  ["drawing_dxf", "image/vnd.dxf", "zeichnung"],
-  ["step", "model/step", "modell"],
+  ["drawing_pdf", "application/pdf", "drawing"],
+  ["drawing_dxf", "image/vnd.dxf", "drawing"],
+  ["step", "model/step", "model"],
   ["manifest", "application/json", "manifest"],
 ];
 const EXTENSION: Record<ArtifactRole, string> = {
@@ -77,23 +77,23 @@ export class FixtureApi implements WebApi {
 
   async selectAgentProfile(name: string | null): Promise<AgentProfiles> {
     await this.latency();
-    if (name !== null) throw unavailable("Das Modellprofil");
+    if (name !== null) throw unavailable("The model profile");
     return { active: null, profiles: [] };
   }
 
   async saveAgentProfile(_name: string, _profile: AgentProfileInput): Promise<AgentProfiles> {
     await this.latency();
-    throw unavailable("Das Modellprofil");
+    throw unavailable("The model profile");
   }
 
   async deleteAgentProfile(name: string): Promise<AgentProfiles> {
     await this.latency();
-    throw notFound("Modellprofil", name);
+    throw notFound("Model profile", name);
   }
 
   async checkAgentProfile(name: string): Promise<never> {
     await this.latency();
-    throw notFound("Modellprofil", name);
+    throw notFound("Model profile", name);
   }
 
   async listSources(): Promise<Source[]> {
@@ -108,11 +108,11 @@ export class FixtureApi implements WebApi {
 
   async uploadSource(file: File, onProgress: (fraction: number) => void): Promise<Source> {
     if (file.size > MAX_PDF_BYTES) {
-      throw new ApiFailure({ code: "UPLOAD_TOO_LARGE", message: "PDF größer als 20 MB.", field: "file" }, 413);
+      throw new ApiFailure({ code: "UPLOAD_TOO_LARGE", message: "PDF larger than 20 MB.", field: "file" }, 413);
     }
     const bytes = await file.arrayBuffer();
     if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") {
-      throw new ApiFailure({ code: "UNSUPPORTED_MEDIA_TYPE", message: "Keine PDF-Datei.", field: "file" }, 415);
+      throw new ApiFailure({ code: "UNSUPPORTED_MEDIA_TYPE", message: "Not a PDF file.", field: "file" }, 415);
     }
     for (const step of [0.25, 0.5, 0.75, 1]) {
       await this.latency();
@@ -131,7 +131,7 @@ export class FixtureApi implements WebApi {
     this.source(sourceId);
     const records = [...this.runs.values()].filter((r) => r.source.source_id === sourceId);
     if ((await Promise.all(records.map((r) => this.view(r)))).some(isActive)) {
-      throw new ApiFailure({ code: "RUN_ACTIVE", message: "Für diese Zeichnung läuft noch ein Lauf." }, 409);
+      throw new ApiFailure({ code: "RUN_ACTIVE", message: "A run is still active for this drawing." }, 409);
     }
     for (const r of records) this.runs.delete(r.runId);
     this.measurements = this.measurements.filter((m) => m.source_id !== sourceId);
@@ -153,7 +153,7 @@ export class FixtureApi implements WebApi {
 
   async decideFlag(sourceId: string, flagId: string, change: FlagChange): Promise<FlagsPage> {
     const flag = fixtureAnalysis(this.source(sourceId).filename).review.find((f) => f.id === flagId);
-    if (!flag) throw notFound("Prüfpunkt", flagId);
+    if (!flag) throw notFound("Review item", flagId);
     const decided = this.decisions.get(sourceId) ?? new Map<string, FlagDecision>();
     this.decisions.set(sourceId, decided);
     if (change.action === "reopen") decided.delete(flagId);
@@ -205,17 +205,17 @@ export class FixtureApi implements WebApi {
     if (expectedRevision !== record.part.revision) {
       throw new ApiFailure({
         code: "REVISION_CONFLICT", field: "expected_revision",
-        message: `Erwartet Revision ${expectedRevision}, aktuell ist ${record.part.revision}.`,
+        message: `Expected revision ${expectedRevision}, current is ${record.part.revision}.`,
       }, 409);
     }
     const parameters = record.part.parameters.map((p) => ({ ...p }));
     for (const change of changes) {
       const target = parameters.find((p) => p.name === change.name);
       if (!target?.editable) {
-        throw new ApiFailure({ code: "INVALID_PARAMETER", field: change.name, message: `${change.name} ist nicht änderbar.` }, 422);
+        throw new ApiFailure({ code: "INVALID_PARAMETER", field: change.name, message: `${change.name} cannot be changed.` }, 422);
       }
       if (!Number.isFinite(change.value) || change.value <= 0) {
-        throw new ApiFailure({ code: "INVALID_PARAMETER", field: change.name, message: `${change.name} muss größer als 0 sein.` }, 422);
+        throw new ApiFailure({ code: "INVALID_PARAMETER", field: change.name, message: `${change.name} must be greater than 0.` }, 422);
       }
       target.value = change.value;
       target.origin = "user";
@@ -238,7 +238,7 @@ export class FixtureApi implements WebApi {
     if (expectedRevision !== record.note.revision) {
       throw new ApiFailure({
         code: "REVISION_CONFLICT", field: "expected_revision",
-        message: `Die Notiz hat Revision ${record.note.revision}, erwartet war ${expectedRevision}.`,
+        message: `The note has revision ${record.note.revision}, expected ${expectedRevision}.`,
       }, 409);
     }
     record.note = { revision: record.note.revision + 1, text };
@@ -255,7 +255,7 @@ export class FixtureApi implements WebApi {
   async readArtifact(artifactId: string): Promise<Blob> {
     await this.latency();
     const content = this.contents.get(artifactId);
-    if (!content) throw notFound("Artefakt", artifactId);
+    if (!content) throw notFound("Artifact", artifactId);
     return content;
   }
 
@@ -273,7 +273,7 @@ export class FixtureApi implements WebApi {
   }
 
   stepPreview(): Promise<Blob> {
-    return Promise.reject(new ApiFailure({ code: "CAPABILITY_UNAVAILABLE", message: "Keine 3D-Vorschau in simulierten Daten." }));
+    return Promise.reject(new ApiFailure({ code: "CAPABILITY_UNAVAILABLE", message: "No 3D preview in simulated data." }));
   }
 
   /** Derive the current phase from the elapsed time and create the outputs when a revision finishes. */
@@ -321,8 +321,8 @@ export class FixtureApi implements WebApi {
       },
       error: phase === "failed" ? {
         code: "STEP_REIMPORT_FAILED", field: "step",
-        message: "Der STEP-Kandidat bestand den Reimport im frischen Worker nicht.",
-        recovery: "Annahmen prüfen, Parameter anpassen und den Lauf neu erzeugen.",
+        message: "The STEP candidate failed the reimport in a fresh worker.",
+        recovery: "Check the assumptions, adjust parameters, and run again.",
       } : null,
       simulated: true,
     };
@@ -347,13 +347,13 @@ export class FixtureApi implements WebApi {
 
   private source(sourceId: string): Source {
     const source = this.sources.get(sourceId);
-    if (!source) throw notFound("Zeichnung", sourceId);
+    if (!source) throw notFound("Drawing", sourceId);
     return source;
   }
 
   private run(runId: string): RunRecord {
     const record = this.runs.get(runId);
-    if (!record) throw notFound("Lauf", runId);
+    if (!record) throw notFound("Run", runId);
     return record;
   }
 

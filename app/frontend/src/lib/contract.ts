@@ -132,8 +132,9 @@ export interface Run {
   run_id: string;
   source_id: string;
   phase: RunPhase;
-  /** The model profile, its model, and the drawing2cad-mcp version that execute an agent run. */
-  agent?: { model: string; profile?: string; mcp_version: string } | null;
+  /** The model profile, its model and reasoning effort, and the skill and drawing2cad-mcp versions that execute an agent run.
+   * Runs from before these fields were recorded have no `reasoning_effort` or `skill_version`; null means none is set. */
+  agent?: { model: string; profile?: string; reasoning_effort?: string | null; skill_version?: string | null; mcp_version: string } | null;
   /** Model turns and tool requests of the agent loop so far, with the tool request budget. */
   iterations?: { model_turns: number; tool_requests: number; step_budget: number } | null;
   /** The phase in which a failed run stopped. */

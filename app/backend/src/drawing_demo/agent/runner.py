@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any, Callable
 
 from drawing2cad_mcp.local_model_client import Trace, drive
@@ -27,6 +28,8 @@ from .model import ModelSettings, make_model_call
 from .profiles import ProfileStore
 
 log = logging.getLogger(__name__)
+# The `metadata.version` field in the YAML front matter of SKILL.md.
+SKILL_VERSION = re.compile(r'^---\n.*?^\s+version:\s*"?([^"\n]+?)"?\s*$.*?^---$', re.MULTILINE | re.DOTALL)
 
 # Bounds for one run. The spike used 25 tool calls and about 6 minutes for a small part.
 LIMITS = {"step_budget": 45, "max_turns": 60, "model_timeout_seconds": 300, "total_timeout_seconds": 2400,
@@ -75,6 +78,14 @@ class AgentRunner:
         return self.profiles.get(self.profiles.active)
 
     @property
+    def skill_version(self) -> str | None:
+        """The version of the skill that new runs receive, or None when the skill has no version."""
+        if not self.skill_path.is_file():
+            return None
+        match = SKILL_VERSION.match(self.skill_path.read_text(encoding="utf-8"))
+        return match.group(1) if match else None
+
+    @property
     def available(self) -> bool:
         return self.settings is not None and self.skill_path.is_file()
 
@@ -90,7 +101,7 @@ class AgentRunner:
         except Exception as error:  # The run record must show every failure; the thread must not die silently.
             log.exception("Agent run %s failed", run_id)
             self._fail(run_id, "AGENT_FAILED", f"{type(error).__name__}: {error}"[:2000],
-                       "Lauf erneut starten. Bleibt der Fehler, die Server-Protokolle prüfen.")
+                       "Start the run again. If the error persists, check the server logs.")
 
     def _fail(self, run_id: str, code: str, message: str, recovery: str) -> None:
         # Keep the phase in which the run failed, so the UI does not show later phases as completed.
@@ -150,11 +161,11 @@ class AgentRunner:
             # The conversation did not end, for example after a rate limit. A part built before stays readable,
             # but the run is not a finished result. Show the actual message, not a generic one.
             self._fail(run_id, "AGENT_FAILED", f"{error.get('type', 'Error')}: {error.get('message', '')}"[:4000],
-                       "Modell-Endpunkt und DRAWING2CAD_AGENT_* prüfen, dann Lauf erneut starten.")
+                       "Check the model endpoint and DRAWING2CAD_AGENT_*, then start the run again.")
             return
         if part_run is None:
-            self._fail(run_id, "AGENT_NO_PART", f"Der Agent hat kein Teil angelegt (Status: {summary.get('status')}).",
-                       "Zeichnung prüfen und Lauf erneut starten.")
+            self._fail(run_id, "AGENT_NO_PART", f"The agent created no part (status: {summary.get('status')}).",
+                       "Check the drawing and start the run again.")
             return
         part = self.backend.call("part_read", run_id=part_run)["part"]
         if part.get("release") or (part.get("build") or {}).get("status") == "pass":
@@ -162,8 +173,8 @@ class AgentRunner:
             self.jobs.update(run_id, phase="done", error=None, job={"status": "succeeded", "progress": 1, "finished_at": now()})
         else:
             # The complete report is the run note; the error names only the result.
-            self._fail(run_id, "AGENT_NO_MODEL", f"Der Agent hat kein gültiges Modell gebaut (Status: {summary.get('status')}).",
-                       "Bericht und offene Prüfpunkte im Reiter Prüfung ansehen; Zeichnung klären und Lauf erneut starten.")
+            self._fail(run_id, "AGENT_NO_MODEL", f"The agent built no valid model (status: {summary.get('status')}).",
+                       "Look at the report and open review items in the Review tab; clarify the drawing and start the run again.")
 
     def store_report(self, part_run: str, report: str) -> None:
         """Replace the run note with the report. The note has its own revision; the first note uses revision zero."""

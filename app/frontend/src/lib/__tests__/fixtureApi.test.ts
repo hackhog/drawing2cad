@@ -89,7 +89,7 @@ describe("run lifecycle", () => {
     expect(run.error?.code).toBe("STEP_REIMPORT_FAILED");
     expect(run.review?.release_state).toBe("blocked");
     expect(delivery(run).released).toBe(false);
-    expect(delivery(run).reasons[0]).toMatch(/Prüfung ist fehlgeschlagen/);
+    expect(delivery(run).reasons[0]).toMatch(/check failed/);
   });
 
   it("shows the latest draft drawing of the current revision, but not a stale one", async () => {
@@ -106,7 +106,7 @@ describe("run lifecycle", () => {
   it("does not report a failed check for a valid build without release", async () => {
     const { run } = await finishedRun("fail-case.pdf");
     const unreleased = { ...run, review: { ...run.review!, validation: run.review!.validation.filter((v) => v.status !== "fail") } };
-    expect(delivery(unreleased).reasons).toEqual(["Modell gebaut, aber nicht freigegeben: Die STEP-Freigabe fehlt."]);
+    expect(delivery(unreleased).reasons).toEqual(["Model built, but not released: the STEP release is missing."]);
   });
 });
 
@@ -165,9 +165,9 @@ describe("notes", () => {
   it("stores a revisioned note and rejects a stale revision", async () => {
     const { api, run } = await finishedRun();
     expect(await api.getNote(run.run_id)).toEqual({ revision: 0, text: "" });
-    const first = await api.saveNote(run.run_id, 0, "Radius mit Konstruktion klären");
+    const first = await api.saveNote(run.run_id, 0, "Clarify radius with design");
     expect(first.revision).toBe(1);
-    expect((await failureOf(api.saveNote(run.run_id, 0, "zweite")))?.code).toBe("REVISION_CONFLICT");
+    expect((await failureOf(api.saveNote(run.run_id, 0, "second")))?.code).toBe("REVISION_CONFLICT");
     expect(await api.getNote(run.run_id)).toEqual(first);
   });
 });
@@ -189,8 +189,8 @@ describe("flag decisions", () => {
     const [flag] = (await api.getFlags(source.source_id)).flags;
     expect(flag.decision).toBeNull();
 
-    const decided = await api.decideFlag(source.source_id, flag.id, { action: "classify", stroke_class: "table", note: "Passmaß-Tabelle" });
-    expect(decided.flags[0].decision).toMatchObject({ action: "classify", stroke_class: "table", note: "Passmaß-Tabelle" });
+    const decided = await api.decideFlag(source.source_id, flag.id, { action: "classify", stroke_class: "table", note: "Fit tolerance table" });
+    expect(decided.flags[0].decision).toMatchObject({ action: "classify", stroke_class: "table", note: "Fit tolerance table" });
     const feedback = JSON.parse(await (await api.exportFeedback()).text());
     expect(feedback.decisions).toEqual([expect.objectContaining({ source_id: source.source_id, flag_id: flag.id, stroke_class: "table" })]);
 

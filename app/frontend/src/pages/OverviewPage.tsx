@@ -79,25 +79,25 @@ export function OverviewPage() {
   const machineBySource = new Map(sources.map((s, i) => [s.source_id, latestSeconds(runs[i]?.data)]));
   const csv = measurementsCsv(measurements, new Map(sources.map((s) => [s.source_id, { name: partName(s.filename), machineSeconds: machineBySource.get(s.source_id) ?? null }])));
 
-  const [jobsSub, jobsTone]: [string, Tone] = busy ? [`${busy} in Arbeit`, ""]
-    : failed ? [`${failed} nicht lesbar`, "bad"]
-    : sources.length ? ["alle gelesen", "good"] : ["gelesen und gespeichert", ""];
+  const [jobsSub, jobsTone]: [string, Tone] = busy ? [`${busy} in progress`, ""]
+    : failed ? [`${failed} unreadable`, "bad"]
+    : sources.length ? ["all read", "good"] : ["read and stored", ""];
 
   return (
     <>
       <PageHeader
-        title="Übersicht" live={done.length > 0}
-        subtitle={empty ? "Noch keine Zeichnung hochgeladen" : `${fmt(done.length)} von ${fmt(sources.length + busy)} Zeichnungen gelesen`}
-        actions={<UploadButton label={empty ? "PDFs hochladen" : "Weitere PDFs"} />}
+        title="Overview" live={done.length > 0}
+        subtitle={empty ? "No drawing uploaded yet" : `${fmt(done.length)} of ${fmt(sources.length + busy)} drawings read`}
+        actions={<UploadButton label={empty ? "Upload PDFs" : "More PDFs"} />}
       />
 
-      <section aria-label="Kennzahlen" className="grid grid-cols-4 gap-3 max-[1000px]:grid-cols-2">
-        <Tile title="Zeichnungen" value={<Big>{empty ? "–" : fmt(done.length)}</Big>} sub={jobsSub} tone={jobsTone} />
+      <section aria-label="Key figures" className="grid grid-cols-4 gap-3 max-[1000px]:grid-cols-2">
+        <Tile title="Drawings" value={<Big>{empty ? "–" : fmt(done.length)}</Big>} sub={jobsSub} tone={jobsTone} />
         <Tile
-          title="Erklärt"
+          title="Explained"
           extra={
-            <div role="radiogroup" aria-label="Darstellung" className="flex gap-0.5 rounded-[7px] bg-muted p-0.5">
-              {([[false, "Zahl", Hash], [true, "Tacho", Gauge]] as const).map(([mode, label, Icon]) => (
+            <div role="radiogroup" aria-label="Display" className="flex gap-0.5 rounded-[7px] bg-muted p-0.5">
+              {([[false, "Number", Hash], [true, "Gauge", Gauge]] as const).map(([mode, label, Icon]) => (
                 <button key={label} type="button" role="radio" aria-checked={gauge === mode} title={label} onClick={() => setGauge(mode)}
                   className="grid h-[18px] w-5 place-items-center rounded-[5px] text-muted-foreground aria-checked:bg-card aria-checked:text-card-foreground aria-checked:shadow-xs">
                   <Icon className="size-3" />
@@ -115,55 +115,55 @@ export function OverviewPage() {
             )}
             <Big small={gauge}>{total ? pct(share) : "–"}</Big>
           </>}
-          sub={total ? `${fmt(explained)} von ${fmt(total)} Strichen zugeordnet` : "Anteil der Striche mit sicherer Bedeutung"}
+          sub={total ? `${fmt(explained)} of ${fmt(total)} strokes assigned` : "Share of strokes with a certain meaning"}
         />
         <Tile
-          title="Texte gelesen" value={<Big>{done.length ? fmt(texts.length) : "–"}</Big>}
-          sub={!done.length ? "Maße, Schnitte, Hinweise" : unsure ? `${unsure} nicht sicher gelesen` : "alle sicher gelesen"}
+          title="Texts read" value={<Big>{done.length ? fmt(texts.length) : "–"}</Big>}
+          sub={!done.length ? "Dimensions, sections, notes" : unsure ? `${unsure} not read with certainty` : "all read with certainty"}
           tone={!done.length ? "" : unsure ? "bad" : "good"}
         />
         <Tile
-          title="Zu prüfen" warn={flags > 0} value={<Big>{done.length ? fmt(flags) : "–"}</Big>}
-          sub={!done.length ? "Markiert statt geraten" : flags === 1 ? "Stelle markiert statt geraten" : flags ? "Stellen markiert statt geraten" : "nichts offen"}
+          title="To review" warn={flags > 0} value={<Big>{done.length ? fmt(flags) : "–"}</Big>}
+          sub={!done.length ? "Flagged, not guessed" : flags === 1 ? "spot flagged, not guessed" : flags ? "spots flagged, not guessed" : "nothing open"}
           tone={!done.length ? "" : flags ? "bad" : "good"}
         />
       </section>
 
       <section aria-labelledby="benefit-title" className="grid gap-1.5">
         <h2 id="benefit-title" className="flex items-center gap-2 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">
-          Nutzen{b.simulated && <Badge variant="secondary" className="bg-warn-bg text-bad normal-case tracking-normal">Simuliert</Badge>}
+          Benefit{b.simulated && <Badge variant="secondary" className="bg-warn-bg text-bad normal-case tracking-normal">Simulated</Badge>}
           <span className="ml-auto">
             <BenefitDialog built={b} human={human} result={saved} assumptions={assumptions} onAssumptions={setAssumptions} csv={csv} />
           </span>
         </h2>
         <div className="grid grid-cols-3 gap-3 max-[1000px]:grid-cols-2">
           <Tile
-            title="3D-Modelle" value={<Big>{built || b.active ? fmt(b.models) : "–"}</Big>}
-            sub={b.active ? `${b.active} im Bau` : built ? `aus ${fmt(done.length)} gelesenen Zeichnungen` : "STEP aus der Zeichnung gebaut"}
+            title="3D models" value={<Big>{built || b.active ? fmt(b.models) : "–"}</Big>}
+            sub={b.active ? `${b.active} being built` : built ? `from ${fmt(done.length)} drawings read` : "STEP built from the drawing"}
           />
           <Tile
-            title="Freigegeben" value={<Big>{built ? fmt(b.released) : "–"}</Big>}
-            sub={!built ? "nur geprüfte Modelle" : b.released ? "geprüft und lieferbar" : "Entwürfe warten auf Prüfung"}
+            title="Released" value={<Big>{built ? fmt(b.released) : "–"}</Big>}
+            sub={!built ? "reviewed models only" : b.released ? "reviewed and deliverable" : "drafts awaiting review"}
             tone={built && b.released ? "good" : ""}
           />
           <Tile
-            title="Maße aus Zeichnung" value={<Big>{b.parameters ? pct(b.fromDrawing / b.parameters) : "–"}</Big>}
-            sub={!b.parameters ? "belegt statt abgetippt"
-              : `${fmt(b.fromDrawing)} von ${fmt(b.parameters)} belegt${b.assumed ? `, ${fmt(b.assumed)} angenommen` : ""}`}
+            title="Dimensions from drawing" value={<Big>{b.parameters ? pct(b.fromDrawing / b.parameters) : "–"}</Big>}
+            sub={!b.parameters ? "sourced, not retyped"
+              : `${fmt(b.fromDrawing)} of ${fmt(b.parameters)} sourced${b.assumed ? `, ${fmt(b.assumed)} assumed` : ""}`}
           />
           <Tile
-            title="Zeit je Modell" value={<Big>{b.medianSeconds === null ? "–" : duration(b.medianSeconds)}</Big>}
-            sub={b.medianSeconds === null ? "Zeichnung bis STEP" : "Median, Zeichnung bis STEP"}
+            title="Time per model" value={<Big>{b.medianSeconds === null ? "–" : duration(b.medianSeconds)}</Big>}
+            sub={b.medianSeconds === null ? "drawing to STEP" : "median, drawing to STEP"}
           />
           <Tile
-            title="Prüfzeit" value={<Big>{human.reviewSeconds === null ? "–" : duration(human.reviewSeconds)}</Big>}
-            sub={human.reviewSeconds === null ? "Stoppuhr in Schritt 3 „Prüfen“"
-              : `Median aus ${fmt(human.reviews)} Prüfung${human.reviews === 1 ? "" : "en"}`}
+            title="Review time" value={<Big>{human.reviewSeconds === null ? "–" : duration(human.reviewSeconds)}</Big>}
+            sub={human.reviewSeconds === null ? "stopwatch in step 3 “Review”"
+              : `median of ${fmt(human.reviews)} review${human.reviews === 1 ? "" : "s"}`}
           />
           <Tile
-            title="Gespart" value={<Big>{saved ? hours(saved.hours) : "–"}</Big>}
-            sub={!saved ? "von Hand gegen Lauf und Prüfung"
-              : `≈ ${euros(saved.euros)}, ${saved.manualAssumed ? `Annahme ${hours(saved.manualHours)} von Hand` : `von Hand ${hours(saved.manualHours)} geschätzt`}`}
+            title="Saved" value={<Big>{saved ? hours(saved.hours) : "–"}</Big>}
+            sub={!saved ? "by hand vs. run and review"
+              : `≈ ${euros(saved.euros)}, ${saved.manualAssumed ? `assumed ${hours(saved.manualHours)} by hand` : `${hours(saved.manualHours)} by hand, estimated`}`}
             tone={saved && saved.hours > 0 ? "good" : ""}
           />
         </div>
@@ -171,23 +171,23 @@ export function OverviewPage() {
 
       <Card {...drop} className={cn("min-h-0 flex-1 gap-2.5 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none", over && "ring-4 ring-primary/10")}>
         <CardHeader className="flex flex-row items-center justify-between px-0">
-          <CardTitle className="text-sm font-bold">Zeichnungen</CardTitle>
-          <span className="rounded-full bg-info-bg px-2.5 py-0.5 text-[11px] font-semibold text-info">Tabelle</span>
+          <CardTitle className="text-sm font-bold">Drawings</CardTitle>
+          <span className="rounded-full bg-info-bg px-2.5 py-0.5 text-[11px] font-semibold text-info">Table</span>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col px-0">
           {empty ? (
             <p className="grid flex-1 place-items-center rounded-lg border-[1.5px] border-dashed border-input bg-surface px-6 py-10 text-center text-sm font-medium text-muted-foreground">
-              Alte Zeichnungen als PDF hierher ziehen, gern mehrere auf einmal
+              Drag legacy drawings here as PDF, several at once if you like
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="[&>th]:text-[11px] [&>th]:font-semibold [&>th]:tracking-[.06em] [&>th]:text-faint [&>th]:uppercase">
-                  <TableHead>Zeichnung</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Erklärt</TableHead>
-                  <TableHead className="text-right">Ansichten</TableHead><TableHead className="text-right">Texte</TableHead>
-                  <TableHead className="text-right">Zu prüfen</TableHead><TableHead className="text-right">Maschine</TableHead>
-                  <TableHead className="text-right">Prüfung</TableHead><TableHead className="text-right">Von Hand</TableHead>
-                  <TableHead className="text-right">Größe</TableHead><TableHead />
+                  <TableHead>Drawing</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Explained</TableHead>
+                  <TableHead className="text-right">Views</TableHead><TableHead className="text-right">Texts</TableHead>
+                  <TableHead className="text-right">To review</TableHead><TableHead className="text-right">Machine</TableHead>
+                  <TableHead className="text-right">Review</TableHead><TableHead className="text-right">By hand</TableHead>
+                  <TableHead className="text-right">Size</TableHead><TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -237,7 +237,7 @@ export function SourceRow({ source, analysis, flags, error, machineSeconds = nul
         <StatusBadge tone={tone} title={error?.message}>{label}</StatusBadge>
         {error && (
           <p className="mt-1 max-w-md text-xs text-flag" role="alert">
-            Analyse fehlgeschlagen ({errorCode(error)}): {error.message} {recoveryFor(error)}
+            Analysis failed ({errorCode(error)}): {error.message} {recoveryFor(error)}
           </p>
         )}
       </TableCell>
@@ -246,7 +246,7 @@ export function SourceRow({ source, analysis, flags, error, machineSeconds = nul
       <TableCell className={NUM}>{d ? fmt(d.text_blocks.length) : "–"}</TableCell>
       <TableCell className={NUM}>{analysis ? fmt(openFlags(analysis, flags)) : "–"}</TableCell>
       <TableCell className={NUM}>{machineSeconds === null ? "–" : duration(machineSeconds)}</TableCell>
-      <TableCell className={NUM} title={human.reviews > 1 ? `Median aus ${human.reviews} Prüfungen` : undefined}>
+      <TableCell className={NUM} title={human.reviews > 1 ? `median of ${human.reviews} reviews` : undefined}>
         {human.reviewSeconds === null ? "–" : duration(human.reviewSeconds)}
       </TableCell>
       <TableCell className={NUM} title={human.estimators.map((e) => ESTIMATOR_LABEL[e]).join(", ") || undefined}>
@@ -272,9 +272,9 @@ function DeleteButton({ source }: { source: Source }) {
       for (const key of [keys.source(source.source_id), keys.analysis(source.source_id), keys.runs(source.source_id)]) {
         queryClient.removeQueries({ queryKey: key });
       }
-      toast.success(`${name} gelöscht`);
+      toast.success(`${name} deleted`);
     },
-    onError: (err) => toast.error(`${name} nicht gelöscht`, { description: `${err.message} ${recoveryFor(err)}` }),
+    onError: (err) => toast.error(`${name} not deleted`, { description: `${err.message} ${recoveryFor(err)}` }),
     onSettled: () => setArmed(false),
   });
   // The row opens the drawing on click and Enter; the button handles its own events.
@@ -284,10 +284,10 @@ function DeleteButton({ source }: { source: Source }) {
       {armed ? (
         <Button variant="destructive" size="xs" autoFocus disabled={remove.isPending} onBlur={() => !remove.isPending && setArmed(false)}
           onClick={() => remove.mutate()}>
-          Löschen
+          Delete
         </Button>
       ) : (
-        <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label={`${name} löschen`} title="Zeichnung löschen"
+        <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label={`Delete ${name}`} title="Delete drawing"
           onClick={() => setArmed(true)}>
           <Trash2 className="size-3.5" />
         </Button>
@@ -310,7 +310,7 @@ function UploadRow({ upload }: { upload: Upload }) {
       </TableCell>
       <TableCell className="w-8">
         {upload.state === "error" && (
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Meldung schließen" onClick={() => dismiss(upload.id)}>
+          <Button variant="ghost" size="icon" className="size-7" aria-label="Dismiss message" onClick={() => dismiss(upload.id)}>
             <X className="size-3.5" />
           </Button>
         )}

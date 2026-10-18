@@ -17,16 +17,16 @@ export function RunFiles({ run }: { run: Run }) {
   return (
     <div className="flex flex-col gap-2">
       <Button variant="outline" size="sm" className="justify-start" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <FolderOpen />{open ? "Laufdateien ausblenden" : "Laufdateien öffnen"}
+        <FolderOpen />{open ? "Hide run files" : "Open run files"}
       </Button>
-      {open && (isPending ? <p className="text-xs text-muted-foreground">Lade Dateien …</p>
+      {open && (isPending ? <p className="text-xs text-muted-foreground">Loading files …</p>
         : error ? <p className="text-xs text-flag">{error.message} {recoveryFor(error)}</p>
-        : data.files.length === 0 ? <p className="text-xs text-muted-foreground">Keine Dateien zu diesem Lauf.</p>
+        : data.files.length === 0 ? <p className="text-xs text-muted-foreground">No files for this run.</p>
         : (
           <>
             {data.archive_url && (
               <Button variant="secondary" size="sm" className="justify-start" asChild>
-                <a href={data.archive_url} download><Download />Alle als ZIP ({data.files.length})</a>
+                <a href={data.archive_url} download><Download />All as ZIP ({data.files.length})</a>
               </Button>
             )}
             <ul className="max-h-80 overflow-y-auto rounded-md border text-[11px]">

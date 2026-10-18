@@ -15,14 +15,14 @@ import { isActive } from "@/lib/release";
 import type { ParameterChange } from "@/lib/webApi";
 
 export const ORIGIN: Record<ValueOrigin, [string, string]> = {
-  source: ["Zeichnung", "bg-info-bg text-info"],
-  assumed: ["Annahme", "bg-warn-bg text-bad"],
-  user: ["Nutzer", "bg-good-bg text-good"],
+  source: ["drawing", "bg-info-bg text-info"],
+  assumed: ["assumption", "bg-warn-bg text-bad"],
+  user: ["user", "bg-good-bg text-good"],
 };
 
 export function ParametersPanel({ run }: { run: Run }) {
   const part = run.part;
-  if (!part) return <p className="text-muted-foreground">Noch keine Teilebeschreibung.</p>;
+  if (!part) return <p className="text-muted-foreground">No part description yet.</p>;
   // A new revision resets the form to the stored values.
   return <ParameterForm key={part.revision} run={run} />;
 }
@@ -53,7 +53,7 @@ function ParameterForm({ run }: { run: Run }) {
     <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); if (changes.length) change.mutate(); }}>
       <Table>
         <TableHeader>
-          <TableRow><TableHead>Parameter</TableHead><TableHead>Merkmal</TableHead><TableHead>Wert</TableHead><TableHead>Herkunft</TableHead></TableRow>
+          <TableRow><TableHead>Parameter</TableHead><TableHead>Feature</TableHead><TableHead>Value</TableHead><TableHead>Source</TableHead></TableRow>
         </TableHeader>
         <TableBody>
           {part.parameters.map((p) => {
@@ -82,13 +82,13 @@ function ParameterForm({ run }: { run: Run }) {
 
       {change.error && (
         <Alert variant="destructive">
-          <AlertTitle>{conflict ? "Revision hat sich geändert" : "Änderung abgelehnt"}</AlertTitle>
+          <AlertTitle>{conflict ? "Revision has changed" : "Change rejected"}</AlertTitle>
           <AlertDescription>
             <p>{change.error.message} {recoveryFor(change.error)}</p>
             {conflict && (
               <Button type="button" variant="outline" size="sm" className="mt-1"
                 onClick={() => { change.reset(); void queryClient.invalidateQueries({ queryKey: keys.run(run.run_id) }); }}>
-                Neu laden
+                Reload
               </Button>
             )}
           </AlertDescription>
@@ -97,17 +97,17 @@ function ParameterForm({ run }: { run: Run }) {
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          {!caps?.parameter_edit ? "Der verbundene Dienst erlaubt keine Parameteränderung."
-            : isActive(run) ? "Während der Auftrag läuft, sind Änderungen gesperrt."
-            : `Änderungen erzeugen Revision ${part.revision + 1}. Bisherige Ergebnisse werden als veraltet markiert.`}
+          {!caps?.parameter_edit ? "The connected service does not allow parameter changes."
+            : isActive(run) ? "Changes are locked while the job is running."
+            : `Changes create revision ${part.revision + 1}. Previous results are marked as outdated.`}
         </p>
         <Button type="submit" size="sm" className="rounded-full" disabled={!editable || !changes.length || change.isPending}>
-          Neue Revision erzeugen
+          Create new revision
         </Button>
       </div>
 
       <section>
-        <h3 className="mb-1.5 text-xs font-semibold tracking-[.06em] text-faint uppercase">Operationen in Reihenfolge</h3>
+        <h3 className="mb-1.5 text-xs font-semibold tracking-[.06em] text-faint uppercase">Operations in order</h3>
         <ol className="flex flex-col gap-1">
           {part.operations.map((op) => (
             <li key={op.index} className="flex items-baseline gap-2.5 rounded-md border px-2.5 py-1.5">

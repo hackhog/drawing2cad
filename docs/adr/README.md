@@ -22,5 +22,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0019](0019-review-flag-decisions-in-the-domain-service.md) | Review flags and user decisions in the domain service, with a feedback export |
 | [0020](0020-agent-model-profiles-selected-in-the-web-ui.md) | Agent model profiles from the server environment and the web UI, with server-side keys |
 | [0021](0021-review-measurements-for-benefit-figures.md) | Review measurements in the web backend for the benefit figures |
+| [0022](0022-ui-text-in-english.md) | UI text in English |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

@@ -18,9 +18,9 @@ const SECTION_ICONS: Record<SettingsSection, LucideIcon> = { agent: Bot };
 const CURRENT = "data-[status=active]:bg-highlight-bg data-[status=active]:font-semibold data-[status=active]:text-card-foreground";
 
 function agentLabel(caps: Capabilities | undefined): [Tone, string] {
-  if (caps?.simulated) return ["flag", "Simulierter Dienst"];
+  if (caps?.simulated) return ["flag", "Simulated service"];
   if (caps?.agent_model) return ["done", `${caps.agent_profile ?? "KI-Agent"} · ${caps.agent_model}`];
-  return ["wait", "Lokal, ohne KI"];
+  return ["wait", "Local, no AI"];
 }
 
 export function Sidebar() {
@@ -39,7 +39,7 @@ export function Sidebar() {
       </div>
 
       <Link to="/" activeOptions={{ exact: true }} className={cn(ITEM, CURRENT, "mb-1.5 font-medium")}>
-        <LayoutGrid className="size-4 text-muted-foreground" />Übersicht
+        <LayoutGrid className="size-4 text-muted-foreground" />Overview
       </Link>
 
       {settings ? <SettingsSections /> : <Drawings flagDecisions={!!caps?.flag_decisions} />}
@@ -51,7 +51,7 @@ export function Sidebar() {
             <Settings className="size-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <strong className="block font-bold text-card-foreground">Einstellungen</strong>
+            <strong className="block font-bold text-card-foreground">Settings</strong>
             <small className="flex items-center gap-1.5 text-[11.5px] font-normal text-muted-foreground">
               <StatusDot tone={tone} /><span className="min-w-0 truncate">{label}</span>
             </small>
@@ -59,7 +59,7 @@ export function Sidebar() {
         </Link>
         <div className="flex items-center gap-2.5 border-t px-2 pt-3 pb-1 max-[1000px]:hidden">
           <span aria-hidden="true" className="grid size-8 flex-none place-items-center rounded-full bg-highlight-bg text-[11.5px] font-bold text-bad">KO</span>
-          <div><strong className="block font-bold text-card-foreground">Konstruktion</strong><small className="text-[11.5px] text-muted-foreground">Demo-Arbeitsplatz</small></div>
+          <div><strong className="block font-bold text-card-foreground">Design</strong><small className="text-[11.5px] text-muted-foreground">Demo workspace</small></div>
         </div>
       </footer>
     </aside>
@@ -69,8 +69,8 @@ export function Sidebar() {
 function SettingsSections() {
   return (
     <>
-      <p className="mx-2 mt-2 mb-1.5 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">Einstellungen</p>
-      <ul aria-label="Einstellungen">
+      <p className="mx-2 mt-2 mb-1.5 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">Settings</p>
+      <ul aria-label="Settings">
         {SETTINGS_SECTIONS.map((section) => {
           const Icon = SECTION_ICONS[section.id];
           return (
@@ -95,9 +95,9 @@ function Drawings({ flagDecisions }: { flagDecisions: boolean }) {
 
   return (
     <>
-        <p className="mx-2 mt-2 mb-1.5 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">Zeichnungen</p>
-        <ul aria-label="Hochgeladene Zeichnungen" className="min-h-0 overflow-y-auto">
-          {!sources.length && !uploads.length && <li className="px-2 py-1 text-faint">Noch keine</li>}
+        <p className="mx-2 mt-2 mb-1.5 text-[11px] font-semibold tracking-[.06em] text-faint uppercase">Drawings</p>
+        <ul aria-label="Uploaded drawings" className="min-h-0 overflow-y-auto">
+          {!sources.length && !uploads.length && <li className="px-2 py-1 text-faint">None yet</li>}
           {sources.map((source, i) => {
             const [tone, label] = analysisStatus(analyses[i]?.data, analyses[i]?.isError ?? false, flags[i]?.data?.flags);
             return (

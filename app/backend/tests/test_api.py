@@ -103,7 +103,7 @@ def test_flag_decisions_reach_the_feedback_export(client):
     res, _ = upload(client, "blank.pdf", stream.getvalue())
     source_id = res.json()["source_id"]
     flags = client.get(f"/api/sources/{source_id}/flags").json()["flags"]
-    assert [(f["id"], f["message"], f["decision"]) for f in flags] == [("views", "Keine Ansicht erkannt", None)]
+    assert [(f["id"], f["message"], f["decision"]) for f in flags] == [("views", "No view recognized", None)]
 
     decided = client.put(f"/api/sources/{source_id}/flags/views", json={"action": "ignore", "note": "Leeres Blatt"})
     assert decided.status_code == 200, decided.text

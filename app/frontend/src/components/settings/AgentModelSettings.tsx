@@ -1,4 +1,4 @@
-// Settings section "KI-Modell": select the profile for new runs, and create, change, check, or delete profiles.
+// Settings section "AI model": select the profile for new runs, and create, change, check, or delete profiles.
 // A key goes to the server only when a profile is saved. The server never sends it back, and the browser does not store it.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, CircleCheck, CircleX, Pencil, Plus, Plug, Trash2 } from "lucide-react";
@@ -25,28 +25,28 @@ interface ProviderText {
 const PROVIDERS: Record<AgentProvider, ProviderText> = {
   openrouter: {
     label: "OpenRouter",
-    model: { label: "Modell", placeholder: "openai/gpt-6.1-sol" },
-    key: "API-Key von openrouter.ai/keys. Das Modell muss Tool-Aufrufe und Bilder unterstützen.",
+    model: { label: "Model", placeholder: "openai/gpt-6.1-sol" },
+    key: "API key from openrouter.ai/keys. The model must support tool calls and images.",
   },
   azure: {
     label: "Azure AI Foundry",
     endpoint: {
-      label: "Endpunkt der Ressource", placeholder: "https://<ressource>.openai.azure.com",
-      hint: "Jede URL der Ressource genügt, auch die Ziel-URI aus dem Portal. Der Server nutzt https://<ressource>/openai/v1.",
+      label: "Resource endpoint", placeholder: "https://<resource>.openai.azure.com",
+      hint: "Any URL of the resource works, including the target URI from the portal. The server uses https://<resource>/openai/v1.",
     },
     model: { label: "Deployment-Name", placeholder: "gpt-6.1-sol" },
-    key: "Schlüssel 1 oder 2 der Ressource (Azure-Portal → Schlüssel und Endpunkt).",
+    key: "Key 1 or 2 of the resource (Azure portal → Keys and Endpoint).",
   },
   openai: {
-    label: "OpenAI-kompatibel",
-    endpoint: { label: "Basis-URL", placeholder: "https://api.openai.com/v1", hint: "Der Server hängt /chat/completions oder /responses an." },
-    model: { label: "Modell", placeholder: "gpt-5.6" },
-    key: "Wird als Authorization: Bearer gesendet.",
+    label: "OpenAI-compatible",
+    endpoint: { label: "Base URL", placeholder: "https://api.openai.com/v1", hint: "The server appends /chat/completions or /responses." },
+    model: { label: "Model", placeholder: "gpt-5.6" },
+    key: "Sent as Authorization: Bearer.",
   },
 };
 const API_LABEL: Record<AgentApi, string> = { chat: "Chat Completions", responses: "Responses API" };
 const EFFORTS = ["", "none", "minimal", "low", "medium", "high"];
-const NO_AGENT = "Lokal, ohne KI";
+const NO_AGENT = "Local, no AI";
 const ROW = "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2.5 has-[:checked]:border-primary has-[:checked]:bg-highlight-bg";
 // Same height, border, and focus ring as Input; the own chevron replaces the native arrow of each browser.
 const SELECT = "h-9 w-full appearance-none rounded-md border border-input bg-transparent pr-9 pl-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
@@ -67,16 +67,16 @@ export function AgentModelSettings() {
   const select = useMutation({
     mutationFn: (name: string | null) => api.selectAgentProfile(name),
     onSuccess: apply,
-    onError: (err) => toast.error("Modellprofil nicht gewählt", { description: `${err.message} ${recoveryFor(err)}` }),
+    onError: (err) => toast.error("Model profile not selected", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const remove = useMutation({
     mutationFn: (name: string) => api.deleteAgentProfile(name),
     onSuccess: apply,
-    onError: (err) => toast.error("Profil nicht gelöscht", { description: `${err.message} ${recoveryFor(err)}` }),
+    onError: (err) => toast.error("Profile not deleted", { description: `${err.message} ${recoveryFor(err)}` }),
   });
 
-  if (caps?.simulated) return <p className="text-sm">Simulierter Dienst: Läufe nutzen kein Modell.</p>;
-  if (profiles.isError) return <p className="text-sm text-flag">Modellprofile nicht geladen. {recoveryFor(profiles.error)}</p>;
+  if (caps?.simulated) return <p className="text-sm">Simulated service: runs use no model.</p>;
+  if (profiles.isError) return <p className="text-sm text-flag">Model profiles not loaded. {recoveryFor(profiles.error)}</p>;
   const data = profiles.data;
   const active = select.isPending ? select.variables : data?.active ?? null;
   const edited = editing?.name ? data?.profiles.find((p) => p.name === editing.name) : undefined;
@@ -85,14 +85,14 @@ export function AgentModelSettings() {
     <div className="grid max-w-3xl gap-3">
       <Card className="gap-3 rounded-xl px-4 py-3.5 shadow-none">
         <CardHeader className="flex flex-row items-center justify-between px-0">
-          <CardTitle className="text-sm font-bold">Profil für neue Läufe</CardTitle>
+          <CardTitle className="text-sm font-bold">Profile for new runs</CardTitle>
           <Button size="sm" variant="outline" className="h-7" disabled={!data || editing !== null} onClick={() => setEditing({ name: null })}>
-            <Plus className="size-3.5" />Profil hinzufügen
+            <Plus className="size-3.5" />Add profile
           </Button>
         </CardHeader>
         <CardContent className="px-0">
           <fieldset className="grid gap-2" disabled={!data || select.isPending}>
-            <legend className="sr-only">Aktives Modellprofil</legend>
+            <legend className="sr-only">Active model profile</legend>
             {data?.profiles.map((profile) => (
               <ProfileRow key={profile.name} profile={profile} checked={active === profile.name}
                 onSelect={() => select.mutate(profile.name)} onEdit={() => setEditing({ name: profile.name })}
@@ -102,11 +102,11 @@ export function AgentModelSettings() {
               <input type="radio" name="agent-profile" className="accent-primary" checked={!!data && active === null}
                 onChange={() => select.mutate(null)} />
               <span className="flex-1 text-sm font-semibold">{NO_AGENT}</span>
-              <small className="text-[11px] text-muted-foreground">Keine Läufe, nur Zeichnungsanalyse</small>
+              <small className="text-[11px] text-muted-foreground">No runs, drawing analysis only</small>
             </label>
           </fieldset>
           <p className="mt-2.5 text-xs text-muted-foreground">
-            Wartende und laufende Läufe behalten ihr Profil. Keys bleiben auf dem Server und werden nie wieder angezeigt.
+            Queued and running runs keep their profile. Keys stay on the server and are never shown again.
           </p>
         </CardContent>
       </Card>
@@ -133,7 +133,7 @@ function ProfileRow({ profile, checked, editing, onSelect, onEdit, onDelete }: {
           <span className="flex items-center gap-2 text-sm font-semibold">
             {profile.name}
             <Badge variant="outline" className="text-[10.5px] font-medium">{PROVIDERS[profile.provider].label}</Badge>
-            {profile.origin === "env" && <Badge variant="secondary" className="text-[10.5px] font-medium" title="Aus der Server-Konfiguration (.env), hier nicht änderbar">Server</Badge>}
+            {profile.origin === "env" && <Badge variant="secondary" className="text-[10.5px] font-medium" title="From the server configuration (.env), cannot be changed here">Server</Badge>}
           </span>
           <small className="block truncate font-mono text-[11px] text-muted-foreground" title={profile.base_url}>
             {profile.model} · {API_LABEL[profile.api]}{profile.reasoning_effort ? ` · reasoning ${profile.reasoning_effort}` : ""}
@@ -141,15 +141,15 @@ function ProfileRow({ profile, checked, editing, onSelect, onEdit, onDelete }: {
         </span>
         <span className="flex gap-1">
           <Button type="button" size="xs" variant="ghost" disabled={check.isPending} onClick={() => check.mutate()}
-            title="Eine kurze Anfrage mit einem Werkzeug an den Endpunkt senden (wenige Tokens)">
-            <Plug />{check.isPending ? "Prüfe …" : "Testen"}
+            title="Send a short request with one tool to the endpoint (a few tokens)">
+            <Plug />{check.isPending ? "Checking …" : "Test"}
           </Button>
           {profile.origin === "ui" && (
             <>
-              <Button type="button" size="xs" variant="ghost" disabled={editing} onClick={onEdit}><Pencil />Bearbeiten</Button>
+              <Button type="button" size="xs" variant="ghost" disabled={editing} onClick={onEdit}><Pencil />Edit</Button>
               <Button type="button" size="xs" variant="ghost" className={cn(confirm && "text-flag")}
                 onClick={() => (confirm ? onDelete() : setConfirm(true))} onBlur={() => setConfirm(false)}>
-                <Trash2 />{confirm ? "Wirklich löschen?" : "Löschen"}
+                <Trash2 />{confirm ? "Really delete?" : "Delete"}
               </Button>
             </>
           )}
@@ -166,7 +166,7 @@ function CheckResult({ result }: { result: ConnectionCheck }) {
   return (
     <p role="status" className={cn("flex items-start gap-1.5 px-3 text-xs [overflow-wrap:anywhere]", result.ok ? "text-good" : "text-flag")}>
       <Icon className="mt-px size-3.5 flex-none" />
-      {result.ok ? `Verbindung in Ordnung (${result.latency_ms} ms). Antwort: ${result.message || "(leer)"}` : result.message}
+      {result.ok ? `Connection OK (${result.latency_ms} ms). Response: ${result.message || "(empty)"}` : result.message}
     </p>
   );
 }
@@ -202,8 +202,8 @@ function ProfileForm({ profile, taken, onDone }: {
   });
   const save = useMutation({
     mutationFn: () => api.saveAgentProfile(name.trim(), form),
-    onSuccess: (result) => { toast.success(`Profil „${name.trim()}“ gespeichert`); void onDone(result); },
-    onError: (err) => toast.error("Profil nicht gespeichert", { description: `${err.message} ${recoveryFor(err)}` }),
+    onSuccess: (result) => { toast.success(`Profile “${name.trim()}” saved`); void onDone(result); },
+    onError: (err) => toast.error("Profile not saved", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const text = PROVIDERS[form.provider];
   const set = (change: Partial<AgentProfileInput>) => setForm((current) => ({ ...current, ...change }));
@@ -213,12 +213,12 @@ function ProfileForm({ profile, taken, onDone }: {
   return (
     <Card className="gap-3 rounded-xl px-4 py-3.5 shadow-none">
       <CardHeader className="px-0">
-        <CardTitle className="text-sm font-bold">{profile ? `Profil „${profile.name}“ bearbeiten` : "Neues Profil"}</CardTitle>
+        <CardTitle className="text-sm font-bold">{profile ? `Edit profile “${profile.name}”` : "New profile"}</CardTitle>
       </CardHeader>
       <CardContent className="px-0">
         <form className="grid gap-3.5" onSubmit={submit} autoComplete="off">
           <fieldset className="grid gap-1.5">
-            <legend className="mb-1.5 text-xs font-semibold">Anbieter</legend>
+            <legend className="mb-1.5 text-xs font-semibold">Provider</legend>
             <div className="flex flex-wrap gap-1.5">
               {(Object.keys(PROVIDERS) as AgentProvider[]).map((provider) => (
                 <label key={provider} className="cursor-pointer rounded-full border px-3 py-1 text-xs font-medium has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground">
@@ -230,7 +230,7 @@ function ProfileForm({ profile, taken, onDone }: {
             </div>
           </fieldset>
           <div className="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
-            <Field id="profile-name" label="Name" hint={duplicate ? "Diesen Namen gibt es schon." : "Erscheint in der Seitenleiste und im Lauf."}>
+            <Field id="profile-name" label="Name" hint={duplicate ? "This name already exists." : "Shown in the sidebar and in the run."}>
               <Input id="profile-name" value={name} required maxLength={40} disabled={!!profile} aria-invalid={duplicate}
                 placeholder={text.label} onChange={(e) => setName(e.target.value)} />
             </Field>
@@ -247,18 +247,18 @@ function ProfileForm({ profile, taken, onDone }: {
           )}
           <Field id="profile-key" label="API-Key" hint={text.key}>
             <Input id="profile-key" type="password" value={form.api_key} required={!profile?.key_set} autoComplete="new-password"
-              placeholder={profile?.key_set ? "Gespeichert – leer lassen, um ihn zu behalten" : ""}
+              placeholder={profile?.key_set ? "Saved – leave empty to keep it" : ""}
               onChange={(e) => set({ api_key: e.target.value })} />
           </Field>
           <div className="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
             {form.provider !== "openrouter" && (
-              <Field id="profile-api" label="Schnittstelle" hint="Manche Modelle (zum Beispiel gpt-6.1-sol) nutzen Werkzeuge nur über die Responses API.">
+              <Field id="profile-api" label="Interface" hint="Some models (for example gpt-6.1-sol) use tools only through the Responses API.">
                 <Select id="profile-api" value={form.api} onChange={(e) => set({ api: e.target.value as AgentApi })}>
                   {(Object.keys(API_LABEL) as AgentApi[]).map((value) => <option key={value} value={value}>{API_LABEL[value]}</option>)}
                 </Select>
               </Field>
             )}
-            <Field id="profile-effort" label="Reasoning-Aufwand" hint="Optional. Leer sendet keinen Wert. „Testen“ prüft ihn zusammen mit einem Werkzeug.">
+            <Field id="profile-effort" label="Reasoning effort" hint="Optional. Empty sends no value. “Test” checks it together with a tool.">
               <Select id="profile-effort" value={form.reasoning_effort ?? ""}
                 onChange={(e) => set({ reasoning_effort: e.target.value || null })}>
                 {EFFORTS.map((value) => <option key={value} value={value}>{value || "—"}</option>)}
@@ -266,8 +266,8 @@ function ProfileForm({ profile, taken, onDone }: {
             </Field>
           </div>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={save.isPending || duplicate}>{save.isPending ? "Speichere …" : "Speichern"}</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => void onDone(null)}>Abbrechen</Button>
+            <Button type="submit" size="sm" disabled={save.isPending || duplicate}>{save.isPending ? "Saving …" : "Save"}</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => void onDone(null)}>Cancel</Button>
           </div>
         </form>
       </CardContent>

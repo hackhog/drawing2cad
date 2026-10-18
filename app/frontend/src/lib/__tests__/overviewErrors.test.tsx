@@ -27,7 +27,7 @@ describe("overview analysis errors", () => {
     const error = new ApiFailure({ code: "PDF_PREPARATION_FAILED", message: "PDF could not be prepared.", recovery: "Use PDF image tools." }, 422);
     const html = renderRow(error);
     expect(html).toContain('role="alert"');
-    expect(html).toContain("Analyse fehlgeschlagen (PDF_PREPARATION_FAILED)");
+    expect(html).toContain("Analysis failed (PDF_PREPARATION_FAILED)");
     expect(html).toContain("PDF could not be prepared.");
     expect(html).toContain("Use PDF image tools.");
   });
@@ -35,6 +35,6 @@ describe("overview analysis errors", () => {
   it("does not show an error while the analysis is loading", () => {
     const html = renderRow(null);
     expect(html).not.toContain('role="alert"');
-    expect(html).not.toContain("Analyse fehlgeschlagen");
+    expect(html).not.toContain("Analysis failed");
   });
 });

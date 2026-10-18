@@ -41,7 +41,7 @@ export class HttpApi implements WebApi {
   createRun(sourceId: string): Promise<Run> { return request(`/api/sources/${id(sourceId)}/runs`, { method: "POST" }); }
   getRun(runId: string): Promise<Run> { return request(`/api/runs/${id(runId)}`); }
   changeParameters(_runId: string, _expectedRevision: number, _changes: ParameterChange[]): Promise<Run> {
-    return Promise.reject(unavailable("Das Ändern von Parametern"));
+    return Promise.reject(unavailable("Changing parameters"));
   }
   getNote(runId: string): Promise<RunNote> { return request(`/api/runs/${id(runId)}/note`); }
   saveNote(runId: string, expectedRevision: number, text: string): Promise<RunNote> {
