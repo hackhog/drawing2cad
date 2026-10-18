@@ -25,11 +25,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends poppler-utils libseccomp2 libgl1 libglu1-mesa libxrender1 libxext6
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'  # Same version as the MCP image.
+      # Use the system Python 3.12 of the runner, not actions/setup-python. The CAD sandbox permits reads
+      # below /usr and the environment, but not below /opt/hostedtoolcache, where setup-python puts the standard library.
       - name: Install Poetry
-        run: pipx install --python "$(command -v python)" poetry==2.4.1  # Same version as drawing2cad-mcp/Dockerfile.
+        run: pipx install --python /usr/bin/python3.12 poetry==2.4.1  # Same version as drawing2cad-mcp/Dockerfile.
+      - run: poetry env use /usr/bin/python3.12
       # poetry install stops if pyproject.toml and poetry.lock do not agree.
       - run: poetry install --extras "cad test"
       - name: Lock file is unchanged
