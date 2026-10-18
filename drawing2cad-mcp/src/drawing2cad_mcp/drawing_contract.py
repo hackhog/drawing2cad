@@ -117,7 +117,7 @@ class Note(ClosedModel):
 class Marker(ClosedModel):
     """A visible uncertainty marker. Each evidence item with status assumed, inferred, or unresolved, and each review flag,
     needs a marker. Each projected feature that depends on such evidence through its own evidence, its parameters,
-    or its drawn primitives also needs one marked location. Explicit evidence needs no marker."""
+    or its drawn primitives also needs one marked location. Explicit evidence without a review flag needs no marker."""
     id: Identifier
     view_id: Identifier
     primitive_id: Identifier
@@ -248,9 +248,9 @@ def _view_transform(view_id, origin, scale):
 
 
 def _rounded(value):
-    """Round coordinates in defect details to 0.001 mm."""
+    """Round defect details to 1e-6 so that small clipping distances and small scales stay visible."""
     if isinstance(value, float):
-        return round(value, 3)
+        return round(value, 6)
     if isinstance(value, (list, tuple)):
         return [_rounded(item) for item in value]
     if isinstance(value, dict):
@@ -520,9 +520,10 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
     status = {e.id: e.status for e in part.evidence}
     for ref, feature in sorted(required_features - marked_features):
         causes = ", ".join(sorted(origins.get((ref, feature), {"review flag"})))
+        kind = status.get(ref) if status.get(ref) in {"assumed", "inferred", "unresolved"} else "flagged"
         fail("unmarked_feature_uncertainty", feature,
-             f"Add a visible marker for {status.get(ref, 'flagged')} evidence {ref} at affected feature {feature} "
-             f"(linked by {causes}). Explicit evidence needs no marker.",
+             f"Add a visible marker for {kind} evidence {ref} at affected feature {feature} "
+             f"(linked by {causes}). Explicit evidence without a review flag needs no marker.",
              evidence_id=ref)
     for view in views:
         dimensioned = {d["primitive"] for d in view["dimensions"] if d["type"] in {"radius", "diameter"}}
@@ -549,7 +550,10 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
                      other_id=second["id"], other_bounds=second["bounds"])
     for marker in markers:
         for other in labels:
-            if other["id"] != marker["id"] and _segment_crosses_box(marker["position"], marker["target"], other["bounds"]):
+            # A leader can start in its own label and end at geometry below a label. Only a crossing is a defect.
+            ends = (marker["position"], marker["target"])
+            if (other["id"] != marker["id"] and not any(_inside([*p, *p], other["bounds"]) for p in ends)
+                    and _segment_crosses_box(*ends, other["bounds"])):
                 fail("leader_overlap", marker["id"], f"The marker leader crosses label {other['id']}. Move the marker label.",
                      leader=[marker["position"], marker["target"]], other_id=other["id"], other_bounds=other["bounds"])
     layout_codes = {"label_overlap", "label_clipping", "geometry_clipping", "view_overlap", "leader_overlap"}

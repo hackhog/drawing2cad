@@ -248,7 +248,7 @@ def test_missing_marker_names_status_and_link():
     assert feature["evidence_id"] == "length_estimate"
     assert "assumed evidence length_estimate" in feature["message"]
     assert "parameter length" in feature["message"]
-    assert "Explicit evidence needs no marker." in feature["message"]
+    assert "Explicit evidence without a review flag needs no marker." in feature["message"]
 
 
 def test_line_center_anchor_is_midpoint():
@@ -304,6 +304,33 @@ def test_marker_leader_through_label_is_layout_defect():
     assert leader["leader"] == [[75, 95], [75, 135]]
     spec["uncertainty_markers"][0]["position"] = [0, 50]
     assert drawing_validate(spec, description, 1)["status"] == "pass"
+
+
+def test_leader_that_ends_below_a_label_is_not_a_crossing():
+    description, spec = drawing_fixture()
+    spec["views"][0]["dimensions"][1].update(label_position=[30, 15])
+    spec["uncertainty_markers"] = [{"id": "hole_mark", "view_id": "top", "primitive_id": "hole_circle",
+                                    "position": [0, 50], "text": "Hole", "evidence_ids": ["drawing"]}]
+    result = drawing_validate(spec, description, 1)
+    assert "leader_overlap" not in {d["code"] for d in result["defects"]}, result
+
+
+def test_review_flag_on_explicit_evidence_does_not_contradict_message():
+    description, spec = drawing_fixture()
+    description["review_flags"] = [{"id": "size_review", "target_id": "base", "status": "open",
+                                      "reason": "Check the size at its feature.", "evidence_ids": ["drawing"]}]
+    spec["description_sha256"] = description_digest(description)
+    defect = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "unmarked_feature_uncertainty")
+    assert "flagged evidence drawing" in defect["message"]
+    assert "review flag size_review" in defect["message"]
+    assert "explicit evidence drawing" not in defect["message"]
+
+
+def test_small_clipping_distance_stays_visible_in_defect():
+    description, spec = drawing_fixture()
+    spec["views"][0]["geometry"][0].update(end=[105.0004, 0])
+    clipping = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "geometry_clipping")
+    assert clipping["sheet_bounds"][2] > clipping["frame"][2]
 
 
 def test_native_dxf_dimensions_and_matching_pdf(tmp_path):
