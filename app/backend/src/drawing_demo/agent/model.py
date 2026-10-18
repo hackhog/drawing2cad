@@ -20,9 +20,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx2
-from openai import (
-    DEFAULT_CONNECTION_LIMITS, APIConnectionError, APIStatusError, APITimeoutError, DefaultHttpxClient, Omit, OpenAI,
-)
+from openai import APIConnectionError, APIStatusError, APITimeoutError, DefaultHttpxClient, Omit, OpenAI
 
 log = logging.getLogger(__name__)
 
@@ -314,14 +312,28 @@ class _ErrorBodyLimit(httpx2.BaseTransport):
         self._transport.close()
 
 
+class _HttpClient(DefaultHttpxClient):
+    """The SDK default HTTP client with the error-body limit on the direct transport and on each proxy transport.
+
+    httpx2 selects HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, and NO_PROXY only when no transport is given. Thus this client
+    wraps the transports that httpx2 makes, and the proxy selection does not change.
+    """
+
+    def _init_transport(self, *args: Any, **kwargs: Any) -> httpx2.BaseTransport:
+        return _ErrorBodyLimit(super()._init_transport(*args, **kwargs))
+
+    def _init_proxy_transport(self, *args: Any, **kwargs: Any) -> httpx2.BaseTransport:
+        return _ErrorBodyLimit(super()._init_proxy_transport(*args, **kwargs))
+
+
 def client_for(settings: ModelSettings, transport: httpx2.BaseTransport | None = None) -> OpenAI:
     """An OpenAI SDK client for the endpoint of the profile. The SDK does not retry; `make_model_call` does.
 
     `transport` replaces the network connection of the SDK, for example with an httpx2.MockTransport in tests.
+    A given transport also disables the proxy variables of the environment.
     """
-    network = transport if transport is not None else httpx2.HTTPTransport(limits=DEFAULT_CONNECTION_LIMITS)
     return OpenAI(api_key=settings.api_key, base_url=settings.base_url, max_retries=0,
-                  http_client=DefaultHttpxClient(transport=_ErrorBodyLimit(network)))
+                  http_client=_HttpClient(transport=transport))
 
 
 def _auth_headers(settings: ModelSettings) -> dict[str, Any]:

@@ -400,3 +400,56 @@ def test_the_connection_check_reads_an_error_body_only_up_to_the_error_limit(mon
     result = model.check_connection(ModelSettings("https://example.test/v1", "m", "k"))
     assert result == {"ok": False, "message": "HTTP 429: " + "e" * 2000}
     assert stream.sent * len(chunk) <= model.MAX_ERROR_BYTES
+
+
+@pytest.fixture
+def environment_proxy(monkeypatch):
+    """A local HTTP proxy set in HTTP_PROXY. It records the request targets and sends the answer in `answer`."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+
+    state = {"targets": [], "answer": (200, json.dumps(OK_CHAT).encode())}
+
+    class Proxy(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            state["targets"].append(self.path)
+            status, body = state["answer"]
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Proxy)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.lower(), raising=False)
+    monkeypatch.setenv("HTTP_PROXY", f"http://127.0.0.1:{server.server_address[1]}")
+    yield state
+    server.shutdown()
+    server.server_close()
+
+
+def test_model_calls_use_the_proxy_of_the_environment(environment_proxy):
+    call = make_model_call(ModelSettings("http://model.test/v1", "m", "k"))
+    assert call({}, {"messages": [], "tools": []}, 30)["message"]["content"] == "ok"
+    assert environment_proxy["targets"] == ["http://model.test/v1/chat/completions"]
+
+
+def test_the_error_body_limit_applies_through_the_proxy(environment_proxy, monkeypatch):
+    monkeypatch.setattr(model, "MAX_ERROR_BYTES", 10)
+    environment_proxy["answer"] = (400, b"0123456789ABCDEF")
+    with pytest.raises(RuntimeError, match="HTTP 400: 0123456789$"):
+        make_model_call(ModelSettings("http://model.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 30)
+    assert len(environment_proxy["targets"]) == 1
+
+
+def test_no_proxy_hosts_do_not_use_the_proxy(environment_proxy, monkeypatch):
+    monkeypatch.setenv("NO_PROXY", "model.test")
+    result = model.check_connection(ModelSettings("http://model.test/v1", "m", "k"), timeout=10)
+    assert result["ok"] is False and environment_proxy["targets"] == []
