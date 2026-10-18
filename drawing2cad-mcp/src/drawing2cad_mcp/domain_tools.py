@@ -91,8 +91,10 @@ _EXTRA = {
                                  "bbox": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 4, "maxItems": 4}}, ["source_id", "page", "bbox"]),
                         "Render a detail crop. Normalized coordinates refer to the displayed page, from its top-left corner."),
     "drawing_extract": (_object({"source_id": ID, "page": PAGE, "include_strokes": {"type": "boolean"},
-                                 "stroke_kinds": {"type": "array", "items": {"enum": [k.value for k in Kind]}, "minItems": 1, "uniqueItems": True}}, ["source_id"]),
-                        "Analyze native drawing vectors with the limited BCT/NX A3 profile. Verify detected text and dimensions against source images."),
+                                 "stroke_kinds": {"type": "array", "items": {"enum": [k.value for k in Kind]}, "minItems": 1, "uniqueItems": True},
+                                 "stroke_offset": {"type": "integer", "minimum": 0},
+                                 "stroke_limit": {"type": "integer", "minimum": 1, "maximum": 50000}}, ["source_id"]),
+                        "Analyze native drawing vectors with the detected template profile (BCT A3, CAx A3, or A4 portrait). With include_strokes, strokes come in pages of stroke_limit (default 500); use strokes_page.next_offset. Verify detected text and dimensions against source images."),
 }
 for _name, (_schema, _description) in _EXTRA.items():
     DOMAIN_SCHEMAS[_name], DOMAIN_DESCRIPTIONS[_name] = _schema, _description

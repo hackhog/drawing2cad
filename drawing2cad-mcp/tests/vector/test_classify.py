@@ -60,3 +60,23 @@ def test_distant_center_mark_does_not_extend_the_dash_limit():
                                    Stroke(5, Line((300.0, 0), (400.0, 0)), 0.17, 30, Kind.CENTERLINE)]
     classify(strokes)
     assert strokes[4].kind is Kind.CONTOUR
+
+
+def _outline(width, size, start_id=0, path=40):
+    """A closed square outline of the given line width."""
+    pts = [(0, 0), (size, 0), (size, size), (0, size)]
+    return [Stroke(start_id + n, Line(a, b), width, path + n) for n, (a, b) in enumerate(zip(pts, pts[1:] + pts[:1]))]
+
+
+def test_thick_contour_template_keeps_its_contours():
+    """Some templates draw part contours with 0.5 mm. The cutting-plane width follows the contour width."""
+    strokes = _outline(0.5, 80.0)
+    classify(strokes)
+    assert {s.kind for s in strokes} == {Kind.CONTOUR}
+
+
+def test_line_thicker_than_the_contours_is_a_cutting_plane():
+    strokes = _outline(0.35, 80.0) + [Stroke(4, Line((100, 0), (100, 6)), 0.5, 50)]
+    classify(strokes)
+    assert strokes[4].kind is Kind.CUTTING_PLANE
+    assert {s.kind for s in strokes[:4]} == {Kind.CONTOUR}

@@ -126,3 +126,19 @@ def test_komplexe_zeichnung_3_annotations_are_not_review_items():
     assert "(0,07)" in {t.text for t in drawing.texts}
     assert sum(s.kind is Kind.ANNOTATION for s in drawing.strokes) == 15
     assert len(drawing.views) == 10
+
+
+@pytest.mark.parametrize(("folder", "filename", "template", "views"), [
+    ("Achse", "Achse.pdf", "a4_portrait", 3),
+    ("3-Loch-Hebel", "3-Loch-Hebel.pdf", "cax_a3", 2),
+])
+def test_cax_template_contours_are_not_cutting_planes(folder, filename, template, views):
+    """The CAx template draws contours with 0.5 mm and has a higher title block."""
+    pdf = SAMPLES / folder / filename
+    if not pdf.exists():
+        pytest.skip(f"Regression drawing is absent: {pdf}")
+    drawing = extract(pdf)
+    assert drawing.template == template
+    assert len(drawing.views) == views
+    assert sum(s.kind is Kind.UNCLEAR for s in drawing.strokes) <= 1
+    assert sum(s.kind is Kind.CONTOUR for s in drawing.strokes) > sum(s.kind is Kind.CUTTING_PLANE for s in drawing.strokes)

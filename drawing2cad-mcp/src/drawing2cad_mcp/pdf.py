@@ -30,6 +30,11 @@ from .vector.model import Kind
 from . import measurements
 
 
+# Default stroke page for agents; internal callers can request all strokes of a drawing in one page.
+DEFAULT_STROKE_LIMIT = 500
+MAX_STROKE_LIMIT = 50_000
+
+
 class PdfError(ValueError):
     """An invalid PDF request or a failed PDF preparation operation."""
 
@@ -340,10 +345,13 @@ class PdfService:
 
     def extract_drawing(
         self, path: str | Path, include_strokes: bool = False, stroke_kinds: list[str] | None = None,
-        page: int = 1,
+        page: int = 1, stroke_offset: int = 0, stroke_limit: int = DEFAULT_STROKE_LIMIT,
     ) -> dict[str, Any]:
         if not isinstance(include_strokes, bool):
             raise PdfError("include_strokes must be a boolean.")
+        if (isinstance(stroke_offset, bool) or not isinstance(stroke_offset, int) or stroke_offset < 0
+                or isinstance(stroke_limit, bool) or not isinstance(stroke_limit, int) or not 1 <= stroke_limit <= MAX_STROKE_LIMIT):
+            raise PdfError(f"stroke_offset must be 0 or more, and stroke_limit must be from 1 to {MAX_STROKE_LIMIT}.")
         if stroke_kinds is not None:
             if (not include_strokes or not isinstance(stroke_kinds, list) or not stroke_kinds
                     or any(not isinstance(kind, str) or kind not in {item.value for item in Kind} for kind in stroke_kinds)
@@ -390,17 +398,23 @@ class PdfService:
                 raise PdfError("Vector analysis produced an invalid result.") from exc
         strokes = data.pop("strokes")
         if include_strokes:
-            data["strokes"] = [s for s in strokes if stroke_kinds is None or s["kind"] in stroke_kinds]
+            # Return one bounded page of the matching strokes. Large drawings have thousands of strokes.
+            matching = [s for s in strokes if stroke_kinds is None or s["kind"] in stroke_kinds]
+            data["strokes"] = matching[stroke_offset:stroke_offset + stroke_limit]
+            following = stroke_offset + stroke_limit
+            data["strokes_page"] = {"offset": stroke_offset, "limit": stroke_limit, "returned": len(data["strokes"]),
+                                     "total_matching": len(matching),
+                                     "next_offset": following if following < len(matching) else None}
         else:  # Stroke ids are most of the payload and refer to nothing without the strokes.
             for view in data["views"]:
                 view["stroke_count"] = len(view.pop("stroke_ids"))
         return {
             **data, "source": source.metadata,
             "provenance": {
-                **geometry, "profile": "bct_nx_a3", "coordinate_system": "displayed_sheet_mm_top_left_y_down",
+                **geometry, "profile": data.get("drawing_template", "bct_a3"), "coordinate_system": "displayed_sheet_mm_top_left_y_down",
                 "scale_applied": False, "ocr_performed": False, "engine": "drawing2cad_mcp.vector",
                 "limitations": [
-                    "The selected page is analyzed with the BCT/NX A3 drawing-area profile before display rotation.",
+                    "The selected page is analyzed with the drawing-area profile in 'profile' (BCT A3, CAx A3, or A4 portrait) before display rotation. Other templates use the BCT A3 limits.",
                     "Glyph recognition can return '?' or an incorrect known character; verify dimensions in source images.",
                     "Confidence scores are rule scores, not calibrated probabilities. Circles do not prove holes.",
                     "Sheet coordinates and stroke classes do not define part dimensions or CAD operations.",

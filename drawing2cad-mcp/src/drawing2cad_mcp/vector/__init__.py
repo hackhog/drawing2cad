@@ -16,13 +16,13 @@ from .classify import classify
 from .coordinates import display_rotation
 from .model import Drawing, Kind, TextBlock
 from .reader import read_pdf
-from .template import PT_TO_MM, in_drawing_area
+from .template import AREA_NAMES, PT_TO_MM, in_drawing_area
 from .text import read_blocks
 from .views import group_views
 
 
 def extract(pdf: Path, page_number: int = 1) -> Drawing:
-    strokes, glyphs, sheet, raster = read_pdf(pdf, page_number)
+    strokes, glyphs, sheet, raster, area = read_pdf(pdf, page_number, with_area=True)
     classify(strokes)
     texts = read_blocks(glyphs, strokes)
     with pymupdf.open(pdf) as document:
@@ -34,7 +34,7 @@ def extract(pdf: Path, page_number: int = 1) -> Drawing:
             for line in block.get("lines", []):
                 for span in line.get("spans", []):
                     box = tuple(value * PT_TO_MM for value in span["bbox"])
-                    if span["text"].strip() and in_drawing_area(box):
+                    if span["text"].strip() and in_drawing_area(box, area):
                         dx, dy = line["dir"]
                         texts.append(TextBlock(len(texts) + 1, box, 0, span["text"],
                                                -math.degrees(math.atan2(dy, dx)) % 360,
@@ -42,7 +42,8 @@ def extract(pdf: Path, page_number: int = 1) -> Drawing:
     # Text positions are evidence for annotation strokes. Mark them before view grouping.
     mark_annotations(strokes, texts)
     views = group_views(strokes, raster)
-    return display_rotation(Drawing(pdf.name, sheet, strokes, texts, views, raster), rotation)
+    drawing = Drawing(pdf.name, sheet, strokes, texts, views, raster, template=AREA_NAMES[area])
+    return display_rotation(drawing, rotation)
 
 
 __all__ = ["Drawing", "Kind", "extract"]
