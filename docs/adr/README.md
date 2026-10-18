@@ -20,5 +20,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0017](0017-ap242-application-construction-and-pmi.md) | Bounded AP242 construction adapter and nominal PMI |
 | [0018](0018-agent-runner-in-the-web-backend.md) | Agent runner in the web backend on the shared domain service |
 | [0019](0019-review-flag-decisions-in-the-domain-service.md) | Review flags and user decisions in the domain service, with a feedback export |
+| [0020](0020-agent-model-profiles-selected-in-the-web-ui.md) | More than one agent model profile on the server, selected in the web UI |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

@@ -2,12 +2,13 @@
 
 import io
 import json
+import os
 
 import pytest
 
 from drawing_demo.agent import model
 from drawing_demo.agent.model import (
-    ModelSettings, from_openai, from_responses, make_model_call, responses_tools, to_openai, to_responses,
+    ModelSettings, from_openai, from_responses, make_model_call, profiles_from_env, responses_tools, to_openai, to_responses,
 )
 
 
@@ -288,3 +289,37 @@ def test_settings_select_the_api(monkeypatch):
     monkeypatch.setenv("DRAWING2CAD_AGENT_API", "completions")
     with pytest.raises(ValueError, match="chat or responses"):
         ModelSettings.from_env()
+
+
+def clear_agent_environment(monkeypatch):
+    for name in list(os.environ):
+        if name.startswith("DRAWING2CAD_AGENT_"):
+            monkeypatch.delenv(name)
+
+
+def test_unprefixed_variables_make_the_default_profile(monkeypatch):
+    clear_agent_environment(monkeypatch)
+    assert profiles_from_env() == {}
+    for name, value in (("BASE_URL", "https://example.test/v1"), ("MODEL", "m"), ("API_KEY", "k")):
+        monkeypatch.setenv("DRAWING2CAD_AGENT_" + name, value)
+    assert profiles_from_env() == {"Standard": ModelSettings("https://example.test/v1", "m", "k")}
+
+
+def test_listed_profiles_read_their_own_variables_and_skip_incomplete_ones(monkeypatch):
+    clear_agent_environment(monkeypatch)
+    monkeypatch.setenv("DRAWING2CAD_AGENT_PROFILES", " Foundry , OpenRouter ")
+    for name, value in (("BASE_URL", "https://foundry.test/v1"), ("MODEL", "gpt"), ("API_KEY", "k"),
+                        ("API_KEY_HEADER", "api-key"), ("API", "responses")):
+        monkeypatch.setenv("DRAWING2CAD_AGENT_FOUNDRY_" + name, value)
+    monkeypatch.setenv("DRAWING2CAD_AGENT_OPENROUTER_MODEL", "vendor/model")
+    profiles = profiles_from_env()
+    assert list(profiles) == ["Foundry"]
+    assert profiles["Foundry"] == ModelSettings("https://foundry.test/v1", "gpt", "k", "api-key", None, "responses")
+
+
+@pytest.mark.parametrize("names", ["Foundry,foundry", "Open-Router", "1st"])
+def test_invalid_or_repeated_profile_names_are_rejected(monkeypatch, names):
+    clear_agent_environment(monkeypatch)
+    monkeypatch.setenv("DRAWING2CAD_AGENT_PROFILES", names)
+    with pytest.raises(ValueError):
+        profiles_from_env()

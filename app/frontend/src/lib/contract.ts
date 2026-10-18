@@ -132,8 +132,8 @@ export interface Run {
   run_id: string;
   source_id: string;
   phase: RunPhase;
-  /** The model and the drawing2cad-mcp version that execute an agent run. */
-  agent?: { model: string; mcp_version: string } | null;
+  /** The model profile, its model, and the drawing2cad-mcp version that execute an agent run. */
+  agent?: { model: string; profile?: string; mcp_version: string } | null;
   /** Model turns and tool requests of the agent loop so far, with the tool request budget. */
   iterations?: { model_turns: number; tool_requests: number; step_budget: number } | null;
   /** The phase in which a failed run stopped. */
@@ -168,6 +168,21 @@ export interface Capabilities {
   model_preview: boolean;
   step_preview_upload: boolean;
   max_pdf_bytes: number;
-  /** The configured agent model, if the service starts agent runs. */
+  /** The model of the active agent profile, if the service starts agent runs. */
   agent_model?: string | null;
+  /** The name of the active agent profile, if the service starts agent runs. */
+  agent_profile?: string | null;
+}
+
+/** A model profile of the server. The server keeps its endpoint and key; the browser gets only these fields. */
+export interface AgentProfile {
+  name: string;
+  model: string;
+  api: "chat" | "responses";
+}
+
+/** The configured model profiles. `active` is null when new runs use no agent. */
+export interface AgentProfiles {
+  active: string | null;
+  profiles: AgentProfile[];
 }

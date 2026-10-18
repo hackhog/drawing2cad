@@ -204,3 +204,12 @@ describe("flag decisions", () => {
     expect((await failureOf(api.decideFlag(source.source_id, "strokes-999", { action: "ignore" })))?.code).toBe("NOT_FOUND");
   });
 });
+
+describe("agent profiles", () => {
+  it("offers no model profile, so that only the agent-free selection is possible", async () => {
+    const { api } = setup();
+    expect(await api.agentProfiles()).toEqual({ active: null, profiles: [] });
+    expect(await api.selectAgentProfile(null)).toEqual({ active: null, profiles: [] });
+    expect((await failureOf(api.selectAgentProfile("Foundry")))?.code).toBe("CAPABILITY_UNAVAILABLE");
+  });
+});

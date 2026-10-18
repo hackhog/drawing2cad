@@ -1,12 +1,16 @@
 // The one interface between the UI and a service. Components and routes use only this interface.
 // `http` uses the web backend (app/backend); `fixture` is a simulated service for UI work without a backend.
-import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
+import type { AgentProfiles, Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
 import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 
 export interface ParameterChange { name: string; value: number }
 
 export interface WebApi {
   capabilities(): Promise<Capabilities>;
+  /** Model profiles of the server, without endpoints or keys. */
+  agentProfiles(): Promise<AgentProfiles>;
+  /** Select the profile for new runs; null selects no agent. Queued and running runs keep their profile. */
+  selectAgentProfile(name: string | null): Promise<AgentProfiles>;
   listSources(): Promise<Source[]>;
   getSource(sourceId: string): Promise<Source>;
   /** Upload PDF bytes. The service returns the source identity; the browser assumes no local path. */

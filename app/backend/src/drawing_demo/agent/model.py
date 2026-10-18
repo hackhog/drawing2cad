@@ -11,13 +11,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import logging
 import os
+import re
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+log = logging.getLogger(__name__)
+
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+ENV_PREFIX = "DRAWING2CAD_AGENT_"
+# A profile name is also part of its variable names, for example Foundry -> DRAWING2CAD_AGENT_FOUNDRY_MODEL.
+PROFILE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9]{0,31}")
+# The profile of the unprefixed DRAWING2CAD_AGENT_* variables when DRAWING2CAD_AGENT_PROFILES is not set.
+DEFAULT_PROFILE = "Standard"
 # A hosted endpoint can fail transiently (spike: one Azure server error; web run: one request without answer).
 ATTEMPTS = 4
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
@@ -53,23 +62,51 @@ class ModelSettings:
     api: str = "chat"
 
     @classmethod
-    def from_env(cls) -> "ModelSettings | None":
-        """Return the configured endpoint, or None if the agent is not configured."""
-        base_url = os.environ.get("DRAWING2CAD_AGENT_BASE_URL", "").strip()
-        model = os.environ.get("DRAWING2CAD_AGENT_MODEL", "").strip()
-        api_key = os.environ.get("DRAWING2CAD_AGENT_API_KEY", "").strip()
+    def from_env(cls, prefix: str = ENV_PREFIX) -> "ModelSettings | None":
+        """Return the endpoint of the variables with this prefix, or None if it is not configured."""
+        base_url = os.environ.get(prefix + "BASE_URL", "").strip()
+        model = os.environ.get(prefix + "MODEL", "").strip()
+        api_key = os.environ.get(prefix + "API_KEY", "").strip()
         if not (base_url and model and api_key):
             return None
-        header = os.environ.get("DRAWING2CAD_AGENT_API_KEY_HEADER", "Authorization").strip() or "Authorization"
-        effort = os.environ.get("DRAWING2CAD_AGENT_REASONING_EFFORT", "").strip() or None
-        api = os.environ.get("DRAWING2CAD_AGENT_API", "chat").strip() or "chat"
+        header = os.environ.get(prefix + "API_KEY_HEADER", "Authorization").strip() or "Authorization"
+        effort = os.environ.get(prefix + "REASONING_EFFORT", "").strip() or None
+        api = os.environ.get(prefix + "API", "chat").strip() or "chat"
         if api not in ("chat", "responses"):
-            raise ValueError("DRAWING2CAD_AGENT_API must be chat or responses.")
+            raise ValueError(f"{prefix}API must be chat or responses.")
         return cls(base_url.rstrip("/"), model, api_key, header, effort, api)
 
     def headers(self) -> dict[str, str]:
         value = f"Bearer {self.api_key}" if self.api_key_header.lower() == "authorization" else self.api_key
         return {"Content-Type": "application/json", self.api_key_header: value}
+
+
+def profiles_from_env() -> dict[str, ModelSettings]:
+    """The configured model profiles by name, in configuration order. The first profile is active at start.
+
+    DRAWING2CAD_AGENT_PROFILES lists the names, for example "Foundry,OpenRouter". Each profile reads the
+    DRAWING2CAD_AGENT_<NAME>_* variables. Without the list, the unprefixed variables make one profile.
+    A profile without endpoint, model, or key is skipped, so that the service starts without keys.
+    """
+    names = [name.strip() for name in os.environ.get(ENV_PREFIX + "PROFILES", "").split(",") if name.strip()]
+    if not names:
+        settings = ModelSettings.from_env()
+        return {DEFAULT_PROFILE: settings} if settings else {}
+    profiles: dict[str, ModelSettings] = {}
+    prefixes: set[str] = set()
+    for name in names:
+        if not PROFILE_NAME.fullmatch(name):
+            raise ValueError(f"Profile name {name!r} in {ENV_PREFIX}PROFILES must be a letter and up to 31 letters or digits.")
+        prefix = f"{ENV_PREFIX}{name.upper()}_"
+        if prefix in prefixes:
+            raise ValueError(f"Profile name {name!r} occurs more than once in {ENV_PREFIX}PROFILES.")
+        prefixes.add(prefix)
+        settings = ModelSettings.from_env(prefix)
+        if settings is None:
+            log.warning("Model profile %s skipped: %sBASE_URL, %sMODEL, or %sAPI_KEY is missing.", name, prefix, prefix, prefix)
+            continue
+        profiles[name] = settings
+    return profiles
 
 
 def _token_limits(messages: list[dict[str, Any]]) -> tuple[set[int], set[int]]:

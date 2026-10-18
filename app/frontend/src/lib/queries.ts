@@ -5,6 +5,7 @@ import type { WebApi } from "./webApi";
 
 export const keys = {
   capabilities: ["capabilities"] as const,
+  agentProfiles: ["agentProfiles"] as const,
   sources: ["sources"] as const,
   source: (id: string) => ["sources", id] as const,
   analysis: (id: string) => ["analysis", id] as const,
@@ -19,6 +20,9 @@ const POLL_MS = 600;
 
 export const capabilitiesQuery = (api: WebApi) =>
   queryOptions({ queryKey: keys.capabilities, queryFn: () => api.capabilities(), staleTime: Infinity });
+
+export const agentProfilesQuery = (api: WebApi) =>
+  queryOptions({ queryKey: keys.agentProfiles, queryFn: () => api.agentProfiles() });
 
 export const sourcesQuery = (api: WebApi) =>
   queryOptions({ queryKey: keys.sources, queryFn: () => api.listSources() });

@@ -1,4 +1,4 @@
-// Sidebar: overview, every stored drawing with its status, and uploads in progress.
+// Sidebar: overview, every stored drawing with its status, uploads in progress, and the agent settings.
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { LayoutGrid } from "lucide-react";
@@ -8,6 +8,7 @@ import { analysisQuery, capabilitiesQuery, flagsQuery, sourcesQuery } from "@/li
 import { analysisStatus, uploadStatus } from "@/lib/status";
 import { useUploads } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
+import { AgentSettings } from "./AgentSettings";
 import { StatusDot } from "./Status";
 
 const ITEM = "flex w-full items-center gap-2.5 rounded-lg px-2 py-[7px] text-left hover:bg-accent";
@@ -63,12 +64,7 @@ export function Sidebar() {
       </ul>
 
       <footer className="mt-auto pt-2.5 max-[1000px]:hidden">
-        <div className="flex items-center gap-2 border-t px-2 py-2.5 text-xs text-muted-foreground">
-          <StatusDot tone={caps?.simulated ? "flag" : "done"} />
-          <span className="min-w-0 truncate" title={caps?.agent_model ?? undefined}>
-            {caps?.simulated ? "Simulierter Dienst" : caps?.agent_model ? `KI-Agent · ${caps.agent_model}` : "Lokal, ohne KI"}
-          </span>
-        </div>
+        <AgentSettings />
         <div className="flex items-center gap-2.5 border-t px-2 pt-3 pb-1">
           <span aria-hidden="true" className="grid size-8 flex-none place-items-center rounded-full bg-highlight-bg text-[11.5px] font-bold text-bad">KO</span>
           <div><strong className="block font-bold text-card-foreground">Konstruktion</strong><small className="text-[11.5px] text-muted-foreground">Demo-Arbeitsplatz</small></div>

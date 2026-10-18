@@ -120,7 +120,7 @@ def environment(tmp_path, monkeypatch):
     skill = tmp_path / "SKILL.md"
     skill.write_text("skill")
     monkeypatch.setenv("DRAWING2CAD_SKILL_PATH", str(skill))
-    for name in ("BASE_URL", "MODEL", "API_KEY"):
+    for name in ("BASE_URL", "MODEL", "API_KEY", "PROFILES"):
         monkeypatch.delenv("DRAWING2CAD_AGENT_" + name, raising=False)
     return monkeypatch
 
@@ -148,18 +148,64 @@ def test_runs_are_unavailable_without_model_endpoint(environment):
 def test_a_run_is_queued_with_a_model_endpoint(environment):
     with_model_endpoint(environment)
     submitted = []
-    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id: submitted.append(run_id))
+    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id, settings: submitted.append(run_id))
     with TestClient(api.create_app()) as client:
         source = upload(client)
         capabilities = client.get("/api/capabilities").json()
-        assert capabilities["runs"] is True and capabilities["agent_model"] == "m"
+        assert capabilities["runs"] is True and capabilities["agent_model"] == "m" and capabilities["agent_profile"] == "Standard"
         res = client.post(f"/api/sources/{source['source_id']}/runs")
         assert res.status_code == 201
         run = res.json()
         assert run["phase"] == "queued" and run["part"] is None and submitted == [run["run_id"]]
-        assert run["agent"] == {"model": "m", "mcp_version": api.mcp_version}
+        assert run["agent"] == {"model": "m", "profile": "Standard", "mcp_version": api.mcp_version}
         assert [r["run_id"] for r in client.get(f"/api/sources/{source['source_id']}/runs").json()] == [run["run_id"]]
         assert client.get(f"/api/runs/{run['run_id']}").json()["job"]["status"] == "queued"
+
+
+def with_two_profiles(monkeypatch):
+    monkeypatch.setenv("DRAWING2CAD_AGENT_PROFILES", "Foundry,OpenRouter")
+    for prefix, model in (("FOUNDRY", "gpt-a"), ("OPENROUTER", "vendor/b")):
+        for name, value in (("BASE_URL", f"https://{prefix.lower()}.test/v1"), ("MODEL", model), ("API_KEY", "secret-" + prefix)):
+            monkeypatch.setenv(f"DRAWING2CAD_AGENT_{prefix}_{name}", value)
+    monkeypatch.setenv("DRAWING2CAD_AGENT_OPENROUTER_API", "responses")
+
+
+def test_profiles_are_listed_without_endpoints_or_keys(environment):
+    with_two_profiles(environment)
+    with TestClient(api.create_app()) as client:
+        res = client.get("/api/agent/profiles")
+        assert res.json() == {"active": "Foundry", "profiles": [{"name": "Foundry", "model": "gpt-a", "api": "chat"},
+                                                                {"name": "OpenRouter", "model": "vendor/b", "api": "responses"}]}
+        assert "secret" not in res.text and ".test" not in res.text
+
+
+def test_a_new_run_uses_the_selected_profile(environment):
+    with_two_profiles(environment)
+    submitted = []
+    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id, settings: submitted.append(settings.model))
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        first = client.post(f"/api/sources/{source['source_id']}/runs").json()
+        assert client.put("/api/agent/profiles/active", json={"name": "OpenRouter"}).json()["active"] == "OpenRouter"
+        capabilities = client.get("/api/capabilities").json()
+        assert capabilities["agent_profile"] == "OpenRouter" and capabilities["agent_model"] == "vendor/b"
+        second = client.post(f"/api/sources/{source['source_id']}/runs").json()
+        assert submitted == ["gpt-a", "vendor/b"]
+        assert first["agent"]["profile"] == "Foundry" and second["agent"]["profile"] == "OpenRouter"
+        # The first run keeps the profile that was active when it was created.
+        assert client.get(f"/api/runs/{first['run_id']}").json()["agent"]["model"] == "gpt-a"
+
+
+def test_no_profile_disables_runs_and_unknown_profiles_are_rejected(environment):
+    with_two_profiles(environment)
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        res = client.put("/api/agent/profiles/active", json={"name": "Missing"})
+        assert res.status_code == 422 and res.json()["detail"]["code"] == "UNKNOWN_PROFILE"
+        assert client.put("/api/agent/profiles/active", json={"name": None}).json()["active"] is None
+        capabilities = client.get("/api/capabilities").json()
+        assert capabilities["runs"] is False and capabilities["agent_model"] is None and capabilities["agent_profile"] is None
+        assert client.post(f"/api/sources/{source['source_id']}/runs").status_code == 503
 
 
 @pytest.mark.parametrize("path", ["/api/runs/run_" + "0" * 32, "/api/runs/..%2Fsources", "/api/sources/src_zz/analysis",

@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .agent.mapping import artifact_view, part_view, review_view
-from .agent.model import ModelSettings
+from .agent.model import profiles_from_env
 from .agent.runner import AgentRunner
 from .jobs import JobStore
 from .service import DomainBackend, ServiceError, checked_id, not_found, settings_from_env
@@ -66,7 +66,7 @@ class Services:
         self.backend = DomainBackend(settings)
         self.jobs = JobStore(Path(os.environ.get("DRAWING2CAD_DATA_DIR", ".data")) / "web-runs")
         mcp_url = os.environ.get("DRAWING2CAD_MCP_URL", f"http://127.0.0.1:{os.environ.get('PORT', '8000')}/mcp")
-        self.runner = AgentRunner(self.backend, self.jobs, ModelSettings.from_env(), _skill_path(), mcp_url,
+        self.runner = AgentRunner(self.backend, self.jobs, profiles_from_env(), _skill_path(), mcp_url,
                                   os.environ.get(settings.http.token_env))
         self._analyses: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._results: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -211,7 +211,33 @@ def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
         "notes": True, "flag_decisions": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
         "max_pdf_bytes": s.backend.max_source_bytes,
         "agent_model": s.runner.settings.model if s.runner.available and s.runner.settings else None,
+        "agent_profile": s.runner.active if s.runner.available else None,
     }
+
+
+class ProfileSelection(BaseModel):
+    # None selects no profile: the service then starts no agent runs.
+    name: str | None
+
+
+def agent_profiles_view(s: Services) -> dict[str, Any]:
+    """The configured model profiles without endpoints or keys, and the active profile."""
+    return {
+        "active": s.runner.active,
+        "profiles": [{"name": name, "model": settings.model, "api": settings.api} for name, settings in s.runner.profiles.items()],
+    }
+
+
+@router.get("/agent/profiles")
+def list_agent_profiles(s: Services = Depends(services)) -> dict[str, Any]:
+    return agent_profiles_view(s)
+
+
+@router.put("/agent/profiles/active")
+def select_agent_profile(selection: ProfileSelection, s: Services = Depends(services)) -> dict[str, Any]:
+    """Select the profile for new agent runs. Queued and running runs keep their profile."""
+    s.runner.select(selection.name)
+    return agent_profiles_view(s)
 
 
 @router.post("/sources")
@@ -315,14 +341,17 @@ def list_runs(source_id: str, s: Services = Depends(services)) -> list[dict[str,
 
 @router.post("/sources/{source_id}/runs", status_code=201)
 def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
-    """Queue one agent run. The agent builds the model only through the MCP endpoint (ADR 0018)."""
-    if not s.runner.available:
-        raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modell-Endpunkt konfiguriert (DRAWING2CAD_AGENT_*).",
-                           recovery="Endpunkt in .env eintragen und das Backend neu starten.")
-    assert s.runner.settings is not None
+    """Queue one agent run with the active model profile. The agent builds the model only through the MCP endpoint (ADR 0018)."""
+    # Read the active profile once, so that a selection during this request cannot mix two profiles.
+    profile = s.runner.active
+    settings = s.runner.profiles.get(profile) if profile is not None else None
+    if settings is None or not s.runner.available:
+        raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modellprofil aktiv (DRAWING2CAD_AGENT_*).",
+                           recovery="In den Einstellungen ein Modellprofil wählen oder einen Endpunkt in .env eintragen "
+                                    "und das Backend neu starten.")
     record = s.jobs.add(_source(s, source_id)["source_id"],
-                        agent={"model": s.runner.settings.model, "mcp_version": mcp_version})
-    s.runner.submit(record["run_id"])
+                        agent={"model": settings.model, "profile": profile, "mcp_version": mcp_version})
+    s.runner.submit(record["run_id"], settings)
     return run_view(s, record)
 
 
