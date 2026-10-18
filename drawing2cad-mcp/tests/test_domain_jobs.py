@@ -4,9 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import multiprocessing
 import os
+from pathlib import Path
 import sqlite3
 import threading
-from pathlib import Path
 import time
 
 import pytest

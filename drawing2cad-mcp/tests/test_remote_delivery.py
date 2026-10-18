@@ -52,7 +52,7 @@ def assert_public(value):
 async def call(session, name, **arguments):
     response = await session.call_tool(name, arguments)
     # Show the complete public result. The default assertion text truncates the build report.
-    assert not response.is_error, json.dumps(response.structured_content, indent=1, default=str)
+    assert not response.is_error, json.dumps(response.structured_content or response.model_dump(), indent=1, default=str)
     result = response.structured_content
     assert_public(result)
     return result
