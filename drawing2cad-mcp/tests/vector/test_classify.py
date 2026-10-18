@@ -107,8 +107,9 @@ def test_thicker_line_group_keeps_its_contours(thin, thick):
 
 
 def test_one_thick_arrow_shape_does_not_set_the_thin_width():
-    """A single arrow-like triangle in contour width is not evidence for the line group."""
-    strokes = _numbered(_outline(0.5, 80.0) + _arrowheads(0.5, 1) + [Stroke(0, Line((120, 0), (120, 6)), 0.7, 95)])
+    """A single arrow-like triangle in contour width is not evidence for the line group, also with many fill strokes."""
+    fills = [Stroke(0, Line((200.0, y / 10), (203.5, 0)), 0.5, 60) for y in range(-4, 5)]
+    strokes = _numbered(_outline(0.5, 80.0) + _arrowheads(0.5, 1) + fills + [Stroke(0, Line((120, 0), (120, 6)), 0.7, 95)])
     classify(strokes)
     assert {s.kind for s in strokes[:4]} == {Kind.CONTOUR}
     assert strokes[-1].kind is Kind.CUTTING_PLANE

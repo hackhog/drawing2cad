@@ -36,6 +36,7 @@ _EXTENSION_MAX_GAP = 8.0  # mm; gaps occur where extension lines cross dimension
 class ArrowHead:
     tip: Point
     direction_deg: float  # Axis from base to tip, modulo 180 degrees
+    width_mm: float = 0.0  # Line width of the base stroke
 
 
 def classify(strokes: list[Stroke]) -> list[ArrowHead]:
@@ -137,7 +138,7 @@ def _find_arrows(strokes: list[Stroke], grid: Grid) -> list[ArrowHead]:
         mid = ((g.p0[0] + g.p1[0]) / 2, (g.p0[1] + g.p1[1]) / 2)
         direction = math.degrees(math.atan2(tip[1] - mid[1], tip[0] - mid[0])) % 180.0
         if kind is Kind.ARROW:
-            arrows.append(ArrowHead(tip, direction))
+            arrows.append(ArrowHead(tip, direction, base.width_mm))
         else:
             _mark_section_marker(strokes, grid, tip, direction)
     return arrows
@@ -412,23 +413,24 @@ _CONTOUR_MIN_WIDTH = 0.3  # mm: thinner lines are dimension, hatch, or center li
 
 
 _THICK_TO_THIN = 1.25  # ISO 128 line groups use thick lines twice as wide as thin lines. The margin accepts rounded widths.
-_MIN_ARROW_STROKES = 12  # About four arrowheads. Fewer arrow-like triangles do not identify the thin width.
+_MIN_ARROWHEADS = 4  # Two dimensions. Fewer arrow-like triangles do not identify the thin width.
 
 
 def _arrow_width(strokes: list[Stroke], grid: Grid) -> float:
-    """Return the line width of most dimension arrowhead strokes, or 0 if the drawing has none.
-    Arrowheads are thin lines in each ISO 128 line group. The trial run does not change the stroke kinds."""
+    """Return the line width of most arrowhead strokes, or 0 if there is none.
+    Arrowheads are thin lines in each ISO 128 line group. A width counts only with several arrowheads, so that
+    one filled arrow-like triangle in contour width does not decide. The trial run does not change the stroke kinds."""
     kinds = [s.kind for s in strokes]
-    _find_arrows(strokes, grid)
+    arrows = _find_arrows(strokes, grid)
+    heads: dict[float, int] = defaultdict(int)
+    for arrow in arrows:
+        heads[round(arrow.width_mm, 3)] += 1
     count: dict[float, int] = defaultdict(int)
     for s, kind in zip(strokes, kinds):
-        if s.kind is Kind.ARROW:
+        if s.kind is Kind.ARROW and heads[round(s.width_mm, 3)] >= _MIN_ARROWHEADS:
             count[round(s.width_mm, 3)] += 1
         s.kind = kind
-    if not count:
-        return 0.0
-    width = max(count, key=count.__getitem__)
-    return width if count[width] >= _MIN_ARROW_STROKES else 0.0
+    return max(count, key=count.__getitem__) if count else 0.0
 
 
 def _contour_width(strokes: list[Stroke], grid: Grid | None = None) -> float:
