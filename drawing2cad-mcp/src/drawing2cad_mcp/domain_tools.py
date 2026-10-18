@@ -42,9 +42,8 @@ PROJECTION_VIEW = _object({
     "toward_viewer": {"enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"],
                       "description": "Model axis from the part to the viewer, for example -Y for a front view that looks along +Y."},
     "up": {"enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"], "description": "Model axis that points up in the view."},
-    "mm_per_sheet_mm": {"type": "number", "exclusiveMinimum": 0, "maximum": 1000,
+    "mm_per_sheet_mm": {"type": "number", "minimum": 0.01, "maximum": 100,
                         "description": "Part mm per sheet mm from pdf_calibrate in sheet_mm: 1:2 gives 2.0."},
-    "hidden_lines": {"enum": ["ignore", "compare"], "description": "compare also checks hidden model edges against hidden strokes."},
 }, ["view_id", "region", "toward_viewer", "up", "mm_per_sheet_mm"])
 
 _EXTRA = {
@@ -54,7 +53,8 @@ _EXTRA = {
         "with the contour strokes of the construction source in each view region. A translation aligns each view; the scale "
         "and the axes come from the arguments. Fixed limits: p95 at most 0.3 mm, maximum at most 1.0 mm (part mm), coverage "
         "at least 0.85. Return per-view deviations, worst points, uncovered drawing points, a mirror candidate, and an overlay "
-        "PNG artifact. Tangent edges count only for coverage. Sections are not compared. The result does not gate the release."),
+        "PNG artifact. Each view has its own status; a view that is not tested makes the result fail. Tangent edges count only for "
+        "coverage. Hidden edges and sections are not compared. The result does not gate the release."),
     "step_render_pmi": (_object({"artifact_id": ID, "expected_sha256": HASH}),
         "Render imported AP242 model edges and stored PMI graphics from an authorized STEP artifact in a restricted worker. Return hash-bound inspection PDF and PNG artifacts. This does not establish visual approval, target-CAD support, or full conformance."),
     "part_render_pmi": (_object(REVISION),

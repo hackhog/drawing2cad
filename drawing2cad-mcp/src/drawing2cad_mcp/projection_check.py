@@ -38,8 +38,11 @@ def _segments(polylines):
 
 
 def _sample(polylines, step=SAMPLE_STEP_MM):
-    """Return points along the polylines at about the given spacing."""
+    """Return points along the polylines at about the given spacing, at most about MAX_POINTS.
+    The spacing increases before the points are made, so that a long edge cannot exhaust the memory."""
     import numpy as np
+    total = sum(math.hypot(x1 - x0, y1 - y0) for line in polylines for (x0, y0), (x1, y1) in zip(line, line[1:]))
+    step = max(step, total / MAX_POINTS)
     points = []
     for line in polylines:
         for (x0, y0), (x1, y1) in zip(line, line[1:]):
@@ -63,7 +66,7 @@ def _distances(points, starts, ends, offset=(0.0, 0.0)):
     length2 = np.maximum((direction ** 2).sum(axis=1), 1e-18)
     best = np.full(len(shifted), np.inf)
     nearest = np.zeros_like(shifted)
-    chunk = max(1, 4_000_000 // max(1, len(starts)))
+    chunk = max(1, 1_000_000 // max(1, len(starts)))
     for begin in range(0, len(shifted), chunk):
         block = shifted[begin:begin + chunk]
         relative = block[:, None, :] - starts[None, :, :]
@@ -135,19 +138,16 @@ def _mirror(lines, axis):
 
 
 def compare_view(model: dict[str, list], drawing_lines: list[list[tuple[float, float]]], *,
-                 mm_per_sheet_mm: float, hidden_lines: str = "ignore") -> dict[str, Any]:
+                 mm_per_sheet_mm: float) -> dict[str, Any]:
     """Compare one view.
 
-    model: polylines in part mm with keys visible, tangent, and hidden.
-    drawing_lines: drawing polylines in sheet mm (y down) inside the view region, already filtered by stroke kind.
-    hidden_lines: compare uses hidden model edges; ignore leaves them out.
+    model: polylines in part mm with keys visible and tangent. Hidden model edges are not compared.
+    drawing_lines: visible contour polylines in sheet mm (y down) inside the view region.
     Tangent edges count for coverage only, because drawings often omit them.
     """
     if not isinstance(mm_per_sheet_mm, (int, float)) or not math.isfinite(mm_per_sheet_mm) or mm_per_sheet_mm <= 0:
         raise ValueError("mm_per_sheet_mm must be positive.")
-    if hidden_lines not in ("compare", "ignore"):
-        raise ValueError("hidden_lines must be compare or ignore.")
-    deviation_lines = list(model.get("visible", [])) + (list(model.get("hidden", [])) if hidden_lines == "compare" else [])
+    deviation_lines = list(model.get("visible", []))
     coverage_lines = list(model.get("tangent", []))
     s = float(mm_per_sheet_mm)
     drawing_part = [[(x * s, -y * s) for x, y in line] for line in drawing_lines]
@@ -181,7 +181,6 @@ def compare_view(model: dict[str, list], drawing_lines: list[list[tuple[float, f
         "view_origin_sheet_mm": sheet(offset),
         "worst_points_sheet_mm": [{"point": sheet(point), "distance_mm": round(distance, 4)} for point, distance in result["worst"]],
         "uncovered_points_sheet_mm": [sheet(point) for point in result["uncovered"]],
-        "hidden_lines": hidden_lines,
         "limits": limits(),
         "overlay": {"model": [[sheet((x + offset[0], y + offset[1])) for x, y in line]
                               for line in deviation_lines + coverage_lines],

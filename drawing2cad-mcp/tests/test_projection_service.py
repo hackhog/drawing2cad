@@ -81,6 +81,6 @@ def test_projection_check_rejects_a_changed_worker_path(domain):
 def test_projection_check_rejects_invalid_views(domain):
     service, source, _, _ = prepare(domain)
     for view in ({**VIEWS[0], "toward_viewer": "+Q"}, {**VIEWS[0], "mm_per_sheet_mm": 0}, {**VIEWS[0], "extra": 1},
-                 {**VIEWS[0], "up": "-Z"}):
+                 {**VIEWS[0], "up": "-Z"}, {**VIEWS[0], "region": [150, 10, 10, 120]}, {**VIEWS[0], "hidden_lines": "compare"}):
         with pytest.raises(DomainError):
             call(service, source, views=[view])

@@ -74,11 +74,16 @@ def test_tangent_edges_count_only_for_coverage():
     assert compare_view(model, on_sheet(plate()), mm_per_sheet_mm=2.0)["status"] == "pass"
 
 
-def test_hidden_edges_are_compared_only_on_request():
+def test_hidden_edges_are_not_compared():
     model = plate()
     model["hidden"] = [[(10, 0), (10, 30)]]
     assert compare_view(model, on_sheet(plate()), mm_per_sheet_mm=2.0)["status"] == "pass"
-    assert compare_view(model, on_sheet(plate()), mm_per_sheet_mm=2.0, hidden_lines="compare")["status"] == "fail"
+
+
+def test_long_edges_keep_the_point_limit():
+    from drawing2cad_mcp.projection_check import MAX_POINTS, _sample
+    points = _sample([[(0, 0), (10_000_000, 0)]])
+    assert len(points) <= MAX_POINTS + 2
 
 
 def test_empty_inputs_are_not_tested_and_limits_are_fixed():

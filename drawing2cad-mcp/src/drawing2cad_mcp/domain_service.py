@@ -535,6 +535,9 @@ class DomainService:
                 or built.get("description_sha256") != state["description_sha256"]):
             raise DomainError("VALIDATED_BUILD_REQUIRED", "Build and validate the current part before the projection check.")
         for view in args["views"]:
+            left, top, right, bottom = view["region"]
+            if right <= left or bottom <= top:
+                raise DomainError("INVALID_VIEW", f"View {view['view_id']}: the region needs left < right and top < bottom.")
             if view["toward_viewer"][1] == view["up"][1]:
                 raise DomainError("INVALID_VIEW", f"View {view['view_id']}: the up axis must be perpendicular to the viewing axis.")
         sources = [item for item in state["sources"] if item["source_id"] == args["source_id"]]
