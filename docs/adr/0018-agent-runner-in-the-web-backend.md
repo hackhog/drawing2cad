@@ -61,6 +61,10 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
   `gpt-6.1-sol` and `gpt-6-luna` accepted function tools with reasoning only through the Responses API.
   The Responses requests are stateless (`store: false`) and do not send reasoning items of earlier turns again.
   Function tools use `strict: false`, because the MCP schemas are not written for strict validation.
+- **Model transport:** the official `openai` Python SDK sends the requests, with one client and `base_url` for each
+  profile. It is the HTTP transport only. `drive()` keeps the agent loop, the authorization guards, the budgets, and the
+  trace format, so the backend uses no agent framework. The SDK retries are off. The model call keeps its own retry
+  policy with one deadline for each turn, and a response size limit of 8 MiB.
 
 ## Consequences
 

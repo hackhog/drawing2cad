@@ -469,15 +469,12 @@ def test_the_connection_check_sends_one_request_with_one_tool(environment):
     with_two_profiles(environment)
     sent = []
 
-    class Answer(io.BytesIO):
-        def __enter__(self):
-            return self
+    def answer(request):
+        sent.append((str(request.url), json.loads(request.content)))
+        return httpx2.Response(200, json={"output": [{"type": "message", "content": [{"type": "output_text", "text": "OK"}]}]})
 
-    def fake_urlopen(request, timeout):
-        sent.append((request.full_url, json.loads(request.data)))
-        return Answer(json.dumps({"output": [{"type": "message", "content": [{"type": "output_text", "text": "OK"}]}]}).encode())
-
-    environment.setattr(model_module, "urlopen", fake_urlopen)
+    real_client_for = model_module.client_for
+    environment.setattr(model_module, "client_for", lambda settings: real_client_for(settings, httpx2.MockTransport(answer)))
     with TestClient(api.create_app()) as client:
         result = client.post("/api/agent/profiles/OpenRouter/check").json()
         assert result["ok"] is True and result["message"] == "OK"
