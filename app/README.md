@@ -101,6 +101,7 @@ The browser uploads PDFs to `/api/sources`. The backend transfers each source to
 "Lauf starten" queues an agent run ([ADR 0018](../docs/adr/0018-agent-runner-in-the-web-backend.md)):
 the agent builds the model only through the MCP endpoint of the same service, and step 4 shows the released model.
 Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values; without `.env`, runs show as unavailable.
+Docker Compose also takes `DRAWING2CAD_AGENT_API_KEY` from the shell, so the key can stay in a password manager instead of `.env`.
 
 ## Structure and validation
 

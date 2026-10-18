@@ -47,6 +47,8 @@ A run lets an agent build the model only through the `drawing2cad-mcp` endpoint 
 ([ADR 0018](docs/adr/0018-agent-runner-in-the-web-backend.md)).
 Runs need an OpenAI-compatible model endpoint: copy `.env.example` to `.env`, fill in the values, and run `docker compose up -d`.
 Without `.env`, the app starts and shows runs as unavailable. See the [app guide](app/README.md).
+To keep the key out of `.env`, leave `DRAWING2CAD_AGENT_API_KEY` empty there and pass it from the shell, for example from the macOS Keychain:
+`DRAWING2CAD_AGENT_API_KEY=$(security find-generic-password -a <account> -s <service> -w) docker compose up -d`.
 
 ## Delivery milestones
 

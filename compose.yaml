@@ -10,6 +10,9 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      # The key can come from the shell instead of .env, for example from a password manager; the shell value wins.
+      DRAWING2CAD_AGENT_API_KEY: ${DRAWING2CAD_AGENT_API_KEY:-}
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
