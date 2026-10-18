@@ -32,6 +32,10 @@ View origins, view frames, and note positions are absolute sheet coordinates. A 
 Geometry and dimension or uncertainty-marker positions use local view coordinates. Apply `sheet_point = origin + scale * local_point` to check their sheet positions.
 Reserve space for generated view labels, section notes, dimensions, and the sheet title. Check transformed bounds against both the absolute view frame and the sheet margin.
 Supply view geometry, dimensions, manufacturing notes, and uncertainty markers with evidence references.
+A line anchor is `start`, `end`, or `center` (midpoint). An arc anchor is `center`, `start`, or `end`. A circle anchor is `center`, `left`, `right`, `top`, or `bottom`.
+Layout defects give the computed sheet bounds and the view transform. Use these values to move the label, the geometry, or the view frame.
+A marker leader goes from the marker label to its primitive. If the leader crosses another label, `drawing_validate` reports `leader_overlap`.
+Put a marker at each projected feature that depends on assumed, inferred, or unresolved evidence or on a review flag. The defect message names the evidence status and the link (feature evidence, parameter, primitive, or review flag). Explicit evidence needs no marker.
 For wall draft and inside fillets, apply [draft-and-fillets.md](draft-and-fillets.md).
 Use angular and radius dimensions plus scoped notes. Compare general requirements with the source and final model measurements.
 Before drawing creation, prepare two coverage tables in the run evidence:
