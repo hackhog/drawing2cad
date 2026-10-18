@@ -40,11 +40,16 @@ def task_limit() -> int:
 
     RLIMIT_NPROC applies to all tasks of the real user ID, including the threads of the service.
     A fixed value lets a busy service prevent thread creation in its workers.
+    Concurrent workers of the same user share the margin. In a PID namespace, /proc does not show
+    tasks of the same user ID in other namespaces, so the margin can be smaller than WORKER_TASKS.
     """
     import resource
 
     _, hard = resource.getrlimit(resource.RLIMIT_NPROC)
-    limit = user_task_count() + WORKER_TASKS
+    try:
+        limit = user_task_count() + WORKER_TASKS
+    except (OSError, ValueError) as error:
+        raise SandboxError("Cannot count the tasks of the worker user in /proc.") from error
     return limit if hard == resource.RLIM_INFINITY else min(limit, hard)
 
 
