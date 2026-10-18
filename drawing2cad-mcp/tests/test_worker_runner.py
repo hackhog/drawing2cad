@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import os
 import sys
+import threading
 
 import pytest
 
@@ -49,6 +50,21 @@ def test_build_and_reimport_in_distinct_restricted_workers(runner):
     assert imported["measured"]["volume_mm3"] == pytest.approx(built["measured"]["volume_mm3"])
     assert imported["measured"]["bbox_size"] == pytest.approx(built["measured"]["bbox_size"])
     assert built["sandbox"]["process_creation"] == "threads_only"
+
+
+def test_build_passes_while_the_service_has_many_threads(runner):
+    # RLIMIT_NPROC counts all tasks of the user. The service threads must not stop worker threads.
+    stop = threading.Event()
+    threads = [threading.Thread(target=stop.wait) for _ in range(80)]
+    for thread in threads:
+        thread.start()
+    try:
+        built = runner.run("build", description=sample_description())
+    finally:
+        stop.set()
+        for thread in threads:
+            thread.join()
+    assert built["status"] == "pass", built
 
 
 def test_failed_feature_retains_identifier(runner):

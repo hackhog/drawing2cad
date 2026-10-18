@@ -11,8 +11,41 @@ import platform
 import sys
 
 
+WORKER_TASKS = 64
+
+
 class SandboxError(RuntimeError):
     """A required worker restriction could not be applied."""
+
+
+def user_task_count(proc: Path = Path("/proc")) -> int:
+    """Count the tasks (processes and threads) of the real user ID, as RLIMIT_NPROC counts them."""
+    uid = str(os.getuid())
+    count = 0
+    for entry in os.scandir(proc):
+        if not entry.name.isdigit():
+            continue
+        try:
+            with open(os.path.join(entry.path, "status"), encoding="ascii", errors="replace") as stream:
+                fields = dict(line.split(":", 1) for line in stream if ":" in line)
+        except OSError:
+            continue  # The process ended.
+        if fields.get("Uid", "").split()[:1] == [uid]:
+            count += int(fields.get("Threads", "1").strip() or 1)
+    return count
+
+
+def task_limit() -> int:
+    """Return the RLIMIT_NPROC value that permits WORKER_TASKS more tasks than the user has now.
+
+    RLIMIT_NPROC applies to all tasks of the real user ID, including the threads of the service.
+    A fixed value lets a busy service prevent thread creation in its workers.
+    """
+    import resource
+
+    _, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+    limit = user_task_count() + WORKER_TASKS
+    return limit if hard == resource.RLIM_INFINITY else min(limit, hard)
 
 
 def available() -> dict:
@@ -42,7 +75,8 @@ def restrict(work_dir: Path, *, memory_mb: int, cpu_seconds: int) -> dict:
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
     resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024 * 1024,) * 2)
     resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
-    resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
+    limit = task_limit()
+    resource.setrlimit(resource.RLIMIT_NPROC, (limit, limit))
 
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
