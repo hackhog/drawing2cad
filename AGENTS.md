@@ -12,6 +12,11 @@
 
 ## Issues and pull requests
 
+- This authorship rule applies to all agents and all agent models.
+- The person who starts the agent is the responsible author. Use that person's Git identity for commits.
+- Agents must not add themselves as authors, co-authors, or collaborators.
+- Do not add agent attribution to commit trailers, pull request text, issue text, or review comments.
+- This prohibition includes `Co-Authored-By:` trailers and "Generated with ..." text that identifies an agent.
 - Start each work item from a GitHub issue. If no issue exists, create one with `gh issue create`.
 - Create one branch for each issue. Name the branch `<type>/<issue-number>-<short-name>`, for example, `feat/12-pdf-upload`.
 - Do not commit directly to `main`.
