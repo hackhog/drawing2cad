@@ -1,0 +1,52 @@
+# Test the drawing2cad-mcp package in its Docker test image and build the production image.
+# The Linux restricted-worker tests run here; they skip on other platforms.
+# This workflow needs no secrets and does not publish images.
+name: MCP
+
+on:
+  pull_request:
+    paths: ['drawing2cad-mcp/**', 'skills/**', 'resources/**', 'docs/contracts/**', '.github/workflows/mcp.yml']
+  push:
+    branches: [main]
+    paths: ['drawing2cad-mcp/**', 'skills/**', 'resources/**', 'docs/contracts/**', '.github/workflows/mcp.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  mcp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: drawing2cad-mcp/Dockerfile
+          target: test
+          tags: drawing2cad-mcp:ci-test
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Run the MCP tests
+        # The image excludes the tests. Mount them, the sample drawings, and the contract fixtures read-only.
+        run: |
+          docker run --rm \
+            -e DRAWING2CAD_PDFTOPPM=/usr/bin/pdftoppm \
+            -v "$PWD/drawing2cad-mcp/tests:/opt/drawing2cad-mcp/tests:ro" \
+            -v "$PWD/resources:/opt/resources:ro" \
+            -v "$PWD/docs/contracts:/opt/docs/contracts:ro" \
+            -w /opt/drawing2cad-mcp \
+            drawing2cad-mcp:ci-test -q -p no:cacheprovider -rfs tests | tee result.txt
+          tail -n 1 result.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: drawing2cad-mcp/Dockerfile
+          target: production
+          tags: drawing2cad-mcp:ci
+          load: true
+          cache-from: type=gha
