@@ -71,9 +71,13 @@ def test_replaced_evidence_stays_visible_and_cannot_be_referenced():
                                     "reason": "Value read again from the front view."})
     for collection in ("parameters", "features", "measurements"):
         description[collection][0]["evidence_ids"] = ["drawing_fixed"]
+    description["review_flags"] = [{"id": "length_check", "target_id": "length", "status": "open",
+                                      "reason": "Check the length again.", "evidence_ids": ["drawing"]}]
+    assert part_validate(description)["defects"][0]["pointer"] == "/review_flags/0/evidence_ids"
+    description["review_flags"][0]["evidence_ids"] = ["drawing_fixed"]
     result = part_validate(description)
     assert result["status"] == "pass", result
-    assert [item["id"] for item in result["review_items"]] == ["drawing"]
+    assert "drawing" in [item["id"] for item in result["review_items"]]
 
 
 def test_schema_closes_objects_and_bounds_features():
