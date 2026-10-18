@@ -25,7 +25,7 @@ Use the exact live schema for the selected profile; a local path must be authori
 | Tool | Inputs and interpretation |
 |---|---|
 | `pdf_info` | Uploaded `source_id`; source hash, page count, boxes, sizes, and rotation. |
-| `pdf_read_text` | Source ID and selected pages; embedded text only, without OCR. |
+| `pdf_read_text` | Source ID and selected pages; native text and tolerance candidates. Optional `tolerance_observations` accepts source-bound client transcriptions, without OCR. |
 | `pdf_render_page` | Source ID, page, DPI, and image option; inspect the returned page image. |
 | `pdf_crop_region` | Source ID, page, normalized displayed-page bounds, DPI, and image option. |
 | `drawing_extract` | `source_id`, optional one-based `page=1`, `include_strokes=false`, and `stroke_kinds`; candidate views, glyph text, strokes, circles, and dimensions. See stroke paging below. |
@@ -50,6 +50,8 @@ For large artifacts, read bounded byte ranges through the permitted client and w
 Advance by the returned byte count until the complete size from `artifact_get` is present.
 Avoid shell output capture and long command-line arguments for base64 data; Windows can reject them before decoding.
 Local-path outputs use the server paths returned by the tools.
+
+Use [tolerances-and-changes.md](tolerances-and-changes.md) to retain manufacturing tolerances and their source evidence.
 
 ## Extraction limits
 

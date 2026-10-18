@@ -23,6 +23,7 @@ from . import __version__
 from .cad_tools import CAD_SCHEMAS
 from .schema_errors import describe as describe_schema_error
 from .part_schema import PART_SCHEMA_VERSION, description_schema, part_validate as validate_description
+from .part_changes import baseline as change_baseline, proposed_change, built_effect
 from .worker_runner import WorkerLimits, WorkerRunner
 
 
@@ -245,9 +246,26 @@ class CadService:
             if source is None or source["sha256"] != evidence["source"]["source_sha256"]:
                 raise CadError("EVIDENCE_SOURCE_MISMATCH", "Each evidence item must identify an authorized source and its exact hash.")
             evidence_map[evidence["id"]] = source
-        for item in [*description.get("parameters", []), *description["features"]]:
+        for item in [*description.get("parameters", []), *description["features"], *description.get("tolerances", [])]:
             if any(evidence_map[identifier]["role"] != "construction" for identifier in item["evidence_ids"]):
-                raise CadError("VERIFICATION_SOURCE_USED_FOR_CONSTRUCTION", "Verification sources cannot provide feature or parameter inputs.")
+                raise CadError("VERIFICATION_SOURCE_USED_FOR_CONSTRUCTION", "Verification sources cannot provide construction or tolerance inputs.")
+        if description.get("tolerances"):
+            from pypdf import PdfReader
+            pages = {}
+            for tolerance in description["tolerances"]:
+                for identifier in tolerance["evidence_ids"]:
+                    source_region = next(item["source"] for item in description["evidence"] if item["id"] == identifier)
+                    source = evidence_map[identifier]
+                    if source_region.get("coordinate_system", "pdf_points") != "normalized_displayed":
+                        raise CadError("TOLERANCE_REGION_REQUIRED", "Tolerance evidence requires a normalized displayed source region.")
+                    source_id = source["source_id"]
+                    if source_id not in pages:
+                        try:
+                            pages[source_id] = len(PdfReader(io.BytesIO(CadService._source_bytes(Path(source["path"])))).pages)
+                        except Exception as error:
+                            raise CadError("INVALID_PDF_SOURCE", "Cannot inspect the tolerance source pages.") from error
+                    if source_region["page"] > pages[source_id]:
+                        raise CadError("TOLERANCE_PAGE_MISSING", "Tolerance evidence identifies a page outside its PDF source.")
 
     def _record(self, directory, state, name, arguments, status, result=None, error=None):
         sequence = len(state["events"]) + 1
@@ -308,7 +326,7 @@ class CadService:
             budget = arguments.get("step_budget", self.settings.max_tool_calls)
             if budget > self.settings.max_tool_calls:
                 raise CadError("STEP_BUDGET_LIMIT", "The requested budget exceeds the server limit.")
-            state = {"schema_version": 1, "run_id": run_id, "revision": 1, "created_at": _time(), "description": deepcopy(arguments["description"]), "description_sha256": _sha(_json(arguments["description"])), "sources": sources, "build": None, "release": None, "source_review": None, "step_budget": budget, "call_count": 0, "events": []}
+            state = {"schema_version": 1, "run_id": run_id, "revision": 1, "created_at": _time(), "description": deepcopy(arguments["description"]), "description_sha256": _sha(_json(arguments["description"])), "sources": sources, "build": None, "release": None, "source_review": None, "change_report": None, "step_budget": budget, "call_count": 0, "events": []}
             result = {"status": "pass", "description_sha256": state["description_sha256"]}
             self._record(directory, state, "part_create", arguments, "pass", result=result)
             return {**result, "run_id": run_id, "revision": 1, "call_count": 1, "step_budget": budget}
@@ -319,8 +337,19 @@ class CadService:
     def _replace(self, state, description):
         sources = self._sources(state["sources"])
         self._bind(description, sources)
+        current_build = state.get("build")
+        previous_report = state.get("change_report")
+        if current_build and current_build.get("status") == "pass":
+            base = change_baseline(state["description"], state["revision"], state["description_sha256"], current_build)
+        elif previous_report:
+            base = previous_report["baseline"]
+        else:
+            base = change_baseline(state["description"], state["revision"], state["description_sha256"], None)
+        report = proposed_change(base, description, state["revision"] + 1)
         state.update(description=deepcopy(description), description_sha256=_sha(_json(description)), revision=state["revision"] + 1, build=None, release=None, source_review=None)
-        return {"status": "pass", "description_sha256": state["description_sha256"], "build_invalidated": True}
+        state["change_report"] = report
+        return {"status": "pass", "description_sha256": state["description_sha256"], "build_invalidated": True,
+                "release_invalidated": True, "change_report": deepcopy(report)}
 
     def part_update(self, **arguments):
         return self._perform("part_update", arguments, lambda state, directory: self._replace(state, arguments["description"]))
@@ -411,11 +440,16 @@ class CadService:
         def action(state, directory):
             self.check_build(name, arguments, state)
             state["build"], state["release"], state["source_review"] = None, None, None
+            def complete(payload):
+                if state.get("change_report"):
+                    state["change_report"] = built_effect(state["change_report"], state["build"])
+                    payload["change_report"] = deepcopy(state["change_report"])
+                return payload
             options = {"code": arguments["code"]} if name == "build_code" else {
                 "export_profile": arguments.get("export_profile", "ap214"), "pmi": arguments.get("pmi")}
             result = self.runner.run("build_code" if name == "build_code" else "build", description=state["description"], **options)
             if result.get("status") != "pass":
-                return failed({"status": "fail", "build": result, "validation": {"status": "not_tested"}}, build=result)
+                return complete(failed({"status": "fail", "build": result, "validation": {"status": "not_tested"}}, build=result))
             candidate = self._candidate(result)
             candidate_hash = _sha(candidate.read_bytes())
             imported = self.runner.run("validate", description=state["description"], input_step=candidate)
@@ -440,8 +474,8 @@ class CadService:
             imported["checks"] = [item for item in import_checks if item.get("check") != "fresh_worker_reimport"] + [deepcopy(fresh_check)]
             if imported.get("status") != "pass":
                 state["build"] = {"status": "fail", "description_revision": state["revision"], "description_sha256": state["description_sha256"], "candidate_path": str(candidate), "candidate_sha256": candidate_hash, "build": result, "validation": imported, "feature_replay": "pass" if name == "build_from_description" else "not_tested"}
-                return failed({"status": "fail", "build": deepcopy(state["build"]), "released": False},
-                              build=result, validation=imported)
+                return complete(failed({"status": "fail", "build": deepcopy(state["build"]), "released": False},
+                                       build=result, validation=imported))
             if imported.get("step", {}).get("sha256") != candidate_hash:
                 raise CadError("VALIDATION_HASH_MISMATCH", "The imported STEP bytes do not match the candidate.")
             if not fresh:
@@ -466,7 +500,7 @@ class CadService:
                                         "message": "The selected AP242 export must have an AP242 schema header.",
                                         "feature_id": None}
                     payload["checks"].append({"check": "ap242_schema_header", "status": "fail", "phase": "validation"})
-                    return payload
+                    return complete(payload)
                 replay = self.runner.run("reconstruct_step", input_step=candidate)
                 record["step_only_reconstruction"] = replay
                 if _sha(candidate.read_bytes()) != candidate_hash:
@@ -507,7 +541,7 @@ class CadService:
                                            "phase": "independent_analysis"})
             state["build"] = record
             payload = {"status": status, "build": deepcopy(record), "released": False}
-            return (failed(payload, build=result, validation=imported, agreement=agreement,
+            return complete(failed(payload, build=result, validation=imported, agreement=agreement,
                            replay=record.get("step_only_reconstruction"),
                            analysis=record.get("independent_analysis"), service_checks=service_checks,
                            fallback_code=fallback_code)
@@ -599,7 +633,7 @@ class CadService:
             for row in rows:
                 writer.writerow({key: ("'" + str(value) if str(value).lstrip().startswith(("=", "+", "-", "@")) else value) for key, value in row.items()})
             markdown = "# Part review list\n\n" + ("No inferred, assumed, derived, or unresolved evidence is recorded.\n" if not rows else "\n".join(f"- {row['id']}: {row['status']}. {row['reason']}" for row in rows) + "\n")
-            manifest = {"schema_version": 1, "run_id": state["run_id"], "description_revision": state["revision"], "description_sha256": state["description_sha256"], "sources": state["sources"], "created_at": _time(), "package_version": __version__, "tool_names": sorted(CAD_SCHEMAS), "limits": {"timeout_seconds": self.settings.timeout_seconds, "memory_mb": self.settings.memory_mb, "step_budget": state["step_budget"]}, "build": state["build"], "release": state["release"], "source_review": state["source_review"], "call_count_before_export": state["call_count"]}
+            manifest = {"schema_version": 1, "run_id": state["run_id"], "description_revision": state["revision"], "description_sha256": state["description_sha256"], "sources": state["sources"], "created_at": _time(), "package_version": __version__, "tool_names": sorted(CAD_SCHEMAS), "limits": {"timeout_seconds": self.settings.timeout_seconds, "memory_mb": self.settings.memory_mb, "step_budget": state["step_budget"]}, "build": state["build"], "release": state["release"], "source_review": state["source_review"], "change_report": state.get("change_report"), "call_count_before_export": state["call_count"]}
             trace = []
             for event in state["events"]:
                 record = deepcopy(event)
@@ -614,6 +648,8 @@ class CadService:
                         record[field] = json.loads(data)
                 trace.append(record)
             files = {"part.json": _json(state["description"]), "review.md": markdown.encode("utf-8"), "review.csv": csv_buffer.getvalue().encode("utf-8"), "coverage.json": _json(state["source_review"] or {"status": "not_tested"}), "trace.jsonl": ("\n".join(json.dumps(event, ensure_ascii=False, allow_nan=False) for event in trace) + "\n").encode("utf-8")}
+            if state.get("change_report"):
+                files["change-report.json"] = _json(state["change_report"])
             artifacts = []
             for name, data in files.items():
                 path = artifact_dir / name

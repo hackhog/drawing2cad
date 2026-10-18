@@ -27,7 +27,7 @@ from pypdf import PdfReader
 
 from .vector.export import SCHEMA_VERSION
 from .vector.model import Kind
-from . import measurements
+from . import measurements, tolerances
 
 
 # Default stroke page for agents; internal callers can request all strokes of a drawing in one page.
@@ -170,7 +170,8 @@ class PdfService:
         }
 
     def read_text(
-        self, path: str | Path, pages: list[int] | None = None, max_chars: int = 50_000
+        self, path: str | Path, pages: list[int] | None = None, max_chars: int = 50_000,
+        tolerance_observations: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if isinstance(max_chars, bool) or not isinstance(max_chars, int) or not 1 <= max_chars <= 1_000_000:
             raise PdfError("max_chars must be an integer between 1 and 1000000.")
@@ -182,8 +183,12 @@ class PdfService:
             self._page_number(source, page)
         if len(set(selected)) != len(selected):
             raise PdfError("Duplicate page numbers are unsupported.")
+        source_metadata = source.metadata
+        digest = source_metadata["sha256"]
+        observations = self._tolerance_observations(source, selected, tolerance_observations, digest)
         records = []
         remaining = max_chars
+        candidates: list[dict[str, Any]] = []
         for page in selected:
             try:
                 text = source.reader.pages[page - 1].extract_text() or ""
@@ -191,16 +196,53 @@ class PdfService:
                 raise PdfError(f"Native text extraction failed on page {page}: {type(exc).__name__}.") from exc
             returned = text[:remaining]
             remaining -= len(returned)
+            # The final line of truncated text can contain an incomplete value.
+            complete_lines = returned.splitlines()
+            skipped_truncated_line = bool(len(returned) < len(text) and complete_lines)
+            if len(returned) < len(text) and complete_lines:
+                complete_lines.pop()
+            skipped_long_lines = 0
+            for line in complete_lines:
+                if len(line) > 500:
+                    skipped_long_lines += 1
+                    continue
+                source_region = self._tolerance_source(digest, page, "page", [0.0, 0.0, 1.0, 1.0])
+                found = tolerances.candidate(line.strip(), source=source_region,
+                                             provenance="native_text", confidence=0.4)
+                if found is not None:
+                    found["location_precision"] = "page"
+                    found["association_required"] = True
+                    found["source_review_required"] = True
+                    candidates.append(found)
             records.append({
                 "page": page,
                 "text": returned,
                 "status": "native_text_available" if text.strip() else "native_text_missing",
                 "extracted_characters": len(text),
                 "truncated": len(returned) < len(text),
+                "tolerance_lines_skipped_over_limit": skipped_long_lines,
+                "tolerance_last_line_skipped_due_to_truncation": skipped_truncated_line,
             })
+        for observation in observations:
+            source_region = self._tolerance_source(digest, observation["page"], observation["view"],
+                                                    observation["region"])
+            found = tolerances.candidate(observation["raw_text"], source=source_region,
+                                         provenance="client_observation", unit=observation.get("unit"),
+                                         confidence=observation["confidence"],
+                                         notation_hint=observation.get("notation_hint"))
+            if found is None:
+                found = tolerances.candidate(observation["raw_text"], source=source_region,
+                                             provenance="client_observation", unit=observation.get("unit"),
+                                             confidence=observation["confidence"], notation_hint="unclear")
+            found["location_precision"] = "supplied_region"
+            found["association_required"] = True
+            found["source_review_required"] = True
+            candidates.append(found)
+        if len(candidates) > 200:
+            raise PdfError("More than 200 tolerance candidates; select fewer pages or observations.")
         found = sum(row["status"] == "native_text_available" for row in records)
         return {
-            "source": source.metadata,
+            "source": source_metadata,
             "page_count": len(source.reader.pages),
             "pages": records,
             "status": "native_text_missing" if not found else (
@@ -210,7 +252,48 @@ class PdfService:
             "max_chars": max_chars,
             "returned_characters": max_chars - remaining,
             "truncated": any(row["truncated"] for row in records),
+            "tolerance_candidates": candidates,
+            "tolerance_observation_count": len(observations),
         }
+
+    @staticmethod
+    def _tolerance_source(digest: str, page: int, view: str, region: list[float]) -> dict[str, Any]:
+        return {"source_id": digest, "source_sha256": digest,
+                "page": page, "view": view, "region": region,
+                "coordinate_system": "normalized_displayed"}
+
+    def _tolerance_observations(self, source: _Source, selected: list[int],
+                                observations: list[dict[str, Any]] | None, digest: str) -> list[dict[str, Any]]:
+        if observations is None:
+            return []
+        if not isinstance(observations, list) or len(observations) > 100:
+            raise PdfError("tolerance_observations must be a list of at most 100 records.")
+        allowed = {"raw_text", "page", "view", "region", "source_sha256", "unit", "confidence", "notation_hint"}
+        required = {"raw_text", "page", "view", "region", "source_sha256", "confidence"}
+        for item in observations:
+            if not isinstance(item, dict) or not required <= item.keys() or item.keys() - allowed:
+                raise PdfError("Tolerance observation fields are invalid.")
+            if (not isinstance(item["raw_text"], str) or not 1 <= len(item["raw_text"]) <= 500
+                    or not item["raw_text"].strip() or not isinstance(item["view"], str)
+                    or not 1 <= len(item["view"]) <= 100 or not item["view"].strip()):
+                raise PdfError("Tolerance observation text and view must be nonempty and bounded.")
+            if item["source_sha256"] != digest:
+                raise PdfError("Tolerance observation source SHA-256 does not match the current PDF.")
+            self._page_number(source, item["page"])
+            if item["page"] not in selected:
+                raise PdfError("Tolerance observation page must be selected for text extraction.")
+            region = item["region"]
+            if (not isinstance(region, list) or len(region) != 4
+                    or any(type(v) not in (int, float) or not math.isfinite(v) for v in region)
+                    or not (0 <= region[0] < region[2] <= 1 and 0 <= region[1] < region[3] <= 1)):
+                raise PdfError("Tolerance observation region must be an ordered normalized displayed box.")
+            if item.get("unit") not in (None, "mm", "deg") or item.get("notation_hint") not in (
+                    None, "deviation", "limits", "fit", "general", "unclear"):
+                raise PdfError("Tolerance observation unit or notation hint is unsupported.")
+            value = item["confidence"]
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
+                raise PdfError("Tolerance observation confidence must be finite and between zero and one.")
+        return observations
 
     def _output_directory(self) -> Path:
         self.output_root.mkdir(parents=True, exist_ok=True)

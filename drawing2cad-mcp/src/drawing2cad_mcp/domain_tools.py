@@ -6,6 +6,7 @@ from .cad_tools import CAD_DESCRIPTIONS, CAD_SCHEMAS
 from .measurements_tools import MEASUREMENT_DESCRIPTIONS, MEASUREMENT_SCHEMAS
 from .step_tools import STEP_DESCRIPTIONS, STEP_SCHEMAS
 from .vector.model import Kind
+from .tolerances import TOLERANCE_OBSERVATIONS_SCHEMA
 
 
 def _object(properties, required=None):
@@ -83,8 +84,9 @@ _EXTRA = {
     "job_cancel": (_object({"job_id": ID}), "Request cancellation. Queued jobs do not start. Active operations may finish; cancellation does not undo their effects."),
     "pdf_info": (_object({"source_id": ID}), "Inspect an uploaded PDF and its exact source SHA-256. No OCR."),
     "pdf_read_text": (_object({"source_id": ID, "pages": {"type": ["array", "null"], "items": PAGE, "minItems": 1, "uniqueItems": True},
-                               "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000}}, ["source_id"]),
-                      "Read native PDF text by source ID. No OCR or dimension inference."),
+                               "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000},
+                               "tolerance_observations": TOLERANCE_OBSERVATIONS_SCHEMA}, ["source_id"]),
+                      "Read native PDF text and source-linked tolerance candidates by source ID. Optional bounded client transcriptions use displayed regions and the current source hash. Candidates need source review and feature association. No OCR."),
     "pdf_render_page": (_object({"source_id": ID, "page": PAGE, "dpi": DPI, "include_image": {"type": "boolean"}}, ["source_id"]),
                         "Render an uploaded PDF page. Return an immutable PNG artifact and an optional bounded inline preview."),
     "pdf_crop_region": (_object({"source_id": ID, "page": PAGE, "dpi": DPI, "include_image": {"type": "boolean"},
