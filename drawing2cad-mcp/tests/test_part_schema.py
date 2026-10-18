@@ -60,6 +60,22 @@ def test_assumptions_have_source_and_reason_and_stay_visible():
     assert part_validate(description)["status"] == "fail"
 
 
+def test_replaced_evidence_stays_visible_and_cannot_be_referenced():
+    description = sample_description()
+    old = description["evidence"][0]
+    old.update(review_status="rejected", reason="Misread value. Replaced by drawing_fixed.")
+    result = part_validate(description)
+    assert result["status"] == "fail"
+    assert {item["code"] for item in result["defects"]} == {"unresolved_input"}
+    description["evidence"].append({**deepcopy(old), "id": "drawing_fixed", "review_status": "open",
+                                    "reason": "Value read again from the front view."})
+    for collection in ("parameters", "features", "measurements"):
+        description[collection][0]["evidence_ids"] = ["drawing_fixed"]
+    result = part_validate(description)
+    assert result["status"] == "pass", result
+    assert [item["id"] for item in result["review_items"]] == ["drawing"]
+
+
 def test_schema_closes_objects_and_bounds_features():
     schema = description_schema()
     assert schema["additionalProperties"] is False
