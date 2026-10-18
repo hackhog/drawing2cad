@@ -1,4 +1,5 @@
-# Test drawing2cad-mcp through Poetry, check its distributions, and test its container image.
+# Test drawing2cad-mcp in its Linux container image, check its distributions, and build the production image.
+# The image installs the locked dependencies with Poetry. poetry install stops if pyproject.toml and poetry.lock do not agree.
 # This workflow needs no secrets. It does not commit or deploy artifacts.
 name: MCP
 
@@ -15,35 +16,26 @@ permissions:
 jobs:
   mcp:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: drawing2cad-mcp
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install Poppler and the CAD runtime libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends poppler-utils libseccomp2 libgl1 libglu1-mesa libxrender1 libxext6
-      # Use the system Python 3.12 of the runner, not actions/setup-python. The CAD sandbox permits reads
-      # below /usr and the environment, but not below /opt/hostedtoolcache, where setup-python puts the standard library.
-      - name: Install Poetry
-        run: pipx install --python /usr/bin/python3.12 poetry==2.4.1  # Same version as drawing2cad-mcp/Dockerfile.
-      - run: poetry env use /usr/bin/python3.12
-      # poetry install stops if pyproject.toml and poetry.lock do not agree.
-      - run: poetry install --extras "cad test"
-      - name: Lock file is unchanged
-        run: git diff --exit-code poetry.lock
-      - name: Test suite
+      - name: Build the test image
+        run: docker build -f drawing2cad-mcp/Dockerfile --target test -t drawing2cad-mcp:ci-test .
+      - name: Test suite in the test image
+        # Some tests read repository files outside the package. Mount the checkout read-only.
         run: |
           set -o pipefail
-          poetry run pytest -q -rs -p no:cacheprovider | tee "$RUNNER_TEMP/result.txt"
-          # A skip for an unavailable sandbox is a failure in CI: the headless CAD path must run.
-          ! grep -E '^SKIPPED.*sandbox' "$RUNNER_TEMP/result.txt"
+          docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/drawing2cad-mcp \
+            drawing2cad-mcp:ci-test -q -rs -p no:cacheprovider tests | tee "$RUNNER_TEMP/result.txt"
+          # The image has the sandbox libraries and the STEPcode executable. A skip for them is a failure.
+          ! grep -E '^SKIPPED.*(sandbox|STEPcode)' "$RUNNER_TEMP/result.txt"
       - name: Distributions contain the package data and the console command
         run: |
-          poetry build --output "$RUNNER_TEMP/dist"
-          python - "$RUNNER_TEMP/dist" <<'EOF'
+          mkdir -p "$RUNNER_TEMP/dist"
+          # Build with the Poetry of the test image. The image contains the package source.
+          docker run --rm --network none --user root -v "$RUNNER_TEMP/dist:/dist" --entrypoint poetry \
+            drawing2cad-mcp:ci-test build --directory /opt/drawing2cad-mcp --output /dist
+          python3 - "$RUNNER_TEMP/dist" <<'EOF'
           import glob, sys, tarfile, zipfile
           data = ["drawing2cad_mcp/adapters/origins.json", "drawing2cad_mcp/vector/glyph_templates.json",
                   "drawing2cad_mcp/vector/py.typed"]
@@ -60,22 +52,6 @@ jobs:
               sys.exit(f"Missing from the distributions: {missing}")
           print("Wheel and sdist contain", data, "and the console command.")
           EOF
-
-  image:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build the test image
-        run: docker build -f drawing2cad-mcp/Dockerfile --target test -t drawing2cad-mcp:ci-test .
-      - name: Test suite in the test image
-        # Some tests read repository files outside the package. Mount the checkout read-only.
-        run: |
-          set -o pipefail
-          docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/drawing2cad-mcp \
-            drawing2cad-mcp:ci-test -q -rs -p no:cacheprovider tests | tee "$RUNNER_TEMP/result.txt"
-          # The image has the sandbox libraries and the STEPcode executable. A skip for them is a failure.
-          ! grep -E '^SKIPPED.*(sandbox|STEPcode)' "$RUNNER_TEMP/result.txt"
       - name: Build the production image
         run: docker build -f drawing2cad-mcp/Dockerfile --target production -t drawing2cad-mcp:ci .
       - name: Production entry point starts

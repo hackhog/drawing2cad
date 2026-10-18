@@ -31,6 +31,9 @@ The backend lock became out of date once after a version change of the MCP packa
 - The images install the dependencies with Poetry and install each root package from a wheel.
   Poetry has its own environment in the images, separate from the application environment.
 - The backend CI job runs `poetry lock` and stops if the backend lock changes.
+- The MCP CI job tests the package only in its Linux test image, which Poetry installs from the lock.
+  The job also builds the wheel and sdist with the Poetry of that image and checks their content.
+  A Linux container is the supported test environment, also on Windows through WSL.
 
 ## Consequences
 
