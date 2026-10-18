@@ -93,18 +93,21 @@ def test_concurrent_builds_pass_while_the_service_has_many_threads(runner):
         assert result["status"] == "pass", result
 
 
-# Start threads until thread creation fails, then report the number. The threads are daemons, so the
-# worker can stop while they wait.
+# Start threads until thread creation fails, then report the number and the error. The threads are
+# daemons, so the worker can stop while they wait. A small stack keeps the address space limit
+# (RLIMIT_AS) from stopping thread creation before the task limit does.
 THREAD_COUNT_CODE = """import threading
+threading.stack_size(256 * 1024)
 stop = threading.Event()
 started = 0
+reason = "none"
 try:
     while started < 1000:
         threading.Thread(target=stop.wait, daemon=True).start()
         started += 1
-except RuntimeError:
-    pass
-raise ValueError(f"started_threads={started}")
+except RuntimeError as error:
+    reason = str(error)
+raise ValueError(f"started_threads={started};reason={reason}")
 """
 
 
@@ -112,7 +115,10 @@ def started_threads(result):
     assert result["status"] == "fail", result
     message = result["error"]["message"]
     assert message.startswith("started_threads="), result
-    return int(message.split("=", 1)[1])
+    count, reason = message.removeprefix("started_threads=").split(";reason=", 1)
+    # Thread creation must stop, and Python reports a failed pthread_create as "can't start new thread".
+    assert reason != "none", result
+    return int(count)
 
 
 @pytest.mark.parametrize("workers", [1, 2])
