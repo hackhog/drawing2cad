@@ -59,7 +59,7 @@ To keep the key out of `.env`, leave `DRAWING2CAD_AGENT_API_KEY` empty there and
 | M2 Web | HTTP API and React/shadcn/TanStack interface in the same Python application, using the shared services. |
 | M3 AP242 | STEP-only construction reconstruction, driving parameter edits through adapters, semantic PMI, and graphical PMI. |
 
-The web interface and complete M3 acceptance remain required follow-up work.
+Complete M3 acceptance remains follow-up work. The web app (M2 Web) starts agent builds through the MCP; see "Web app with agent runs".
 The initial [AP242 adapter](docs/adr/0017-ap242-application-construction-and-pmi.md)
 adds application-specific construction replay and nominal PMI. AP242 builds require
 bounded independent STEPcode analysis. Headless PDF/PNG inspection shows the actual
@@ -78,7 +78,25 @@ A server-side geometry pass is separate from independent STEP analysis and an op
 Missing tests remain `not_tested`.
 [ADR 0016](docs/adr/0016-shared-domain-service-and-drawing-delivery.md) defines the M2 service boundary and drawing limits.
 The drawing adapter renders supplied 2D view geometry with native DXF dimensions. It does not derive arbitrary projections or sections from a solid.
-Independent source review is still required. Resource acceptance trials follow after the delivery milestones.
+Independent source review is still required. "Test run results" shows the current results of the sample drawings.
+
+## Test run results
+
+Run on 2026-10-18, commit `7670fa0`, MCP image built from that commit.
+Each part ran in a separate agent session (`codex exec`, model gpt-6-luna, reasoning medium) with the skill in this repository, at most 60 MCP tool calls, and only the drawing2cad MCP tools.
+
+| Part | Result | Released STEP SHA-256 | Notes | MCP calls |
+|---|---|---|---|---|
+| Achse | released | `1103dacfab40a8cb00f766cc8e63dc4b3a70bbbee0269716f04f0fd1d9e5b973` | Build and fresh-worker STEP re-import passed. Drawing status `missing`: the drawing validation returned defects, and no drawing was rendered. | 34 |
+| Welle | released | `c04c87e83fdfd312ea84babd07ba5eb9e4667d5b7c064245ca6c46d28405848a` | Build and re-import passed; the bounding box, five shaft diameters, and the R2 radius passed. Drawing status `missing`: the drawing render failed. | 40 |
+| Splint | not released | – | Build and re-import passed. The projection check failed and showed that the view is 2:1, although the title block shows 1:1. The calibrated repeat did not run because the client lost the MCP connection. | 36 |
+| Grundplatte | not released | – | Build and re-import passed. The model omits perimeter walls, edge notches, draft, and radii. The projection check stopped with `WORKER_TIMEOUT`. | 52 |
+| Schnittmenge | not released | – | Build and re-import passed. The model omits the R10 root fillets and two section details. Source coverage is incomplete. | 43 |
+| Trägerplatte V2 | not released | – | Build and re-import passed. `export_step` returned `COVERAGE_INCOMPLETE`. The drawing failed. | 44 |
+
+The release requires a passed build, a fresh-worker re-import, and complete source coverage. A part that does not meet these conditions is not released; the tool does not guess missing features.
+In the previous run with the same model and prompt (commit `efcd1ec`), Achse, Welle, and Splint were not released.
+The drawing deliverable is not complete for any part. Independent STEP conformance and target-CAD opening were `not_tested`.
 
 ## Architecture
 
@@ -93,18 +111,6 @@ After a source change, run `npm run build --prefix tools/diagrams`.
 CI verifies exact generated output with `npm run check --prefix tools/diagrams`.
 The renderer is part of the repository; it needs no machine-local archify installation.
 
-## Existing demo
-
-```bash
-docker compose up --build
-```
-
-Open `http://localhost:8000`.
-The existing demo has separate frontend and backend containers.
-It supports temporary PDF analysis and uploaded STEP display.
-It does not implement the M2 persistent upload, artifact, or unified application contract.
-See [app/README.md](app/README.md).
-
 ## Project structure
 
 | Path | Contents |
@@ -114,7 +120,7 @@ See [app/README.md](app/README.md).
 | [compose.mcp-http.yaml](compose.mcp-http.yaml) | Authenticated Streamable HTTP override on host port 8765. |
 | [Streamable HTTP guide](drawing2cad-mcp/STREAMABLE_HTTP.md) | HTTP transport, authentication, LiteLLM, and deployment limits. |
 | [skills/drawing2cad/](skills/drawing2cad/SKILL.md) | Reusable skill and focused references. |
-| [app/](app/README.md) | Existing development demo. |
+| [app/](app/README.md) | Web app: React frontend and Python backend with agent runs through the MCP. |
 | [docs/adr/](docs/adr/README.md) | Architecture decisions and staged acceptance scope. |
 | [docs/diagrams/](docs/diagrams/drawing2cad-overview.json) | Versioned diagram source and generated HTML/SVG. |
 | `tools/diagrams/` | Portable diagram generator and parity tests. |
