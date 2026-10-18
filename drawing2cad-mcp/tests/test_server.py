@@ -186,3 +186,32 @@ async def test_full_stdio_server_exposes_native_part_and_pdf_tools(tmp_path):
             text = await session.call_tool("pdf_read_text", {"path": str(source)})
             assert text.structured_content["source"] == pdf.structured_content["source"]
             assert "Dimension 42 mm" in text.structured_content["pages"][0]["text"]
+
+
+async def test_invalid_argument_error_does_not_repeat_the_input_value(app, tmp_path):
+    private = "/srv/private-customer/secret-drawing.pdf"
+    source = make_pdf(tmp_path / "test.pdf")
+    result = await invoke(app, "pdf_read_text", path=str(source), pages=private)
+    assert result.is_error
+    error = result.structured_content["error"]
+    assert error["code"] == "INVALID_ARGUMENTS" and error["target"] == "/pages"
+    assert "secret" not in json.dumps(result.structured_content)
+
+
+async def test_stdio_transport_does_not_repeat_invalid_input_values(tmp_path):
+    """The complete MCP stdio path returns the field and the rule, not the private value."""
+    private = "/srv/private-customer/secret-drawing.pdf"
+    source = make_pdf(tmp_path / "test.pdf")
+    config = tmp_path / "config.toml"
+    quote = json.dumps
+    config.write_text(
+        f'[pdf]\nallowed_roots=[{quote(str(tmp_path))}]\noutput_root={quote(str(tmp_path / "out"))}\n', encoding="utf8")
+    parameters = StdioServerParameters(command=sys.executable,
+                                      args=["-m", "drawing2cad_mcp", "--config", str(config)],
+                                      env={"PYTHONPATH": str(Path(drawing2cad_mcp.__file__).resolve().parents[1])})
+    async with stdio_client(parameters) as streams:
+        async with ClientSession(*streams) as session:
+            await session.initialize()
+            result = await session.call_tool("pdf_read_text", {"path": str(source), "pages": private})
+            assert result.is_error
+            assert "secret" not in json.dumps(result.model_dump(mode="json"))

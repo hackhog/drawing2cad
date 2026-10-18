@@ -33,6 +33,7 @@ from .domain_tools import DOMAIN_SCHEMAS
 from .drawing_contract import drawing_schema, drawing_validate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import PdfError, PdfService
+from .schema_errors import describe as describe_schema_error
 from .part_schema import EdgeSelectionDiagnostic
 from .step import StepError, StepService
 
@@ -182,7 +183,7 @@ class DomainService:
         return value
 
     @staticmethod
-    def _validate(name, arguments):
+    def _validate(name, arguments, prefix=""):
         if name not in DOMAIN_SCHEMAS:
             raise DomainError("UNKNOWN_TOOL", "The domain operation is not supported.")
         try:
@@ -191,10 +192,11 @@ class DomainService:
             if len(encoded) > 8 * 1024 * 1024:
                 raise DomainError("LIMIT_EXCEEDED", "The request exceeds the domain size limit.")
         except ValidationError as error:
-            # The JSON Pointer and the schema message tell the agent which field to correct.
-            pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
-            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract: " + error.message[:300],
-                              target=pointer, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
+            # The JSON Pointer and the failed schema rule tell the agent which field to correct.
+            # The message never repeats the input value, because it can be private.
+            target, message = describe_schema_error(error, prefix)
+            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + message,
+                              target=target, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
         except (ValueError, TypeError, RecursionError):
             raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract.") from None
 
@@ -230,7 +232,8 @@ class DomainService:
             return {"items": self.jobs.list(ctx, **args)}
         if name == "job_submit":
             operation, operation_args = args["operation"], args["arguments"]
-            self._validate(operation, operation_args)
+            # The nested arguments are a separate request; the pointer still names the field of job_submit.
+            self._validate(operation, operation_args, "/arguments")
             with self._run_lock(ctx, operation_args["run_id"]) as (cad, directory):
                 self._state(cad, directory, operation_args["expected_revision"])
                 return self.jobs.submit(ctx, operation, operation_args, args["idempotency_key"])
