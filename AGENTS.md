@@ -18,6 +18,9 @@
 - Do not add agent attribution to commit trailers, pull request text, issue text, or review comments.
 - This prohibition includes `Co-Authored-By:` trailers and "Generated with ..." text that identifies an agent.
 - Start each work item from a GitHub issue. If no issue exists, create one with `gh issue create`.
+- Before work starts, assign the issue to the authenticated GitHub user with `gh issue edit <number> --add-assignee @me`.
+- Verify the assignment on GitHub before work starts. Use the person's account, not an agent identity.
+- If another user is already assigned, resolve responsibility with the user before work starts. Do not remove existing assignees without authorization.
 - Create one branch for each issue. Name the branch `<type>/<issue-number>-<short-name>`, for example, `feat/12-pdf-upload`.
 - Do not commit directly to `main`.
 - Use a Git worktree when the user asks for one. Otherwise, use a branch in the main checkout.
