@@ -16,10 +16,10 @@ import { isActive } from "@/lib/release";
 export function NotesPanel({ run }: { run: Run }) {
   const api = useApi();
   const { data: caps } = useQuery(capabilitiesQuery(api));
-  if (!caps?.notes) return <p className="text-muted-foreground">Der verbundene Dienst speichert keine Notizen.</p>;
+  if (!caps?.notes) return <p className="text-muted-foreground">The connected service does not store notes.</p>;
   if (!run.part) {
-    return <p className="text-muted-foreground">{isActive(run) ? "Die Notiz ist verfügbar, sobald der Lauf beendet ist."
-      : "Notizen gehören zum Teil. Dieser Lauf hat kein Teil angelegt."}</p>;
+    return <p className="text-muted-foreground">{isActive(run) ? "The note is available once the run has finished."
+      : "Notes belong to the part. This run created no part."}</p>;
   }
   return <Note run={run} />;
 }
@@ -27,8 +27,8 @@ export function NotesPanel({ run }: { run: Run }) {
 function Note({ run }: { run: Run }) {
   const api = useApi();
   const note = useQuery(noteQuery(api, run.run_id));
-  if (note.isError) return <ErrorState title="Notiz nicht geladen" error={note.error} onRetry={() => void note.refetch()} />;
-  if (!note.data) return <p className="text-muted-foreground">Notiz wird geladen …</p>;
+  if (note.isError) return <ErrorState title="Note not loaded" error={note.error} onRetry={() => void note.refetch()} />;
+  if (!note.data) return <p className="text-muted-foreground">Loading note …</p>;
   // A new revision from the service resets the editor to the stored text.
   return <NoteEditor key={note.data.revision} run={run} note={note.data} />;
 }
@@ -47,11 +47,11 @@ function NoteEditor({ run, note }: { run: Run; note: RunNote }) {
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
       <div className="flex items-baseline justify-between">
-        <Label htmlFor="note">Notiz zum Lauf</Label>
-        <span className="text-[11px] text-muted-foreground">{note.revision ? `Revision ${note.revision}` : "Noch keine Notiz"}</span>
+        <Label htmlFor="note">Run note</Label>
+        <span className="text-[11px] text-muted-foreground">{note.revision ? `Revision ${note.revision}` : "No note yet"}</span>
       </div>
       <Textarea id="note" value={text} onChange={(e) => setText(e.target.value)} rows={12} disabled={active}
-        placeholder="Prüfhinweis, Rückfrage an die Konstruktion, Entscheidung …" />
+        placeholder="Review note, question for design, decision …" />
       {save.error && (
         <Alert variant="destructive">
           <AlertDescription>
@@ -59,7 +59,7 @@ function NoteEditor({ run, note }: { run: Run; note: RunNote }) {
             {conflict && (
               <Button type="button" variant="outline" size="sm" className="mt-1"
                 onClick={() => { save.reset(); void queryClient.invalidateQueries({ queryKey: keys.note(run.run_id) }); }}>
-                Neu laden
+                Reload
               </Button>
             )}
           </AlertDescription>
@@ -67,10 +67,10 @@ function NoteEditor({ run, note }: { run: Run; note: RunNote }) {
       )}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          {active ? "Während der Lauf aktiv ist, schreibt der Agent seinen Bericht in die Notiz." : "Der Bericht des Agenten bleibt im Reiter Prüfung erhalten."}
+          {active ? "While the run is active, the agent writes its report into the note." : "The agent report stays in the Review tab."}
         </p>
         <Button type="submit" size="sm" className="rounded-full" disabled={active || text === note.text || save.isPending}>
-          Notiz speichern
+          Save note
         </Button>
       </div>
     </form>

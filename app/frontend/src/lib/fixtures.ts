@@ -10,8 +10,8 @@ const PAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 297 210">
 <rect width="297" height="210" fill="#fff"/>
 <rect x="10" y="10" width="277" height="190" fill="none" stroke="#000" stroke-width=".5"/>
 <rect x="187" y="175" width="100" height="25" fill="none" stroke="#000" stroke-width=".35"/>
-<text x="192" y="186" font-family="sans-serif" font-size="6" font-weight="700">SIMULIERT</text>
-<text x="192" y="195" font-family="sans-serif" font-size="4">Synthetische Platte · keine Kundendaten</text>
+<text x="192" y="186" font-family="sans-serif" font-size="6" font-weight="700">SIMULATED</text>
+<text x="192" y="195" font-family="sans-serif" font-size="4">Synthetic plate · no customer data</text>
 </svg>`;
 
 const line = (id: number, kind: Stroke["kind"], p0: [number, number], p1: [number, number]): Stroke =>
@@ -59,7 +59,7 @@ export function fixtureAnalysis(filename: string): ExtractResult {
     review: [{
       id: "strokes-18",
       kind: "unclear_strokes",
-      message: "1 Strich(e) ohne sichere Bedeutung",
+      message: "1 stroke(s) without a certain meaning",
       bbox: [150, 112, 158, 118],
       stroke_ids: [18],
       text: null,
@@ -77,33 +77,33 @@ export const fixtureParameters = (): Parameter[] => [
 ];
 
 export const FIXTURE_OPERATIONS: Operation[] = [
-  { index: 1, kind: "extrude", label: "Grundplatte extrudieren", parameters: ["length", "width", "thickness"] },
-  { index: 2, kind: "hole", label: "Mittelbohrung", parameters: ["hole_diameter"] },
-  { index: 3, kind: "fillet", label: "Ecke rechts unten verrunden", parameters: ["corner_radius"] },
+  { index: 1, kind: "extrude", label: "Extrude base plate", parameters: ["length", "width", "thickness"] },
+  { index: 2, kind: "hole", label: "Center hole", parameters: ["hole_diameter"] },
+  { index: 3, kind: "fillet", label: "Fillet bottom right corner", parameters: ["corner_radius"] },
 ];
 
 export const FIXTURE_ASSUMPTIONS: Assumption[] = [
   {
     id: "A1", feature: "base_plate", parameter: "thickness", value: 10, unit: "mm",
-    reason: "Dicke nicht bemaßt; aus der Draufsicht im Maßstab 1:1 gemessen.", source_region: [36, 136, 164, 154],
+    reason: "Thickness not dimensioned; measured from the top view at scale 1:1.", source_region: [36, 136, 164, 154],
   },
   {
     id: "A2", feature: "corner_fillet", parameter: "corner_radius", value: 5, unit: "mm",
-    reason: "Radius ohne Maß; aus dem Bogen an der Ecke geschätzt.", source_region: [150, 112, 158, 118],
+    reason: "Radius without dimension; estimated from the arc at the corner.", source_region: [150, 112, 158, 118],
   },
 ];
 
 export const FIXTURE_UNCERTAINTIES: Uncertainty[] = [
-  { id: "U1", feature: "corner_fillet", message: "Strich an der Ecke keiner Klasse sicher zuordenbar.", source_region: [150, 112, 158, 118] },
+  { id: "U1", feature: "corner_fillet", message: "Stroke at the corner not assignable to a class with certainty.", source_region: [150, 112, 158, 118] },
 ];
 
 export function fixtureValidation(failed: boolean): ValidationResult[] {
   return [
-    { check: "solid_valid", status: "pass", detail: "Ein geschlossener Körper." },
-    { check: "dimensions_match", status: "pass", detail: "Alle Quellmaße innerhalb ±0,01 mm." },
+    { check: "solid_valid", status: "pass", detail: "One closed solid." },
+    { check: "dimensions_match", status: "pass", detail: "All source dimensions within ±0.01 mm." },
     failed
-      ? { check: "step_reimport", status: "fail", detail: "STEP-Reimport im frischen Worker ergab abweichendes Volumen." }
-      : { check: "step_reimport", status: "pass", detail: "STEP im frischen Worker neu eingelesen und geprüft." },
-    { check: "target_cad_open", status: "not_tested", detail: "Öffnen im Ziel-CAD nicht geprüft." },
+      ? { check: "step_reimport", status: "fail", detail: "STEP reimport in a fresh worker gave a different volume." }
+      : { check: "step_reimport", status: "pass", detail: "STEP reimported and checked in a fresh worker." },
+    { check: "target_cad_open", status: "not_tested", detail: "Opening in the target CAD not tested." },
   ];
 }

@@ -159,7 +159,8 @@ def test_a_run_is_queued_with_a_model_endpoint(environment):
         assert res.status_code == 201
         run = res.json()
         assert run["phase"] == "queued" and run["part"] is None and submitted == [run["run_id"]]
-        assert run["agent"] == {"model": "m", "profile": "Standard", "mcp_version": api.mcp_version}
+        assert run["agent"] == {"model": "m", "profile": "Standard", "reasoning_effort": None, "skill_version": None,
+                                "mcp_version": api.mcp_version}
         assert [r["run_id"] for r in client.get(f"/api/sources/{source['source_id']}/runs").json()] == [run["run_id"]]
         assert client.get(f"/api/runs/{run['run_id']}").json()["job"]["status"] == "queued"
 
@@ -345,7 +346,7 @@ def test_the_run_note_is_revisioned_and_keeps_the_agent_report(environment):
         services.runner.store_report(part_run, "Report")
         services.jobs.update(run["run_id"], phase="done", job={"status": "succeeded"})
         assert client.get(note).json() == {"revision": 1, "text": "Report"}
-        assert client.put(note, json={"expected_revision": 1, "text": "Report\nRadius geklärt"}).json()["revision"] == 2
+        assert client.put(note, json={"expected_revision": 1, "text": "Report\nRadius clarified"}).json()["revision"] == 2
         stale = client.put(note, json={"expected_revision": 1, "text": "y"})
         assert stale.status_code == 409 and stale.json()["detail"]["code"] == "REVISION_CONFLICT"
         # The agent report comes from the trace, so a changed note does not change it.
@@ -479,3 +480,13 @@ def test_the_connection_check_sends_one_request_with_one_tool(environment):
         assert sent[0][0] == "https://openrouter.test/v1/responses"
         assert [tool["name"] for tool in sent[0][1]["tools"]] == ["noop"]
         assert client.post("/api/agent/profiles/Missing/check").status_code == 404
+
+
+def test_the_skill_version_comes_from_the_front_matter(tmp_path):
+    skill = tmp_path / "SKILL.md"
+    runner = runner_module.AgentRunner(None, None, None, skill, "")
+    assert runner.skill_version is None
+    skill.write_text('---\nname: drawing2cad\nmetadata:\n  version: "0.20.0"\n---\n\n# drawing2cad\n')
+    assert runner.skill_version == "0.20.0"
+    skill.write_text("# drawing2cad\n\n  version: 1\n")
+    assert runner.skill_version is None

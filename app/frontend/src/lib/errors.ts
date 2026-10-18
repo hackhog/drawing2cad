@@ -18,22 +18,22 @@ export class ApiFailure extends Error {
 
 // UI text stays German (app/AGENTS.md).
 const RECOVERY: Record<string, string> = {
-  UPLOAD_TOO_LARGE: "Datei verkleinern oder nur die Zeichnungsseite als PDF hochladen.",
-  UNSUPPORTED_MEDIA_TYPE: "Nur PDF-Zeichnungen hochladen.",
-  PROCESSING_FAILED: "Datei prüfen (PDF: eine Seite, nicht gedreht) und erneut hochladen.",
-  NETWORK_ERROR: "Verbindung zum Server prüfen und erneut versuchen.",
-  UPLOAD_ABORTED: "Upload erneut starten.",
-  NOT_FOUND: "Die Kennung ist unbekannt oder abgelaufen. Zurück zur Übersicht.",
-  REVISION_CONFLICT: "Ein neuerer Stand liegt vor. Ansicht neu laden und die Änderung erneut eintragen.",
-  RUN_ACTIVE: "Warten, bis der Lauf beendet ist, und dann erneut löschen.",
-  CAPABILITY_UNAVAILABLE: "Diese Funktion bietet der verbundene Dienst noch nicht an.",
-  INVALID_PARAMETER: "Wert prüfen: Zahl im zulässigen Bereich eingeben.",
+  UPLOAD_TOO_LARGE: "Make the file smaller or upload only the drawing page as PDF.",
+  UNSUPPORTED_MEDIA_TYPE: "Upload PDF drawings only.",
+  PROCESSING_FAILED: "Check the file (PDF: one page, not rotated) and upload it again.",
+  NETWORK_ERROR: "Check the connection to the server and try again.",
+  UPLOAD_ABORTED: "Start the upload again.",
+  NOT_FOUND: "The ID is unknown or expired. Go back to the overview.",
+  REVISION_CONFLICT: "A newer state exists. Reload the view and enter the change again.",
+  RUN_ACTIVE: "Wait until the run has finished, then delete again.",
+  CAPABILITY_UNAVAILABLE: "The connected service does not offer this function yet.",
+  INVALID_PARAMETER: "Check the value: enter a number in the allowed range.",
 };
 
 /** Recovery text for an error: from the service if it supplies one, else from the code. */
 export function recoveryFor(error: unknown): string {
-  if (error instanceof ApiFailure) return error.recovery ?? RECOVERY[error.code] ?? "Erneut versuchen.";
-  return "Erneut versuchen.";
+  if (error instanceof ApiFailure) return error.recovery ?? RECOVERY[error.code] ?? "Try again.";
+  return "Try again.";
 }
 
 export function errorCode(error: unknown): string {
@@ -41,7 +41,7 @@ export function errorCode(error: unknown): string {
 }
 
 export const unavailable = (what: string) =>
-  new ApiFailure({ code: "CAPABILITY_UNAVAILABLE", message: `${what} ist im verbundenen Dienst nicht verfügbar.` });
+  new ApiFailure({ code: "CAPABILITY_UNAVAILABLE", message: `${what} is not available in the connected service.` });
 
 export const notFound = (what: string, id: string) =>
-  new ApiFailure({ code: "NOT_FOUND", message: `${what} „${id}“ nicht gefunden.` }, 404);
+  new ApiFailure({ code: "NOT_FOUND", message: `${what} “${id}” not found.` }, 404);

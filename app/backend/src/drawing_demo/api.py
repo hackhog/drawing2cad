@@ -112,10 +112,10 @@ def analyze(backend: DomainBackend, source: dict[str, Any]) -> dict[str, Any]:
     # The sheet viewer needs every stroke. One large page avoids a second vector analysis.
     data = backend.call("drawing_extract", source_id=source["source_id"], include_strokes=True, stroke_limit=50_000)
     if data["strokes_page"]["next_offset"] is not None:
-        raise ServiceError(422, "DRAWING_TOO_LARGE", "Die Zeichnung hat mehr Striche, als die Ansicht laden kann.")
+        raise ServiceError(422, "DRAWING_TOO_LARGE", "The drawing has more strokes than the view can load.")
     rendered = backend.call("pdf_render_page", source_id=source["source_id"], page=1, dpi=PAGE_DPI, include_image=False)
     if data["source"]["sha256"] != rendered["source"]["sha256"]:
-        raise ServiceError(422, "SOURCE_HASH_MISMATCH", "Analyse und Seitenbild stammen aus verschiedenen Dateien.")
+        raise ServiceError(422, "SOURCE_HASH_MISMATCH", "Analysis and page image come from different files.")
     artifact, page_png = backend.artifact_bytes(rendered["artifact"]["artifact_id"])
     width, height = struct.unpack(">II", page_png[16:24])  # The PNG IHDR chunk follows the signature.
     data["source"] = source["filename"]
@@ -277,9 +277,9 @@ def upload_source(file: UploadFile, s: Services = Depends(services)) -> dict[str
     limit = s.backend.max_source_bytes
     pdf_bytes = file.file.read(limit + 1)
     if len(pdf_bytes) > limit:
-        raise HTTPException(413, f"PDF größer als {limit // (1024 * 1024)} MB")
+        raise HTTPException(413, f"PDF larger than {limit // (1024 * 1024)} MB")
     if not pdf_bytes.startswith(b"%PDF-"):
-        raise HTTPException(415, "Keine PDF-Datei")
+        raise HTTPException(415, "Not a PDF file")
     return source_view(s.backend.upload(Path(file.filename or "upload.pdf").name, pdf_bytes))
 
 
@@ -302,8 +302,8 @@ def delete_source(source_id: str, s: Services = Depends(services)) -> Response:
     """Delete a drawing with its run records. An active run still uses the source, so it blocks the deletion."""
     source_id = _source(s, source_id)["source_id"]
     if any(r["job"]["status"] in ("queued", "running") for r in s.jobs.list(source_id)):
-        raise ServiceError(409, "RUN_ACTIVE", "Für diese Zeichnung läuft noch ein Lauf.",
-                           recovery="Warten, bis der Lauf beendet ist, und dann erneut löschen.")
+        raise ServiceError(409, "RUN_ACTIVE", "A run is still active for this drawing.",
+                           recovery="Wait until the run has finished, then delete again.")
     s.backend.delete_source(source_id)
     s.jobs.remove(source_id)
     s.measurements.remove(source_id)
@@ -329,11 +329,11 @@ def add_measurement(source_id: str, measurement: MeasurementInput, s: Services =
 
 
 def flag_view(flag: dict[str, Any]) -> dict[str, Any]:
-    """A review flag of the domain service with its German message for the UI."""
+    """A review flag of the domain service with its message for the UI."""
     message = {
-        "no_views": "Keine Ansicht erkannt",
-        "unclear_strokes": f"{len(flag['stroke_ids'])} Strich(e) ohne sichere Bedeutung",
-        "unreadable_text": f"Text nicht sicher gelesen: „{flag['text']}“",
+        "no_views": "No view recognized",
+        "unclear_strokes": f"{len(flag['stroke_ids'])} stroke(s) without a certain meaning",
+        "unreadable_text": f"Text not read with certainty: “{flag['text']}”",
     }.get(flag["kind"], flag["kind"])
     decision = flag.get("decision")
     if decision:
@@ -390,11 +390,12 @@ def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any
     profile = s.runner.profiles.active
     settings = s.runner.profiles.get(profile)
     if settings is None or not s.runner.available:
-        raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modellprofil aktiv (DRAWING2CAD_AGENT_*).",
-                           recovery="In den Einstellungen ein Modellprofil wählen oder einen Endpunkt in .env eintragen "
-                                    "und das Backend neu starten.")
+        raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "No model profile active (DRAWING2CAD_AGENT_*).",
+                           recovery="Choose a model profile in the settings, or enter an endpoint in .env "
+                                    "and restart the backend.")
     record = s.jobs.add(_source(s, source_id)["source_id"],
-                        agent={"model": settings.model, "profile": profile, "mcp_version": mcp_version})
+                        agent={"model": settings.model, "profile": profile, "reasoning_effort": settings.reasoning_effort,
+                               "skill_version": s.runner.skill_version, "mcp_version": mcp_version})
     s.runner.submit(record["run_id"], settings)
     return run_view(s, record)
 
@@ -408,8 +409,8 @@ def _note_run(s: Services, run_id: str) -> str:
     """The domain part run that holds the note of a web run. Notes belong to a part, so a run without part has none."""
     record = s.jobs.get(run_id)
     if record["part_run_id"] is None:
-        raise ServiceError(409, "NO_PART", "Dieser Lauf hat kein Teil angelegt; Notizen gehören zum Teil.",
-                           recovery="Einen Lauf mit angelegtem Teil öffnen.")
+        raise ServiceError(409, "NO_PART", "This run created no part; notes belong to the part.",
+                           recovery="Open a run that created a part.")
     return record["part_run_id"]
 
 
@@ -434,8 +435,8 @@ class NoteChange(BaseModel):
 def save_note(run_id: str, change: NoteChange, s: Services = Depends(services)) -> dict[str, Any]:
     """Replace the note with an optimistic revision check. The agent writes its report there at the end of a run."""
     if s.jobs.get(run_id)["job"]["status"] in ("queued", "running"):
-        raise ServiceError(409, "RUN_ACTIVE", "Der Lauf ist noch aktiv; der Agent schreibt seinen Bericht in die Notiz.",
-                           recovery="Warten, bis der Lauf beendet ist, und dann speichern.")
+        raise ServiceError(409, "RUN_ACTIVE", "The run is still active; the agent writes its report into the note.",
+                           recovery="Wait until the run has finished, then save.")
     note = s.backend.call("notes_update", run_id=_note_run(s, run_id), expected_revision=change.expected_revision,
                           text=change.text)
     return {"revision": note["revision"], "text": note["text"]}
@@ -483,15 +484,15 @@ def step_to_glb(file: UploadFile) -> Response:
     """Convert STEP bytes to GLB for the viewer without persistent storage."""
     step_bytes = file.file.read(MAX_STEP_BYTES + 1)
     if len(step_bytes) > MAX_STEP_BYTES:
-        raise HTTPException(413, f"STEP größer als {MAX_STEP_BYTES // (1024 * 1024)} MB")
+        raise HTTPException(413, f"STEP larger than {MAX_STEP_BYTES // (1024 * 1024)} MB")
     if not step_bytes.lstrip().startswith(b"ISO-10303-21"):
-        raise HTTPException(415, "Keine STEP-Datei")
+        raise HTTPException(415, "Not a STEP file")
     try:
         glb = cascadio.load(step_bytes, tol_linear=STEP_TOL_LINEAR, tol_angular=STEP_TOL_ANGULAR)
     except Exception as exc:
-        raise HTTPException(422, f"STEP konnte nicht gelesen werden: {exc}") from exc
+        raise HTTPException(422, f"STEP could not be read: {exc}") from exc
     if not glb.startswith(b"glTF"):
-        raise HTTPException(422, "STEP enthält keine Körper")
+        raise HTTPException(422, "STEP contains no solids")
     return Response(glb, media_type="model/gltf-binary")
 
 

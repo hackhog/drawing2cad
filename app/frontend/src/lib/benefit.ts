@@ -113,6 +113,6 @@ export function measurementsCsv(measurements: Measurement[], drawings: Map<strin
     return [drawing?.name ?? m.source_id, machine === null ? null : Math.round(machine), Math.round(m.review_seconds),
       m.manual_hours, m.estimator, m.recorded_at];
   });
-  return [["zeichnung", "maschine_s", "pruefung_s", "von_hand_h", "schaetzer", "erfasst"], ...rows]
+  return [["drawing", "machine_s", "review_s", "manual_h", "estimator", "recorded"], ...rows]
     .map((row) => row.map(csvCell).join(";")).join("\n");
 }

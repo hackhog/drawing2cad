@@ -12,11 +12,11 @@ import { ESTIMATOR_LABEL } from "@/lib/estimators";
 import { duration, euros, fmt, hours, pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-// "geschätzt" is the answer of a reviewer in step 3; "Annahme" is a value that the user sets here.
-type Origin = "gemessen" | "berechnet" | "geschätzt" | "Annahme";
+// "estimated" is the answer of a reviewer in step 3; "assumption" is a value that the user sets here.
+type Origin = "measured" | "calculated" | "estimated" | "assumption";
 const ORIGIN: Record<Origin, string> = {
-  gemessen: "bg-good-bg text-good", berechnet: "bg-info-bg text-info", geschätzt: "bg-run-bg text-run",
-  Annahme: "border border-warn-line bg-warn-bg text-bad",
+  measured: "bg-good-bg text-good", calculated: "bg-info-bg text-info", estimated: "bg-run-bg text-run",
+  assumption: "border border-warn-line bg-warn-bg text-bad",
 };
 
 const OriginBadge = ({ origin }: { origin: Origin }) =>
@@ -36,59 +36,59 @@ export function BenefitDialog({ built, human, result, assumptions, onAssumptions
   const rateId = useId();
   const manualId = useId();
   const copy = () => navigator.clipboard.writeText(csv).then(
-    () => toast.success("CSV kopiert"),
-    () => { csvRef.current?.select(); toast.info("CSV markiert", { description: "Mit Cmd+C bzw. Strg+C kopieren." }); },
+    () => toast.success("CSV copied"),
+    () => { csvRef.current?.select(); toast.info("CSV selected", { description: "Copy with Cmd+C or Ctrl+C." }); },
   );
   const number = (value: string, fallback: number) => (Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : fallback);
-  const manualOrigin: Origin = human.manualHours !== null ? "geschätzt" : "Annahme";
+  const manualOrigin: Origin = human.manualHours !== null ? "estimated" : "assumption";
 
   const figures: [string, string, Origin][] = [
-    ["3D-Modelle", fmt(built.models), "gemessen"],
-    ["Maße aus Zeichnung", built.parameters ? pct(built.fromDrawing / built.parameters) : "–", "berechnet"],
-    ["Maschinenzeit je Teil (Median)", built.medianSeconds === null ? "–" : duration(built.medianSeconds), "gemessen"],
-    ["Prüfzeit je Teil (Median)", human.reviewSeconds === null ? "–" : `${duration(human.reviewSeconds)} aus ${fmt(human.reviews)} Prüfung${human.reviews === 1 ? "" : "en"}`, "gemessen"],
-    ["Nachbau von Hand je Teil", human.manualHours !== null
-      ? `${hours(human.manualHours)} aus ${fmt(human.estimates)} Schätzung${human.estimates === 1 ? "" : "en"} (${human.estimators.map((e) => ESTIMATOR_LABEL[e]).join(", ")})`
+    ["3D models", fmt(built.models), "measured"],
+    ["Dimensions from drawing", built.parameters ? pct(built.fromDrawing / built.parameters) : "–", "calculated"],
+    ["Machine time per part (median)", built.medianSeconds === null ? "–" : duration(built.medianSeconds), "measured"],
+    ["Review time per part (median)", human.reviewSeconds === null ? "–" : `${duration(human.reviewSeconds)} from ${fmt(human.reviews)} review${human.reviews === 1 ? "" : "s"}`, "measured"],
+    ["Manual rebuild per part", human.manualHours !== null
+      ? `${hours(human.manualHours)} from ${fmt(human.estimates)} estimate${human.estimates === 1 ? "" : "s"} (${human.estimators.map((e) => ESTIMATOR_LABEL[e]).join(", ")})`
       : hours(assumptions.manualHours), manualOrigin],
-    ["Stundensatz Konstruktion", euros(assumptions.hourlyRate), "Annahme"],
+    ["Design hourly rate", euros(assumptions.hourlyRate), "assumption"],
   ];
 
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="xs" className="rounded-full normal-case tracking-normal"><Presentation />Kennzahlen</Button>
+        <Button variant="outline" size="xs" className="rounded-full normal-case tracking-normal"><Presentation />Key figures</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Kennzahlen für den Pitch</DialogTitle>
+          <DialogTitle>Key figures for the pitch</DialogTitle>
           <DialogDescription>
-            Alle Werte stammen aus den Läufen und Prüfungen in dieser App. Annahmen sind markiert.
-            {built.simulated && <strong className="text-bad"> Die Läufe sind simuliert: keine Zahlen für den Pitch.</strong>}
+            All values come from the runs and reviews in this app. Assumptions are marked.
+            {built.simulated && <strong className="text-bad"> The runs are simulated: no figures for the pitch.</strong>}
           </DialogDescription>
         </DialogHeader>
 
         {result ? (
           <p className="text-lg leading-snug font-semibold text-balance text-card-foreground">
-            {fmt(built.models)} Altzeichnung{built.models === 1 ? "" : "en"}: {duration(built.medianSeconds!)} Maschine plus {duration(human.reviewSeconds!)} Prüfung
-            statt {hours(result.manualHours)} Nachbau von Hand. Das ist <span className="text-run">{fmt(Math.round(result.factor))}-mal schneller</span>
-            {built.parameters > 0 && <>, und {pct(built.fromDrawing / built.parameters)} der Maße kommen direkt aus der Zeichnung</>}.
+            {fmt(built.models)} legacy drawing{built.models === 1 ? "" : "s"}: {duration(built.medianSeconds!)} machine plus {duration(human.reviewSeconds!)} review
+            instead of {hours(result.manualHours)} manual rebuild. That is <span className="text-run">{fmt(Math.round(result.factor))} times faster</span>
+            {built.parameters > 0 && <>, and {pct(built.fromDrawing / built.parameters)} of the dimensions come straight from the drawing</>}.
           </p>
         ) : (
           <p className="rounded-md bg-surface px-3 py-2 text-sm text-muted-foreground">
-            Für den Vergleich fehlt noch {built.medianSeconds === null ? "ein erfolgreicher CAD-Lauf" : "eine gemessene Prüfung (Schritt 3 „Prüfen“)"}.
+            The comparison still needs {built.medianSeconds === null ? "a successful CAD run" : "a measured review (step 3 “Review”)"}.
           </p>
         )}
 
         {result && (
-          <section aria-label="Zeit je Teil" className="grid gap-1.5 text-xs">
-            <Bar label="Von Hand" value={hours(result.manualHours)} parts={[[1, "bg-faint"]]} />
-            <Bar label="Mit drawing2cad" value={duration(result.toolSeconds)}
+          <section aria-label="Time per part" className="grid gap-1.5 text-xs">
+            <Bar label="By hand" value={hours(result.manualHours)} parts={[[1, "bg-faint"]]} />
+            <Bar label="With drawing2cad" value={duration(result.toolSeconds)}
               parts={[[built.medianSeconds! / (result.manualHours * 3600), "bg-run"], [human.reviewSeconds! / (result.manualHours * 3600), "bg-highlight"]]} />
             <p className="flex gap-3 text-muted-foreground">
-              <span className="flex items-center gap-1"><i className="size-2.5 rounded-sm bg-run" />Maschine</span>
-              <span className="flex items-center gap-1"><i className="size-2.5 rounded-sm bg-highlight" />Prüfung durch Mensch</span>
+              <span className="flex items-center gap-1"><i className="size-2.5 rounded-sm bg-run" />Machine</span>
+              <span className="flex items-center gap-1"><i className="size-2.5 rounded-sm bg-highlight" />Human review</span>
               <span className="ml-auto font-semibold text-good">
-                Gespart: {hours(result.hours)} ≈ {euros(result.euros)}
+                Saved: {hours(result.hours)} ≈ {euros(result.euros)}
               </span>
             </p>
           </section>
@@ -107,29 +107,29 @@ export function BenefitDialog({ built, human, result, assumptions, onAssumptions
         </table>
 
         <fieldset className="flex flex-wrap items-end gap-3 rounded-md border border-warn-line bg-warn-bg px-3 py-2">
-          <legend className="sr-only">Annahmen</legend>
+          <legend className="sr-only">Assumptions</legend>
           <div className="grid gap-1">
-            <Label htmlFor={rateId} className="text-xs">Stundensatz (€)</Label>
+            <Label htmlFor={rateId} className="text-xs">Hourly rate (€)</Label>
             <Input id={rateId} type="number" min={1} step={5} className="h-8 w-24 bg-card" defaultValue={assumptions.hourlyRate}
               onChange={(e) => onAssumptions({ ...assumptions, hourlyRate: number(e.target.value, assumptions.hourlyRate) })} />
           </div>
           <div className="grid gap-1">
-            <Label htmlFor={manualId} className="text-xs">Nachbau von Hand (h)</Label>
+            <Label htmlFor={manualId} className="text-xs">Manual rebuild (h)</Label>
             <Input id={manualId} type="number" min={0.25} step={0.25} className="h-8 w-24 bg-card" defaultValue={assumptions.manualHours}
               disabled={human.manualHours !== null}
               onChange={(e) => onAssumptions({ ...assumptions, manualHours: number(e.target.value, assumptions.manualHours) })} />
           </div>
           <p className="min-w-48 flex-1 text-xs text-muted-foreground">
             {human.manualHours !== null
-              ? "Der Nachbau von Hand kommt aus den Schätzungen bei der Prüfung; das Feld gilt nur ohne Schätzung."
-              : "Ohne Schätzung aus der Prüfung gilt dieser Wert. Am besten BCT-Konstrukteure in Schritt 3 schätzen lassen."}
+              ? "The manual rebuild time comes from the estimates given during review; this field applies only without an estimate."
+              : "Without an estimate from review, this value applies. Ideally, let BCT designers estimate in step 3."}
           </p>
         </fieldset>
 
-        <section aria-label="Messungen als CSV" className="grid gap-1.5">
+        <section aria-label="Measurements as CSV" className="grid gap-1.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold tracking-[.06em] text-faint uppercase">Messungen ({fmt(human.reviews)})</h3>
-            <Button size="xs" variant="outline" onClick={() => void copy()} disabled={!human.reviews}><ClipboardCopy />CSV kopieren</Button>
+            <h3 className="text-xs font-semibold tracking-[.06em] text-faint uppercase">Measurements ({fmt(human.reviews)})</h3>
+            <Button size="xs" variant="outline" onClick={() => void copy()} disabled={!human.reviews}><ClipboardCopy />Copy CSV</Button>
           </div>
           <textarea ref={csvRef} readOnly value={csv} aria-label="CSV" rows={Math.min(8, human.reviews + 1)}
             className="w-full resize-none rounded-md border bg-surface px-2.5 py-2 font-mono text-[11px] text-card-foreground" />

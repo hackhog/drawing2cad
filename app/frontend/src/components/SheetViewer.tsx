@@ -1,5 +1,5 @@
-// Das Blatt als SVG in Blatt-mm: blasses Seitenbild, darüber die klassifizierten Striche, Texte und Ansichten.
-// Zoom per Rad, Verschieben per Ziehen, Doppelklick = ganzes Blatt. Ein Prüf-Flag als `focus` zoomt auf seine Stelle.
+// The sheet as SVG in sheet mm: a faded page image, with the classified strokes, texts, and views on top.
+// Wheel zooms, dragging pans, double-click shows the whole sheet. A review flag as `focus` zooms to its spot.
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Box, ExtractResult, ReviewFlag, StrokeKind } from "@/lib/drawing";
 import { boxToViewBox, strokePath } from "@/lib/geometry";
@@ -10,8 +10,8 @@ import { VIEWER_FRAME } from "./viewerFrame";
 interface Props {
   result: ExtractResult;
   focus: ReviewFlag | null;
-  fitKey: number; // jede Änderung = zurück aufs ganze Blatt
-  step: 1 | 2 | 3; // 1 = Originalblatt, 2 = Strichklassen, 3 = Prüfen
+  fitKey: number; // each change = back to the whole sheet
+  step: 1 | 2 | 3; // 1 = original sheet, 2 = stroke classes, 3 = review
   dropProps: object; // PDFs dropped onto the sheet start an upload
 }
 
@@ -43,14 +43,14 @@ export function SheetViewer({ result, focus, fitKey, step, dropProps }: Props) {
   useEffect(() => {
     if (focus?.bbox) {
       const [x0, y0, x1, y1] = focus.bbox;
-      // Mindestens 30 mm Umgebung, damit man die Stelle in der Zeichnung wiederfindet
+      // At least 30 mm of surroundings, so that the spot can be found in the drawing
       setViewBox(boxToViewBox(focus.bbox, Math.max(30, (x1 - x0) * 0.6, (y1 - y0) * 0.6)));
     } else {
       setViewBox(sheetBox);
     }
   }, [focus, fitKey, sheetBox]);
 
-  // Bildschirm → Blatt-mm bei preserveAspectRatio "xMidYMid meet": gemeinsamer Maßstab, Rest zentriert
+  // Screen → sheet mm with preserveAspectRatio "xMidYMid meet": common scale, remainder centered
   function toSheet(clientX: number, clientY: number): [number, number, number] {
     const r = svgRef.current!.getBoundingClientRect();
     const vb = vbRef.current;
@@ -60,7 +60,7 @@ export function SheetViewer({ result, focus, fitKey, step, dropProps }: Props) {
     return [vb[0] + (clientX - r.left - ox) / scale, vb[1] + (clientY - r.top - oy) / scale, scale];
   }
 
-  // Rad-Listener nativ, weil React wheel-Events passiv anhängt und preventDefault dort nicht greift
+  // Native wheel listener, because React attaches wheel events as passive and preventDefault has no effect there
   useEffect(() => {
     const svg = svgRef.current!;
     const onWheel = (evt: WheelEvent) => {
@@ -97,7 +97,7 @@ export function SheetViewer({ result, focus, fitKey, step, dropProps }: Props) {
   return (
     <>
       {step === 2 && (
-        <div className="mb-2.5 flex flex-wrap gap-1.5" aria-label="Strichklassen">
+        <div className="mb-2.5 flex flex-wrap gap-1.5" aria-label="Stroke classes">
           {KINDS.filter(([kind]) => byKind.has(kind)).map(([kind, label, color]) => (
             <button key={kind} type="button" aria-pressed={!off.has(kind)} title={label} onClick={() => toggle(kind)}
               className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-0.5 text-xs font-medium aria-[pressed=false]:opacity-45">

@@ -1,11 +1,11 @@
-// 3D-Ansicht für Reiter 4 (ADR 0010): GLB vom Server (aus STEP vernetzt), neutral grau mit Kanten wie im CAD.
-// Wird per React.lazy nachgeladen, damit three.js die Übersicht nicht verlangsamt.
+// 3D view for tab 4 (ADR 0010): GLB from the server (meshed from STEP), neutral grey with edges as in CAD.
+// Loaded with React.lazy, so that three.js does not slow down the overview.
 import { Bounds, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense, useMemo } from "react";
 import { EdgesGeometry, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, type Object3D } from "three";
 
-// Kanten erst ab diesem Winkel zwischen Nachbarflächen, damit Rundungen nicht schraffiert wirken
+// Edges only from this angle between neighboring faces, so that fillets do not look hatched
 const EDGE_ANGLE_DEG = 25;
 
 function Part({ url }: { url: string }) {

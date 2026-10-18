@@ -19,7 +19,7 @@ class ViewerBoundary extends Component<{ children: ReactNode }, { error: string 
     if (!this.state.error) return this.props.children;
     return (
       <p className={CENTER}>
-        3D-Ansicht nicht möglich. Der Browser stellt kein WebGL bereit.
+        3D view not possible. The browser does not provide WebGL.
         <small className="text-xs font-normal text-faint">{this.state.error}</small>
       </p>
     );
@@ -31,7 +31,7 @@ export function ModelFrame({ url, name }: { url: string; name: string }) {
   return (
     <div className={VIEWER_FRAME}>
       <ViewerBoundary>
-        <Suspense fallback={<p className={CENTER}>3D-Ansicht wird geladen …</p>}>
+        <Suspense fallback={<p className={CENTER}>Loading 3D view …</p>}>
           <ModelViewer url={url} />
         </Suspense>
       </ViewerBoundary>
@@ -50,10 +50,10 @@ export function ModelPanel({ model, onStep }: { model: ModelState; onStep: (step
       {model.state === "done" ? <ModelFrame url={model.url} name={model.name} /> : (
         <div className={VIEWER_FRAME}>
           <label className={cn(CENTER, "cursor-pointer", over && "bg-highlight-bg")}>
-            {model.state === "run" ? <span>{model.name} wird umgewandelt …</span> : <span>STEP-Datei des Modells hierher ziehen oder klicken</span>}
+            {model.state === "run" ? <span>Converting {model.name} …</span> : <span>Drag the model STEP file here or click</span>}
             {model.state === "error" && <span className="text-flag">{model.name}: {model.error}</span>}
             <small className="max-w-[420px] text-xs font-normal text-faint">
-              STEP-Datei zur 3D-Vorschau. Der Server wandelt sie in GLB um; die Datei wird nicht dauerhaft gespeichert.
+              STEP file for the 3D preview. The server converts it to GLB; the file is not stored permanently.
             </small>
             <input type="file" accept=".stp,.step" hidden onChange={(e) => { take([...(e.target.files ?? [])]); e.target.value = ""; }} />
           </label>

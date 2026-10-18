@@ -21,7 +21,7 @@ import type { Artifact, Run } from "@/lib/contract";
 import type { ReviewFlag } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { recoveryFor } from "@/lib/errors";
-import { explainedShare, partName, pct, shortHash, time } from "@/lib/format";
+import { explainedShare, fmt, partName, pct, shortHash, time } from "@/lib/format";
 import { analysisQuery, capabilitiesQuery, flagsQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
 import { delivery, isActive } from "@/lib/release";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
@@ -30,7 +30,7 @@ import { isPdf, useUploads } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
 export type Step = 1 | 2 | 3 | 4;
-const STEPS: [Step, string][] = [[1, "Zeichnung"], [2, "Erkannt"], [3, "Prüfen"], [4, "3D-Modell"]];
+const STEPS: [Step, string][] = [[1, "Drawing"], [2, "Recognized"], [3, "Review"], [4, "3D model"]];
 
 const route = getRouteApi("/sources/$sourceId");
 
@@ -70,31 +70,31 @@ function SourceView({ sourceId }: { sourceId: string }) {
 
   const d = result.drawing;
   const story = {
-    1: `Eine Zeichnung ohne 3D-Modell: ${d.sheet_size_mm[0]} × ${d.sheet_size_mm[1]} mm, keine Textebene, nur Striche.`,
-    2: `${d.summary.strokes.toLocaleString("de-DE")} Striche klassifiziert, ${d.summary.views} Ansichten gefunden, ${d.summary.text_blocks} Maße und Texte gelesen. Ohne KI, nachvollziehbar.`,
-    3: open ? `${open} Stelle(n) ohne sichere Bedeutung: markiert statt geraten. Deine Entscheidung nutzt der nächste Lauf.`
-      : flags.length ? "Alle Stellen entschieden: der nächste Lauf nutzt deine Entscheidungen." : "Keine unklaren Stellen: alles erklärt.",
-    4: "Aus der geprüften Zeichnung baut der Dienst ein parametrisches Modell und exportiert STEP.",
+    1: `A drawing without a 3D model: ${d.sheet_size_mm[0]} × ${d.sheet_size_mm[1]} mm, no text layer, only strokes.`,
+    2: `${fmt(d.summary.strokes)} strokes classified, ${d.summary.views} views found, ${d.summary.text_blocks} dimensions and texts read. No AI, traceable.`,
+    3: open ? `${open} spot(s) without a certain meaning: flagged, not guessed. The next run uses your decision.`
+      : flags.length ? "All spots decided: the next run uses your decisions." : "No unclear spots: everything explained.",
+    4: "From the reviewed drawing, the service builds a parametric model and exports STEP.",
   }[step];
 
   return (
     <>
       <PageHeader
         title={partName(source.filename)} live
-        subtitle={`Hochgeladen ${time(source.created_at)} · ${pct(explainedShare(result).share)} erklärt · SHA-256 ${shortHash(source.sha256)}`}
+        subtitle={`Uploaded ${time(source.created_at)} · ${pct(explainedShare(result).share)} explained · SHA-256 ${shortHash(source.sha256)}`}
         actions={<>
           {step < 4 && (
             <Button variant="outline" size="sm" className="rounded-full" onClick={fitSheet}>
-              <Maximize />Ganzes Blatt
+              <Maximize />Whole sheet
             </Button>
           )}
-          <UploadButton label="Weitere PDFs" />
+          <UploadButton label="More PDFs" />
         </>}
       />
 
-      <section aria-label="Zeichnung" className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] gap-3 max-[1000px]:grid-cols-1">
+      <section aria-label="Drawing" className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] gap-3 max-[1000px]:grid-cols-1">
         <Card className="min-h-0 gap-0 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none">
-          <nav aria-label="Ablauf" className="mb-2.5 inline-flex flex-wrap gap-0.5 self-start rounded-[10px] bg-muted p-[3px]">
+          <nav aria-label="Steps" className="mb-2.5 inline-flex flex-wrap gap-0.5 self-start rounded-[10px] bg-muted p-[3px]">
             {STEPS.map(([n, label]) => (
               <button key={n} type="button" aria-current={n === step ? "step" : undefined} onClick={() => setStep(n)}
                 className="group inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 font-medium text-muted-foreground hover:text-card-foreground aria-[current=step]:bg-card aria-[current=step]:font-semibold aria-[current=step]:text-card-foreground aria-[current=step]:shadow-[0_1px_2px_rgb(17_20_24/.08),0_0_0_1px_var(--border)]">
@@ -108,7 +108,7 @@ function SourceView({ sourceId }: { sourceId: string }) {
             : <SheetViewer result={result} focus={focus} fitKey={fitKey} step={step} dropProps={drop} />}
           <footer className="mt-3 flex items-center justify-between gap-4">
             <p className="text-[13.5px]">{story}</p>
-            {step < 4 && <Button size="sm" className="rounded-full" onClick={() => setStep((step + 1) as Step)}>Weiter</Button>}
+            {step < 4 && <Button size="sm" className="rounded-full" onClick={() => setStep((step + 1) as Step)}>Next</Button>}
           </footer>
         </Card>
 
@@ -145,8 +145,8 @@ function StepModel({ sourceId }: { sourceId: string }) {
   if (latest && isActive(latest)) {
     return (
       <div className={cn(VIEWER_FRAME, "grid place-items-center content-center gap-2 p-6 text-center text-muted-foreground")}>
-        <p className="font-medium">Der Agent arbeitet: {PHASE_LABEL[latest.phase]} …</p>
-        <Link to="/runs/$runId" params={{ runId: latest.run_id }} className="text-xs underline">Lauf öffnen</Link>
+        <p className="font-medium">The agent is working: {PHASE_LABEL[latest.phase]} …</p>
+        <Link to="/runs/$runId" params={{ runId: latest.run_id }} className="text-xs underline">Open run</Link>
       </div>
     );
   }
@@ -155,7 +155,7 @@ function StepModel({ sourceId }: { sourceId: string }) {
   if (caps?.step_preview_upload) return upload;
   return (
     <div className={cn(VIEWER_FRAME, "grid place-items-center p-6 text-center text-muted-foreground")}>
-      <p className="max-w-sm">Das 3D-Modell entsteht in einem CAD-Lauf. Lauf rechts starten oder öffnen; die Vorschau zeigt dort die geprüfte Revision.</p>
+      <p className="max-w-sm">The 3D model is built in a CAD run. Start or open a run on the right; its preview shows the reviewed revision.</p>
     </div>
   );
 }
@@ -167,12 +167,12 @@ function RunModel({ run, artifact }: { run: Run; artifact: Artifact }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {error || !url
-        ? <div className={cn(VIEWER_FRAME, "grid place-items-center p-6 text-center text-muted-foreground")}>{error ?? "3D-Modell wird geladen …"}</div>
+        ? <div className={cn(VIEWER_FRAME, "grid place-items-center p-6 text-center text-muted-foreground")}>{error ?? "Loading 3D model …"}</div>
         : <ModelFrame url={url} name={`${artifact.filename} · Rev. ${artifact.model_revision}`} />}
       <div className="flex items-center gap-2 text-xs">
-        <StatusBadge tone={released ? "done" : "flag"}>{released ? "freigegeben" : "Diagnose, nicht freigegeben"}</StatusBadge>
-        <span className="text-muted-foreground">Vom Agenten über den MCP gebaut.</span>
-        <Link to="/runs/$runId" params={{ runId: run.run_id }} search={{ tab: "review" }} className="underline">Prüfpunkte ansehen</Link>
+        <StatusBadge tone={released ? "done" : "flag"}>{released ? "released" : "diagnostic, not released"}</StatusBadge>
+        <span className="text-muted-foreground">Built by the agent through the MCP.</span>
+        <Link to="/runs/$runId" params={{ runId: run.run_id }} search={{ tab: "review" }} className="underline">View review items</Link>
       </div>
     </div>
   );
@@ -190,24 +190,24 @@ function RunsCard({ sourceId }: { sourceId: string }) {
       await queryClient.invalidateQueries({ queryKey: keys.runs(sourceId) });
       void navigate({ to: "/runs/$runId", params: { runId: run.run_id } });
     },
-    onError: (err) => toast.error("Lauf nicht gestartet", { description: `${err.message} ${recoveryFor(err)}` }),
+    onError: (err) => toast.error("Run not started", { description: `${err.message} ${recoveryFor(err)}` }),
   });
 
   return (
     <Card className="gap-2.5 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0">
-        <CardTitle className="text-sm font-bold">CAD-Läufe</CardTitle>
+        <CardTitle className="text-sm font-bold">CAD runs</CardTitle>
         <Button size="sm" className="h-7 rounded-full" disabled={!caps?.runs || start.isPending} onClick={() => start.mutate()}>
-          <Play className="size-3" />Lauf starten
+          <Play className="size-3" />Start run
         </Button>
       </CardHeader>
       <CardContent className="px-0">
         {!caps?.runs && !runs.length ? (
           <p className="text-xs text-muted-foreground">
-            Der verbundene Dienst startet keine CAD-Läufe: Es ist kein Modell-Endpunkt für den Agenten konfiguriert.
+            The connected service starts no CAD runs: no model endpoint is configured for the agent.
           </p>
         ) : !runs.length ? (
-          <p className="text-xs text-muted-foreground">Noch kein Lauf für diese Zeichnung.</p>
+          <p className="text-xs text-muted-foreground">No run for this drawing yet.</p>
         ) : (
           <ul>
             {runs.map((run) => {
@@ -218,7 +218,7 @@ function RunsCard({ sourceId }: { sourceId: string }) {
                     className={cn("flex items-center gap-2 rounded-md px-1.5 py-2 hover:bg-accent")}>
                     {/* Run IDs are long; the start time identifies a run in this list, the ID stays in the tooltip. */}
                     <span className="min-w-0 flex-1 truncate font-medium text-card-foreground" title={run.run_id}>
-                      Lauf {time(run.job.started_at)}
+                      Run {time(run.job.started_at)}
                       {run.agent && <span className="block truncate text-[11px] font-normal text-muted-foreground">{run.agent.model}</span>}
                     </span>
                     <span className="text-[11px] whitespace-nowrap text-muted-foreground">Rev. {run.part?.revision ?? "–"}</span>

@@ -13,11 +13,11 @@ export function ErrorState({ title, error, onRetry }: Props) {
       <span className="grid size-10 place-items-center rounded-lg bg-flag-bg text-flag"><AlertTriangle className="size-5" /></span>
       <h2 className="text-base font-bold text-card-foreground">{title}</h2>
       {message && <p className="text-muted-foreground">{message}</p>}
-      <p className="text-sm">{error ? recoveryFor(error) : "Die Adresse ist unbekannt."}</p>
+      <p className="text-sm">{error ? recoveryFor(error) : "The address is unknown."}</p>
       {error !== undefined && <code className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{errorCode(error)}</code>}
       <div className="flex gap-2">
-        {onRetry && <Button variant="outline" size="sm" onClick={onRetry}>Erneut versuchen</Button>}
-        <Button size="sm" asChild><Link to="/">Zur Übersicht</Link></Button>
+        {onRetry && <Button variant="outline" size="sm" onClick={onRetry}>Try again</Button>}
+        <Button size="sm" asChild><Link to="/">To overview</Link></Button>
       </div>
     </div>
   );

@@ -40,9 +40,9 @@ function Shell() {
         <main className="flex min-h-0 min-w-0 flex-col gap-3 border-l bg-surface px-6 py-5 max-[1000px]:border-t max-[1000px]:border-l-0 max-[1000px]:p-4">
           {caps?.simulated && (
             <Alert className="border-warn-line bg-warn-bg py-2">
-              <AlertTitle>Simulierter Dienst</AlertTitle>
+              <AlertTitle>Simulated service</AlertTitle>
               <AlertDescription>
-                Läufe, Parameter und Ergebnisse stammen aus synthetischen Fixtures. Sie sind kein CAD-Ergebnis und kein Abnahmenachweis.
+                Runs, parameters, and results come from synthetic fixtures. They are not a CAD result and no acceptance evidence.
               </AlertDescription>
             </Alert>
           )}
@@ -56,7 +56,7 @@ function Shell() {
 
 function RouteError({ error }: ErrorComponentProps) {
   const router = useRouter();
-  return <ErrorState title="Ansicht nicht verfügbar" error={error} onRetry={() => void router.invalidate()} />;
+  return <ErrorState title="View not available" error={error} onRetry={() => void router.invalidate()} />;
 }
 
 /** Map NOT_FOUND from the service to the not-found page. Other errors go to the route error view. */
@@ -69,7 +69,7 @@ async function load(task: Promise<unknown>) {
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: Shell,
-  notFoundComponent: () => <ErrorState title="Nicht gefunden" />,
+  notFoundComponent: () => <ErrorState title="Not found" />,
   errorComponent: RouteError,
 });
 

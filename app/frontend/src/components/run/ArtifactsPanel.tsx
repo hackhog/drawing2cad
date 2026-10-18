@@ -18,18 +18,18 @@ import { capabilitiesQuery } from "@/lib/queries";
 import { delivery, isDraft, isReleased, latestShown } from "@/lib/release";
 
 const ROLE: Record<ArtifactRole, string> = {
-  drawing_pdf: "Technische Zeichnung (PDF)", drawing_diagnostic: "Zeichnungsdiagnose (PDF)", drawing_dxf: "Technische Zeichnung (DXF)", step: "3D-Modell (STEP)",
-  part_description: "Bauteilbeschreibung (JSON)", manifest: "Lauf-Manifest", trace: "MCP-Protokoll",
-  events: "Domain-Ereignisse", report: "Prüfbericht (JSON)",
+  drawing_pdf: "Technical drawing (PDF)", drawing_diagnostic: "Drawing diagnostic (PDF)", drawing_dxf: "Technical drawing (DXF)", step: "3D model (STEP)",
+  part_description: "Part description (JSON)", manifest: "Run manifest", trace: "MCP trace",
+  events: "Domain events", report: "Review report (JSON)",
 };
 
 // The STEP release records the drawing status. The drawing does not gate the release.
 const DRAWING_STATUS: Record<ReleaseDrawing["status"], string> = {
-  accepted: "Zeichnung geprüft und freigegeben.",
-  unreviewed: "Zeichnung erstellt, aber nicht geprüft.",
-  rejected: "Zeichnung bei der Prüfung abgelehnt.",
-  failed: "Zeichnung fehlerhaft. Die Diagnose-Dateien gehören zur Freigabe.",
-  missing: "Keine Zeichnung erstellt.",
+  accepted: "Drawing reviewed and released.",
+  unreviewed: "Drawing created, but not reviewed.",
+  rejected: "Drawing rejected in review.",
+  failed: "Drawing faulty. The diagnostic files belong to the release.",
+  missing: "No drawing created.",
 };
 
 export function ArtifactsPanel({ run }: { run: Run }) {
@@ -39,7 +39,7 @@ export function ArtifactsPanel({ run }: { run: Run }) {
   const revision = run.part?.revision;
   const download = useMutation({
     mutationFn: async (a: Artifact) => saveBlob(await api.readArtifact(a.artifact_id), a.filename),
-    onError: (err) => toast.error("Download fehlgeschlagen", { description: `${err.message} ${recoveryFor(err)}` }),
+    onError: (err) => toast.error("Download failed", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const released = (a: Artifact) => isReleased(state, run, a);
   const diagnostic = (a: Artifact) => isDraft(state, run, a);
@@ -51,23 +51,23 @@ export function ArtifactsPanel({ run }: { run: Run }) {
     <div className="flex flex-col gap-4">
       {state.released ? (
         <Alert className="border-good/30 bg-good-bg text-good">
-          <AlertTitle>Freigegeben: Modell der Revision {revision}</AlertTitle>
+          <AlertTitle>Released: model of revision {revision}</AlertTitle>
           {run.review?.drawing && (
             <AlertDescription>
-              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " Dieser Stand ist veraltet: Die Zeichnung wurde nach der Freigabe geändert."}</p>
+              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " This state is outdated: the drawing was changed after the release."}</p>
               {run.review.drawing.reason && <p>{run.review.drawing.reason}</p>}
             </AlertDescription>
           )}
         </Alert>
       ) : (
         <Alert className="border-warn-line bg-warn-bg">
-          <AlertTitle>Nicht freigegeben</AlertTitle>
+          <AlertTitle>Not released</AlertTitle>
           <AlertDescription>{state.reasons.map((r) => <p key={r}>{r}</p>)}</AlertDescription>
         </Alert>
       )}
 
       <ul className="flex flex-col gap-1.5">
-        {!run.artifacts.length && <li className="text-muted-foreground">Noch keine Ergebnisse.</li>}
+        {!run.artifacts.length && <li className="text-muted-foreground">No results yet.</li>}
         {run.artifacts.map((a) => {
           const ok = released(a);
           const diag = diagnostic(a);
@@ -82,10 +82,10 @@ export function ArtifactsPanel({ run }: { run: Run }) {
               </div>
               <span className="text-[11px] text-muted-foreground">Rev. {a.model_revision}</span>
               <StatusBadge tone={ok ? "done" : diag ? "flag" : stale ? "flag" : "error"}>
-                {ok ? "freigegeben" : diag ? "Diagnose" : stale ? "veraltet" : "gesperrt"}
+                {ok ? "released" : diag ? "diagnostic" : stale ? "outdated" : "locked"}
               </StatusBadge>
               <Button variant="outline" size="sm" disabled={!(ok || diag) || !caps?.downloads || download.isPending}
-                aria-label={`${a.filename} herunterladen`} onClick={() => download.mutate(a)}>
+                aria-label={`Download ${a.filename}`} onClick={() => download.mutate(a)}>
                 <Download />
               </Button>
             </li>
@@ -94,13 +94,13 @@ export function ArtifactsPanel({ run }: { run: Run }) {
       </ul>
 
       <section className="grid grid-cols-2 gap-3 max-[1200px]:grid-cols-1">
-        <Preview title={`Zeichnung${drawing ? ` · Rev. ${drawing.model_revision} · ${released(drawing) ? "freigegeben" : "Entwurf, nicht freigegeben"}` : ""}`}>
+        <Preview title={`Drawing${drawing ? ` · Rev. ${drawing.model_revision} · ${released(drawing) ? "released" : "draft, not released"}` : ""}`}>
           {drawing && !run.simulated ? <BlobView artifact={drawing} kind="pdf" />
-            : <Empty text={run.simulated ? "Keine Zeichnungsvorschau für simulierte Ergebnisse." : "Noch keine Zeichnung erstellt."} />}
+            : <Empty text={run.simulated ? "No drawing preview for simulated results." : "No drawing created yet."} />}
         </Preview>
-        <Preview title={`Modell${preview ? ` · Rev. ${preview.model_revision} · ${released(preview) ? "freigegeben" : "Diagnose, nicht freigegeben"}` : ""}`}>
+        <Preview title={`Model${preview ? ` · Rev. ${preview.model_revision} · ${released(preview) ? "released" : "diagnostic, not released"}` : ""}`}>
           {preview ? <BlobView artifact={preview} kind="glb" />
-            : <Empty text={caps?.model_preview ? "Noch keine 3D-Vorschau." : "Der verbundene Dienst liefert noch keine 3D-Vorschau."} />}
+            : <Empty text={caps?.model_preview ? "No 3D preview yet." : "The connected service does not provide a 3D preview yet."} />}
         </Preview>
       </section>
     </div>
@@ -120,7 +120,7 @@ const Empty = ({ text }: { text: string }) => (
 function BlobView({ artifact, kind }: { artifact: Artifact; kind: "pdf" | "glb" }) {
   const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id, kind === "glb" ? "glb" : "content");
   if (error) return <Empty text={error} />;
-  if (!url) return <Empty text="Wird geladen …" />;
+  if (!url) return <Empty text="Loading …" />;
   if (kind === "glb") return <ModelFrame url={url} name={artifact.filename} />;
   return <object data={url} type="application/pdf" aria-label={artifact.filename} className="min-h-[280px] flex-1 rounded-lg border" />;
 }

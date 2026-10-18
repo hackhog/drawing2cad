@@ -41,7 +41,7 @@ export function ReviewTimer({ sourceId }: { sourceId: string }) {
       setSaved(measurement);
       await queryClient.invalidateQueries({ queryKey: keys.measurements });
     },
-    onError: (err) => toast.error("Prüfzeit nicht gespeichert", { description: `${err.message} ${recoveryFor(err)}` }),
+    onError: (err) => toast.error("Review time not saved", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const restart = () => {
     setStartedAt(Date.now());
@@ -54,47 +54,47 @@ export function ReviewTimer({ sourceId }: { sourceId: string }) {
   return (
     <Card className="gap-2 rounded-xl border-run/30 px-3.5 pt-3 pb-3.5 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0">
-        <CardTitle className="flex items-center gap-1.5 text-sm font-bold"><Timer className="size-4 text-run" />Prüfzeit</CardTitle>
-        <span className="text-[11px] text-muted-foreground">{earlier ? `${earlier} frühere Messung${earlier === 1 ? "" : "en"}` : "gemessen"}</span>
+        <CardTitle className="flex items-center gap-1.5 text-sm font-bold"><Timer className="size-4 text-run" />Review time</CardTitle>
+        <span className="text-[11px] text-muted-foreground">{earlier ? `${earlier} earlier measurement${earlier === 1 ? "" : "s"}` : "measured"}</span>
       </CardHeader>
       <CardContent className="flex flex-col gap-2.5 px-0">
         <div className="flex items-center gap-3">
-          <span role="timer" aria-label="Prüfzeit" className={cn("font-mono text-[22px] font-semibold tabular-nums", stoppedAt === null ? "text-run" : "text-card-foreground")}>
+          <span role="timer" aria-label="Review time" className={cn("font-mono text-[22px] font-semibold tabular-nums", stoppedAt === null ? "text-run" : "text-card-foreground")}>
             {clock(seconds)}
           </span>
           {stoppedAt === null ? (
-            <Button size="sm" className="ml-auto rounded-full" onClick={() => setStoppedAt(Date.now())}><Check />Prüfung abgeschlossen</Button>
+            <Button size="sm" className="ml-auto rounded-full" onClick={() => setStoppedAt(Date.now())}><Check />Review done</Button>
           ) : (
-            <Button variant="ghost" size="sm" className="ml-auto rounded-full" onClick={restart}><RotateCcw />Neu messen</Button>
+            <Button variant="ghost" size="sm" className="ml-auto rounded-full" onClick={restart}><RotateCcw />Measure again</Button>
           )}
         </div>
 
-        {stoppedAt === null && <p className="text-xs text-muted-foreground">Läuft seit dem Öffnen von „Prüfen“. Markierte Stellen ansehen, dann abschließen.</p>}
+        {stoppedAt === null && <p className="text-xs text-muted-foreground">Running since “Review” was opened. Look at the flagged spots, then finish.</p>}
 
         {stoppedAt !== null && !saved && (
           <div className="flex flex-col gap-2 border-t pt-2.5">
-            <p className="text-xs font-semibold text-card-foreground">Wer hat geprüft?</p>
-            <div role="group" aria-label="Wer hat geprüft" className="flex flex-wrap gap-1.5">
+            <p className="text-xs font-semibold text-card-foreground">Who reviewed?</p>
+            <div role="group" aria-label="Who reviewed" className="flex flex-wrap gap-1.5">
               {(Object.entries(ESTIMATOR_LABEL) as [Estimator, string][]).map(([value, label]) => (
                 <button key={value} type="button" aria-pressed={estimator === value} className={CHIP} onClick={() => setEstimator(value)}>{label}</button>
               ))}
             </div>
-            <p className="text-xs font-semibold text-card-foreground">Wie lange hätte der Nachbau dieses Teils von Hand gedauert?</p>
-            <div role="group" aria-label="Aufwand von Hand" className="flex flex-wrap gap-1.5">
+            <p className="text-xs font-semibold text-card-foreground">How long would rebuilding this part by hand have taken?</p>
+            <div role="group" aria-label="Manual effort" className="flex flex-wrap gap-1.5">
               {MANUAL_ESTIMATES.map(([value, label]) => (
                 <button key={value} type="button" className={CHIP} disabled={save.isPending} onClick={() => save.mutate(value)}>{label}</button>
               ))}
             </div>
             <button type="button" className="self-start text-xs text-muted-foreground underline" disabled={save.isPending} onClick={() => save.mutate(null)}>
-              Nur Prüfzeit speichern
+              Save review time only
             </button>
           </div>
         )}
 
         {saved && (
           <p className="rounded-md bg-good-bg px-2.5 py-1.5 text-xs font-semibold text-good" role="status">
-            Gespeichert: {duration(saved.review_seconds)} Prüfung
-            {saved.manual_hours !== null && `, von Hand ${hours(saved.manual_hours)}`}
+            Saved: {duration(saved.review_seconds)} review
+            {saved.manual_hours !== null && `, by hand ${hours(saved.manual_hours)}`}
             {saved.estimator && ` (${ESTIMATOR_LABEL[saved.estimator]})`}
           </p>
         )}

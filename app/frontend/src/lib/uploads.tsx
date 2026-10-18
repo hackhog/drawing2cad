@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { toast } from "sonner";
 import { useApi } from "./apiContext";
 import { ApiFailure, recoveryFor } from "./errors";
-import { partName } from "./format";
+import { LOCALE, partName } from "./format";
 import { analysisQuery, capabilitiesQuery, keys } from "./queries";
 
 // The service analyzes in a thread pool; two parallel uploads keep the wait short without overloading it.
@@ -68,19 +68,19 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         // Reject an oversized file before the transfer; the service checks the limit again.
         const { max_pdf_bytes: limit } = await queryClient.fetchQuery(capabilitiesQuery(api));
         if (file.size > limit) {
-          throw new ApiFailure({ code: "UPLOAD_TOO_LARGE", field: "file", message: `PDF größer als ${Math.floor(limit / 1024 / 1024)} MB.` }, 413);
+          throw new ApiFailure({ code: "UPLOAD_TOO_LARGE", field: "file", message: `PDF larger than ${Math.floor(limit / 1024 / 1024)} MB.` }, 413);
         }
         const source = await api.uploadSource(file, (progress) => patch(upload.id, { progress, state: progress < 1 ? "send" : "read" }));
         const analysis = await queryClient.fetchQuery(analysisQuery(api, source.source_id));
         await queryClient.invalidateQueries({ queryKey: keys.sources });
         dismiss(upload.id);
-        const seconds = ((performance.now() - t0) / 1000).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+        const seconds = ((performance.now() - t0) / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 1 });
         const flags = analysis.review.length;
         const notify = flags ? toast.warning : toast.success;
-        notify(`${partName(file.name)} gelesen`, { description: flags ? `${flags} Stelle(n) zu prüfen · ${seconds} s` : `Alles erklärt · ${seconds} s` });
+        notify(`${partName(file.name)} read`, { description: flags ? `${flags} spot(s) to review · ${seconds} s` : `Everything explained · ${seconds} s` });
       } catch (err) {
         patch(upload.id, { state: "error", error: (err as Error).message });
-        toast.error(`${partName(file.name)} nicht lesbar`, { description: `${(err as Error).message} ${recoveryFor(err)}` });
+        toast.error(`${partName(file.name)} unreadable`, { description: `${(err as Error).message} ${recoveryFor(err)}` });
       }
     }
   }, [uploads, api, queryClient, patch, dismiss]);

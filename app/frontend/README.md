@@ -49,7 +49,7 @@ When the shared service publishes its schemas, update these types and the HTTP a
 ## User interface
 
 A light dashboard that fills the browser window ([ADR 0008](../../docs/adr/0008-demo-ui-light-dashboard.md)).
-The UI text is German, because the pitch audience is German.
+The UI text is English ([ADR 0022](../../docs/adr/0022-ui-text-in-english.md)).
 
 | Route | View |
 |---|---|

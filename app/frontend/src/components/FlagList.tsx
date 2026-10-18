@@ -31,20 +31,20 @@ export function FlagList({ flags, active, highlight, onSelect, sourceId }: Props
     <Card className={cn("min-h-0 gap-2.5 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none transition-shadow", highlight && "border-warn-line ring-3 ring-warn-bg")}>
       <CardHeader className="flex flex-row items-center justify-between px-0">
         <CardTitle className="text-sm font-bold">
-          Prüfen
+          Review
           {open > 0 && <span className="ml-1 rounded-full border border-warn-line bg-warn-bg px-1.5 py-px text-[11px] text-bad">{open}</span>}
-          {flags.length > open && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{flags.length - open} entschieden</span>}
+          {flags.length > open && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{flags.length - open} decided</span>}
         </CardTitle>
         {sourceId
           ? <Button variant="outline" size="sm" className="h-6 rounded-full px-2.5 text-[11px]" disabled={feedback.isPending}
-              title="Alle Entscheidungen als Feedback für die Entwickler der Zeichnungsanalyse" onClick={() => feedback.mutate()}>
+              title="All decisions as feedback for the developers of the drawing analysis" onClick={() => feedback.mutate()}>
               <Download />Feedback
             </Button>
           : <span className="rounded-full bg-info-bg px-2.5 py-0.5 text-[11px] font-semibold text-info">Liste</span>}
       </CardHeader>
       <CardContent className="overflow-y-auto px-0">
         <ul>
-          {!flags.length && <li className="px-1.5 py-2 text-muted-foreground">Nichts zu prüfen.</li>}
+          {!flags.length && <li className="px-1.5 py-2 text-muted-foreground">Nothing to review.</li>}
           {flags.map((f) => f.bbox ? (
             <li key={f.id} className="border-b last:border-b-0">
               <button type="button" onClick={() => onSelect(f)} aria-pressed={f.id === active?.id}
@@ -89,32 +89,32 @@ function DecisionForm({ sourceId, flag }: { sourceId: string; flag: ReviewFlag }
       }}>
       {flag.kind === "unclear_strokes" && (
         <label className="flex items-center gap-2">
-          <span className="w-16 text-muted-foreground">Bedeutung</span>
-          <select aria-label="Bedeutung der Striche" value={strokeClass} onChange={(e) => setStrokeClass(e.target.value as StrokeClass | "")}
+          <span className="w-16 text-muted-foreground">Meaning</span>
+          <select aria-label="Meaning of the strokes" value={strokeClass} onChange={(e) => setStrokeClass(e.target.value as StrokeClass | "")}
             className="h-7 flex-1 rounded-md border bg-card px-1.5">
-            <option value="">wählen …</option>
+            <option value="">choose …</option>
             {STROKE_CLASSES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
           </select>
         </label>
       )}
       {flag.kind === "unreadable_text" && (
         <label className="flex items-center gap-2">
-          <span className="w-16 text-muted-foreground">Richtig</span>
-          <Input aria-label="Richtiger Text" value={text} onChange={(e) => setText(e.target.value)} className="h-7 flex-1 text-xs" />
+          <span className="w-16 text-muted-foreground">Correct</span>
+          <Input aria-label="Correct text" value={text} onChange={(e) => setText(e.target.value)} className="h-7 flex-1 text-xs" />
         </label>
       )}
-      <Input aria-label="Hinweis für die Entwickler" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000}
-        placeholder="Hinweis für die Entwickler (optional)" className="h-7 text-xs" />
+      <Input aria-label="Note for the developers" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000}
+        placeholder="Note for the developers (optional)" className="h-7 text-xs" />
       <div className="flex flex-wrap justify-end gap-1.5">
         {flag.decision && (
           <Button type="button" variant="ghost" size="sm" className="h-7" disabled={decide.isPending}
-            onClick={() => decide.mutate({ action: "reopen" })}>Rückgängig</Button>
+            onClick={() => decide.mutate({ action: "reopen" })}>Undo</Button>
         )}
         <Button type="button" variant="outline" size="sm" className="h-7" disabled={decide.isPending}
-          onClick={() => decide.mutate(withNote({ action: "ignore" }))}>Ignorieren</Button>
+          onClick={() => decide.mutate(withNote({ action: "ignore" }))}>Ignore</Button>
         {flag.kind !== "no_views" && (
           <Button type="submit" size="sm" className="h-7"
-            disabled={decide.isPending || (flag.kind === "unclear_strokes" ? !strokeClass : !textValid)}>Übernehmen</Button>
+            disabled={decide.isPending || (flag.kind === "unclear_strokes" ? !strokeClass : !textValid)}>Apply</Button>
         )}
       </div>
     </form>

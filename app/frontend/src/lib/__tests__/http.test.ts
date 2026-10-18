@@ -33,8 +33,8 @@ describe("failure", () => {
     });
 
   it("keeps a structured service error", () => {
-    const body = JSON.stringify({ detail: { code: "REVISION_CONFLICT", message: "neuer Stand", field: "expected_revision", recovery: "neu laden" } });
-    expect(failure(409, body, "")).toMatchObject({ code: "REVISION_CONFLICT", field: "expected_revision", recovery: "neu laden" });
+    const body = JSON.stringify({ detail: { code: "REVISION_CONFLICT", message: "newer state", field: "expected_revision", recovery: "reload" } });
+    expect(failure(409, body, "")).toMatchObject({ code: "REVISION_CONFLICT", field: "expected_revision", recovery: "reload" });
   });
 
   it("uses the status text for a body that is not JSON", () => {
@@ -51,8 +51,8 @@ describe("uploadFile", () => {
   });
 
   it("rejects an error status with its code", async () => {
-    stubXhr({ status: 415, text: '{"detail":"Keine PDF-Datei"}' });
-    await expect(uploadFile("/api/x", pdf, () => {})).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE", message: "Keine PDF-Datei" });
+    stubXhr({ status: 415, text: '{"detail":"Not a PDF file"}' });
+    await expect(uploadFile("/api/x", pdf, () => {})).rejects.toMatchObject({ code: "UNSUPPORTED_MEDIA_TYPE", message: "Not a PDF file" });
   });
 
   it("rejects a 2xx answer that is not JSON instead of staying pending", async () => {
@@ -78,7 +78,7 @@ describe("request", () => {
   });
 
   it("maps a missing model endpoint to CAPABILITY_UNAVAILABLE", async () => {
-    respond(503, JSON.stringify({ detail: { code: "CAPABILITY_UNAVAILABLE", message: "Kein Modell-Endpunkt", field: null, recovery: ".env" } }));
+    respond(503, JSON.stringify({ detail: { code: "CAPABILITY_UNAVAILABLE", message: "No model endpoint", field: null, recovery: ".env" } }));
     await expect(request("/api/sources/s/runs", { method: "POST" })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE", recovery: ".env" });
   });
 });

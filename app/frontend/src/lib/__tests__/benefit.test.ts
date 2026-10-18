@@ -96,7 +96,7 @@ describe("measurementsCsv", () => {
     const csv = measurementsCsv([measurement("a", 95.4, 2, "drafter"), measurement("x", 30)],
       new Map([["a", { name: "Flansch; groß", machineSeconds: 101.6 }]]));
     expect(csv.split("\n")).toEqual([
-      "zeichnung;maschine_s;pruefung_s;von_hand_h;schaetzer;erfasst",
+      "drawing;machine_s;review_s;manual_h;estimator;recorded",
       '"Flansch; groß";102;95;2;drafter;2026-01-01T00:00:00Z',
       "x;;30;;;2026-01-01T00:00:00Z",
     ]);

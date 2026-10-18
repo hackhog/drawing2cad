@@ -87,45 +87,45 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
     expect = playwright.expect
     page.goto(site)
     upload(page, "Plate_dwg.pdf", pdf_bytes())
-    expect(page.get_by_text("Plate gelesen")).to_be_visible()
+    expect(page.get_by_text("Plate read")).to_be_visible()
     page.get_by_role("cell", name="Plate", exact=True).click()
 
-    page.get_by_role("button", name="Lauf starten").click()
+    page.get_by_role("button", name="Start run").click()
     expect(page).to_have_url(re.compile(r"/runs/run_[0-9a-f]{32}"))
     run_id = page.url.split("/runs/")[1].split("?")[0]
     # The scripted model creates a part without a build; the run ends as failed in the modeling phase.
-    expect(page.get_by_text("Der Agent hat kein gültiges Modell gebaut", exact=False)).to_be_visible()
+    expect(page.get_by_text("The agent built no valid model", exact=False)).to_be_visible()
 
     page.get_by_role("tab", name="Parameter").click()
     expect(page.get_by_label("length")).to_have_value("10")
     expect(page.get_by_label("length")).to_be_disabled()
-    expect(page.get_by_text("Der verbundene Dienst erlaubt keine Parameteränderung.")).to_be_visible()
+    expect(page.get_by_text("The connected service does not allow parameter changes.")).to_be_visible()
 
-    page.get_by_role("tab", name="Prüfung").click()
+    page.get_by_role("tab", name="Review").click()
     expect(page.get_by_text("Report: part created, not built.")).to_be_visible()
 
     # The note starts with the agent report and keeps the report in the review tab after a change.
-    page.get_by_role("tab", name="Notizen").click()
-    note = page.get_by_label("Notiz zum Lauf")
+    page.get_by_role("tab", name="Notes").click()
+    note = page.get_by_label("Run note")
     expect(note).to_have_value("Report: part created, not built.")
-    note.fill("Radius an der Kante mit der Konstruktion klären.")
-    page.get_by_role("button", name="Notiz speichern").click()
+    note.fill("Clarify the edge radius with design.")
+    page.get_by_role("button", name="Save note").click()
     expect(page.get_by_text("Revision 2")).to_be_visible()
 
     # A change from elsewhere makes the edited revision stale: the UI shows the conflict and reloads the newer note.
     with httpx2.Client(base_url=site, trust_env=False) as client:
-        assert client.put(f"/api/runs/{run_id}/note", json={"expected_revision": 2, "text": "Von anderer Stelle."}).status_code == 200
-    note.fill("Meine Änderung")
-    page.get_by_role("button", name="Notiz speichern").click()
-    expect(page.get_by_text("Revision hat sich geändert", exact=False).or_(page.get_by_text("Ein neuerer Stand liegt vor", exact=False))).to_be_visible()
-    page.get_by_role("button", name="Neu laden").click()
-    expect(note).to_have_value("Von anderer Stelle.")
-    page.get_by_role("tab", name="Prüfung").click()
+        assert client.put(f"/api/runs/{run_id}/note", json={"expected_revision": 2, "text": "From elsewhere."}).status_code == 200
+    note.fill("My change")
+    page.get_by_role("button", name="Save note").click()
+    expect(page.get_by_text("Revision has changed", exact=False).or_(page.get_by_text("A newer state exists", exact=False))).to_be_visible()
+    page.get_by_role("button", name="Reload").click()
+    expect(note).to_have_value("From elsewhere.")
+    page.get_by_role("tab", name="Review").click()
     expect(page.get_by_text("Report: part created, not built.")).to_be_visible()
 
-    page.get_by_role("button", name="Laufdateien öffnen").click()
+    page.get_by_role("button", name="Open run files").click()
     with page.expect_download() as download:
-        page.get_by_role("link", name=re.compile("Alle als ZIP")).click()
+        page.get_by_role("link", name=re.compile("All as ZIP")).click()
     target = tmp_path / "run.zip"
     download.value.save_as(target)
     assert target.read_bytes().startswith(b"PK")
@@ -134,11 +134,11 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
 def test_failures_show_a_message_with_recovery(site, page):
     expect = playwright.expect
     page.goto(site)
-    upload(page, "Notizen.pdf", b"not a pdf")
-    expect(page.get_by_text("Notizen nicht lesbar")).to_be_visible()
-    expect(page.get_by_text("Keine PDF-Datei", exact=False).first).to_be_visible()
+    upload(page, "Notes.pdf", b"not a pdf")
+    expect(page.get_by_text("Notes unreadable")).to_be_visible()
+    expect(page.get_by_text("Not a PDF file", exact=False).first).to_be_visible()
 
     page.goto(f"{site}/runs/run_{'0' * 32}")
-    expect(page.get_by_text("Nicht gefunden")).to_be_visible()
-    page.get_by_role("link", name="Zur Übersicht").click()
+    expect(page.get_by_text("Not found")).to_be_visible()
+    page.get_by_role("link", name="To overview").click()
     expect(page).to_have_url(f"{site}/")
