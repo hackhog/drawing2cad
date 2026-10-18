@@ -143,7 +143,8 @@ class JobService:
                 metadata = path.stat()
             except FileNotFoundError:
                 continue
-            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            # A link count of 0 occurs while SQLite deletes a sidecar file in another thread.
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink > 1:
                 raise DomainError("UNSAFE_PATH", "Job storage must use regular files without extra links.")
 
     @staticmethod
