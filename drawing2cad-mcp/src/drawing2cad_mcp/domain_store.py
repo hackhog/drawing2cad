@@ -129,7 +129,8 @@ class DomainStore:
                 metadata = path.stat()
             except FileNotFoundError:
                 continue
-            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            # A link count of 0 occurs while SQLite deletes a sidecar file in another thread.
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink > 1:
                 raise DomainError("UNSAFE_PATH", "Metadata must use regular files without extra links.")
         db = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
         db.row_factory = sqlite3.Row

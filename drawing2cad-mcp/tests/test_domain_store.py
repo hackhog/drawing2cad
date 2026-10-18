@@ -295,3 +295,18 @@ def test_metadata_links_are_rejected_before_sqlite_access(tmp_path, filename):
     os.link(outside, root / filename)
     expect_code("UNSAFE_PATH", DomainStore, root)
     assert outside.read_bytes() == b"must remain unchanged"
+
+
+@pytest.mark.parametrize("filename", ["metadata.sqlite3-journal", "metadata.sqlite3-wal", "metadata.sqlite3-shm"])
+def test_metadata_sidecar_in_deletion_is_not_a_link(tmp_path, monkeypatch, filename):
+    # stat() can see a link count of 0 while SQLite deletes a sidecar file in another thread.
+    real_stat = Path.stat
+
+    def stat(self, *args, **kwargs):
+        if self.name != filename:
+            return real_stat(self, *args, **kwargs)
+        return os.stat_result((0o100644, 1, 1, 0, 0, 0, 0, 0, 0, 0))
+
+    monkeypatch.setattr(Path, "stat", stat)
+    store = DomainStore(tmp_path / "store")
+    assert store.notes_update(ALICE, "run_1", 0, "note")["revision"] == 1

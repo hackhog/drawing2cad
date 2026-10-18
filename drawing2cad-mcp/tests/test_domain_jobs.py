@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import sqlite3
 import threading
+from pathlib import Path
 import time
 
 import pytest
@@ -444,3 +445,23 @@ def test_symlink_job_root_is_rejected(tmp_path):
         JobService(linked, lambda *args: {})
     assert caught.value.code == "UNSAFE_PATH"
     assert list(outside.iterdir()) == []
+
+
+def report_sidecar_deletion(monkeypatch, name):
+    """Report a link count of 0 for one file, as stat() can see it while SQLite deletes that file."""
+    real_stat = Path.stat
+
+    def stat(self, *args, **kwargs):
+        if self.name != name:
+            return real_stat(self, *args, **kwargs)
+        return os.stat_result((0o100644, 1, 1, 0, 0, 0, 0, 0, 0, 0))
+
+    monkeypatch.setattr(Path, "stat", stat)
+
+
+@pytest.mark.parametrize("filename", ["jobs.sqlite3-journal", "jobs.sqlite3-wal", "jobs.sqlite3-shm"])
+def test_sidecar_file_in_deletion_is_not_a_link(tmp_path, monkeypatch, filename):
+    service = JobService(tmp_path / "jobs", lambda *args: {})
+    report_sidecar_deletion(monkeypatch, filename)
+    job = service.submit(OWNER, "drawing_render", arguments(), "deleted-sidecar")
+    assert service.get(OWNER, job["job_id"])["state"] == "queued"
