@@ -34,7 +34,7 @@ Make a view index in the run evidence before you assign model axes. Make one row
 | Title | The printed title, for example `A-A`, `Schnitt A-A`, `SECTION A-A`, `Ansicht B`, `VIEW B`, `Einzelheit C`, or `DETAIL C`. |
 | Title location | The page and the view region of the title. |
 | Marker location | The page and the view that show the cutting line, the view arrow, or the detail circle with the same letter. |
-| Plane or region | The cutting plane, first as a position relative to a printed datum in the marker view. After the axis assignment, add the model coordinate, for example `Z = -48`. For a detail, the detail region. |
+| Plane or region | The cutting plane, first as a position relative to a printed datum or a visible part edge in the marker view. After the axis assignment, add the model coordinate, for example `Z = -48`. For a detail, the detail region. |
 | Viewing direction | The direction of the section or view arrows. |
 
 Typically, a section has a cutting line with the letter and an arrow at each end, a view has one arrow with its letter, and a detail has a circle with its letter. Other notations are possible. Record the notation that the drawing uses.
