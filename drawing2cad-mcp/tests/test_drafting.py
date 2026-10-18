@@ -234,6 +234,105 @@ def test_uncertain_parameter_marks_each_dependent_feature():
     assert drawing_validate(spec, description, 1)["status"] == "pass"
 
 
+def test_missing_marker_names_status_and_link():
+    description, spec = drawing_fixture()
+    description["evidence"].append({**description["evidence"][0], "id": "length_estimate", "status": "assumed",
+                                     "reason": "Synthetic estimate of the length."})
+    description["parameters"][0]["evidence_ids"] = ["length_estimate"]
+    spec["description_sha256"] = description_digest(description)
+    defects = drawing_validate(spec, description, 1)["defects"]
+    summary = next(d for d in defects if d["code"] == "unmarked_uncertainty")
+    assert summary["evidence_ids"] == ["length_estimate"]
+    assert "length_estimate (assumed)" in summary["message"]
+    feature = next(d for d in defects if d["code"] == "unmarked_feature_uncertainty" and d["id"] == "base")
+    assert feature["evidence_id"] == "length_estimate"
+    assert "assumed evidence length_estimate" in feature["message"]
+    assert "parameter length" in feature["message"]
+    assert "Explicit evidence without a review flag needs no marker." in feature["message"]
+
+
+def test_line_center_anchor_is_midpoint():
+    description, spec = drawing_fixture()
+    dimension = spec["views"][0]["dimensions"][0]
+    dimension["p1"]["point"] = "center"
+    dimension["expected"] = 30
+    result = drawing_validate(spec, description, 1)
+    assert result["status"] == "pass", result
+    assert result["measurements"][0]["actual"] == 30
+    point = drawing_schema()["schema"]["$defs"]["Anchor"]["properties"]["point"]
+    assert "Line: start, end, or center" in point["description"]
+
+
+def test_layout_defects_give_sheet_bounds_and_view_transform():
+    description, spec = drawing_fixture()
+    spec["views"][0]["geometry"][0].update(end=[500, 0])
+    clipping = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "geometry_clipping")
+    assert clipping["local_bounds"] == [0, 0, 500, 0]
+    assert clipping["sheet_bounds"] == [45, 120, 545, 120]
+    assert clipping["frame"] == [15, 85, 150, 190]
+    assert clipping["view_transform"]["origin"] == [45, 120]
+    assert clipping["view_transform"]["scale"] == 1
+
+    description, spec = drawing_fixture()
+    spec["views"][0]["dimensions"][0].update(label_position=[300, 0])
+    label = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "label_clipping")
+    assert label["allowed_bounds"] == [15, 85, 150, 190]
+    assert label["label_bounds"][0] > 150
+    assert label["view_transform"]["view_id"] == "top"
+
+    description, spec = drawing_fixture()
+    spec["views"][0]["dimensions"][1].update(label_position=[30, -12])
+    overlap = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "label_overlap")
+    assert overlap["other_id"] == "hole_diameter"
+    assert len(overlap["label_bounds"]) == len(overlap["other_bounds"]) == 4
+
+    description, spec = drawing_fixture()
+    spec["views"][1].update(frame=[15, 85, 150, 190])
+    views = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "view_overlap")
+    assert views["other_frame"] == [15, 85, 150, 190]
+
+
+def test_marker_leader_through_label_is_layout_defect():
+    description, spec = drawing_fixture()
+    spec["uncertainty_markers"] = [{"id": "hole_mark", "view_id": "top", "primitive_id": "hole_circle",
+                                    "position": [30, -25], "text": "Hole", "evidence_ids": ["drawing"]}]
+    result = drawing_validate(spec, description, 1)
+    assert result["status"] == "fail"
+    leader = next(d for d in result["defects"] if d["code"] == "leader_overlap")
+    assert leader["id"] == "hole_mark"
+    assert leader["other_id"] == "overall_length"
+    assert leader["leader"] == [[75, 95], [75, 135]]
+    spec["uncertainty_markers"][0]["position"] = [0, 50]
+    assert drawing_validate(spec, description, 1)["status"] == "pass"
+
+
+def test_leader_that_ends_below_a_label_is_not_a_crossing():
+    description, spec = drawing_fixture()
+    spec["views"][0]["dimensions"][1].update(label_position=[30, 15])
+    spec["uncertainty_markers"] = [{"id": "hole_mark", "view_id": "top", "primitive_id": "hole_circle",
+                                    "position": [0, 50], "text": "Hole", "evidence_ids": ["drawing"]}]
+    result = drawing_validate(spec, description, 1)
+    assert "leader_overlap" not in {d["code"] for d in result["defects"]}, result
+
+
+def test_review_flag_on_explicit_evidence_does_not_contradict_message():
+    description, spec = drawing_fixture()
+    description["review_flags"] = [{"id": "size_review", "target_id": "base", "status": "open",
+                                      "reason": "Check the size at its feature.", "evidence_ids": ["drawing"]}]
+    spec["description_sha256"] = description_digest(description)
+    defect = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "unmarked_feature_uncertainty")
+    assert "flagged evidence drawing" in defect["message"]
+    assert "review flag size_review" in defect["message"]
+    assert "explicit evidence drawing" not in defect["message"]
+
+
+def test_small_clipping_distance_stays_visible_in_defect():
+    description, spec = drawing_fixture()
+    spec["views"][0]["geometry"][0].update(end=[105.0004, 0])
+    clipping = next(d for d in drawing_validate(spec, description, 1)["defects"] if d["code"] == "geometry_clipping")
+    assert clipping["sheet_bounds"][2] > clipping["frame"][2]
+
+
 def test_native_dxf_dimensions_and_matching_pdf(tmp_path):
     ezdxf = pytest.importorskip("ezdxf")
     fitz = pytest.importorskip("pymupdf")

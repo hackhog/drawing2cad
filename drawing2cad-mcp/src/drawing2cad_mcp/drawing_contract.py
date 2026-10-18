@@ -60,7 +60,8 @@ Geometry = Annotated[Line | Circle | Arc, Field(discriminator="type")]
 
 class Anchor(ClosedModel):
     primitive: Identifier
-    point: Literal["start", "end", "center", "left", "right", "top", "bottom"]
+    point: Literal["start", "end", "center", "left", "right", "top", "bottom"] = Field(
+        description="Line: start, end, or center (midpoint). Arc: center, start, or end. Circle: center, left, right, top, or bottom.")
 
 
 class Dimension(ClosedModel):
@@ -114,6 +115,9 @@ class Note(ClosedModel):
 
 
 class Marker(ClosedModel):
+    """A visible uncertainty marker. Each evidence item with status assumed, inferred, or unresolved, and each review flag,
+    needs a marker. Each projected feature that depends on such evidence through its own evidence, its parameters,
+    or its drawn primitives also needs one marked location. Explicit evidence without a review flag needs no marker."""
     id: Identifier
     view_id: Identifier
     primitive_id: Identifier
@@ -195,8 +199,10 @@ def _anchor(reference, geometry):
         raise ValueError(f"Unknown dimension primitive: {reference.primitive}.")
     point = reference.point
     if item["type"] == "line":
+        if point == "center":
+            return [(item["start"][i] + item["end"][i]) / 2 for i in (0, 1)]
         if point not in {"start", "end"}:
-            raise ValueError("Line anchors require start or end.")
+            raise ValueError("Line anchors require start, end, or center.")
         return item[point]
     if point == "center":
         return item["center"]
@@ -237,6 +243,43 @@ def _overlap(a, b):
     return min(a[2], b[2]) - max(a[0], b[0]) > 0.05 and min(a[3], b[3]) - max(a[1], b[1]) > 0.05
 
 
+def _view_transform(view_id, origin, scale):
+    return {"view_id": view_id, "origin": list(origin), "scale": scale, "rule": "sheet_point = origin + scale * local_point"}
+
+
+def _rounded(value):
+    """Round defect details to 1e-6 so that small clipping distances and small scales stay visible."""
+    if isinstance(value, float):
+        return round(value, 6)
+    if isinstance(value, (list, tuple)):
+        return [_rounded(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _rounded(item) for key, item in value.items()}
+    return value
+
+
+def _segment_crosses_box(a, b, box, inset=0.05):
+    """Return whether segment a-b enters the box, reduced by a small inset (Liang-Barsky clipping)."""
+    x0, y0, x1, y1 = box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset
+    if x1 <= x0 or y1 <= y0:
+        return False
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    low, high = 0.0, 1.0
+    for p, q in ((-dx, a[0] - x0), (dx, x1 - a[0]), (-dy, a[1] - y0), (dy, y1 - a[1])):
+        if abs(p) < 1e-12:
+            if q < 0:
+                return False
+            continue
+        r = q / p
+        if p < 0:
+            low = max(low, r)
+        else:
+            high = min(high, r)
+        if low > high:
+            return False
+    return True
+
+
 def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision: int) -> dict[str, Any]:
     """Resolve parameter references and check bounded drawing declarations."""
     defects: list[dict] = []
@@ -253,8 +296,9 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
                 "defects": [{"code": "schema", "message": "The drawing or part does not match its schema.",
                              "fields": fields, "truncated": len(errors) > len(fields)}]}
 
-    def fail(code, identifier, message):
-        defects.append({"code": code, "id": identifier, "message": message})
+    def fail(code, identifier, message, **details):
+        # Layout defects give the computed sheet bounds, so that the agent can move the item without guessing.
+        defects.append({"code": code, "id": identifier, "message": message, **{k: _rounded(v) for k, v in details.items()}})
 
     if drawing.part_revision != revision or drawing.description_sha256 != description_digest(description):
         fail("stale_binding", "drawing", "The drawing requires the current part revision and description hash.")
@@ -279,7 +323,7 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
             if ref not in evidence:
                 fail("unknown_evidence", identifier, f"Unknown evidence: {ref}.")
 
-    def label(identifier, text, position, bounds=usable, centered=False):
+    def label(identifier, text, position, bounds=usable, centered=False, transform=None):
         if identifier in label_ids:
             fail("duplicate_label_id", identifier, "Annotation identifiers must be unique, including generated sheet labels.")
         label_ids.add(identifier)
@@ -290,7 +334,8 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
         x, y = position
         box = [x - width / 2 if centered else x, y - height * 0.35, x + width / 2 if centered else x + width, y + height * 1.1]
         if not _inside(box, bounds):
-            fail("label_clipping", identifier, "A label exceeds its view frame or sheet margin.")
+            fail("label_clipping", identifier, "A label exceeds its view frame or sheet margin.",
+                 label_bounds=box, allowed_bounds=list(bounds), **({"view_transform": transform} if transform else {}))
         labels.append({"id": identifier, "text": text, "position": list(position), "bounds": box, "centered": centered})
 
     label("sheet_title", drawing.title, (sheet.margin + 2, sheet.margin + 3))
@@ -299,15 +344,18 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
         unique(view.id)
         frame = list(view.frame)
         if frame[2] <= frame[0] or frame[3] <= frame[1] or not _inside(frame, usable):
-            fail("view_frame", view.id, "A view needs ordered bounds inside the sheet margin.")
+            fail("view_frame", view.id, "A view needs ordered bounds inside the sheet margin.", frame=frame, allowed_bounds=usable)
         for other in views:
             if _overlap(frame, other["frame"]):
-                fail("view_overlap", view.id, f"View frames overlap: {other['id']}.")
+                fail("view_overlap", view.id, f"View frames overlap: {other['id']}.", frame=frame, other_id=other["id"],
+                     other_frame=other["frame"])
         if view.kind == "section" and (not view.section_note or not any(g.style == "section" for g in view.geometry)):
             fail("section_definition", view.id, "A supplied section needs a cutting-plane note and section line geometry.")
 
         def transform(p):
             return [view.origin[i] + view.scale * p[i] for i in (0, 1)]
+
+        view_transform = _view_transform(view.id, view.origin, view.scale)
 
         label(view.id + "_label", f"{view.label} | Scale {view.scale:g}:1", (frame[0] + 2, frame[3] - 4), frame)
         if view.section_note:
@@ -336,7 +384,8 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
                 box = _bounds(item)
                 transformed = transform(box[:2]) + transform(box[2:])
                 if not _inside(transformed, frame):
-                    fail("geometry_clipping", primitive.id, "Geometry exceeds its view frame.")
+                    fail("geometry_clipping", primitive.id, "Geometry exceeds its view frame.",
+                         local_bounds=box, sheet_bounds=transformed, frame=frame, view_transform=view_transform)
                 geometry[primitive.id] = item
             except ValueError as error:
                 fail("geometry", primitive.id, str(error))
@@ -382,7 +431,8 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
                 item["actual"] = actual
                 prefix = "R" if dimension.type == "radius" else "D" if dimension.type == "diameter" else ""
                 suffix = " deg" if dimension.type == "angular" else ""
-                label(dimension.id, f"{prefix}{actual:.4f}".rstrip("0").rstrip(".") + suffix, transform(item["label_position"]), frame, centered=True)
+                label(dimension.id, f"{prefix}{actual:.4f}".rstrip("0").rstrip(".") + suffix, transform(item["label_position"]), frame,
+                      centered=True, transform=view_transform)
                 dimensions.append(item)
                 measurements.append({"id": dimension.id, "view_id": view.id, "expected": item["expected"], "actual": actual,
                                      "unit": "deg" if dimension.type == "angular" else "mm", "evidence_ids": list(dimension.evidence_ids), "status": "pass"})
@@ -416,7 +466,7 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
             position = [view["origin"][i] + view["scale"] * local_position[i] for i in (0, 1)]
             statuses = sorted({evidence[e].status for e in marker.evidence_ids if e in evidence})
             text = f"[{','.join(statuses)}] {marker.text}"
-            label(marker.id, text, position, view["frame"])
+            label(marker.id, text, position, view["frame"], transform=_view_transform(view["id"], view["origin"], view["scale"]))
             anchor = primitive["start"] if primitive["type"] == "line" else primitive["center"]
             target = [view["origin"][i] + view["scale"] * anchor[i] for i in (0, 1)]
             markers.append({**marker.model_dump(), "position": position, "target": target, "text": text})
@@ -428,20 +478,33 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
     required_markers = {e.id for e in part.evidence if e.status in {"assumed", "inferred", "unresolved"}}
     required_markers.update(e for flag in part.review_flags for e in flag.evidence_ids)
     if required_markers - marked:
-        fail("unmarked_uncertainty", "drawing", f"Missing uncertainty markers for: {', '.join(sorted(required_markers - marked))}.")
+        status = {e.id: e.status for e in part.evidence}
+        missing = sorted(required_markers - marked)
+        fail("unmarked_uncertainty", "drawing",
+             "Missing uncertainty markers for: " + ", ".join(f"{ref} ({status.get(ref, 'review flag')})" for ref in missing) + ".",
+             evidence_ids=missing)
     # A shared evidence identifier must not hide uncertainty at another feature.
     # A feature needs one marked location; repeated views need no duplicate mark.
     projected_features = {feature for view in views for primitive in view["geometry"] for feature in primitive["feature_ids"]}
     feature_parameters = {feature.id: {name for name, _ in _references(feature.model_dump())} for feature in part.features}
     feature_evidence = {feature.id: set(feature.evidence_ids) for feature in part.features}
+    # Record why each evidence item applies to a feature, so that a missing marker names its cause.
+    origins: dict[tuple[str, str], set[str]] = {}
+    for feature in part.features:
+        for ref in feature.evidence_ids:
+            origins.setdefault((ref, feature.id), set()).add("feature evidence")
     for feature, names in feature_parameters.items():
         for name in names:
             if name in parameters:
                 feature_evidence[feature].update(parameters[name].evidence_ids)
+                for ref in parameters[name].evidence_ids:
+                    origins.setdefault((ref, feature), set()).add(f"parameter {name}")
     for view in views:
         for primitive in view["geometry"]:
             for feature in primitive["feature_ids"]:
                 feature_evidence.setdefault(feature, set()).update(primitive["evidence_ids"])
+                for ref in primitive["evidence_ids"]:
+                    origins.setdefault((ref, feature), set()).add(f"primitive {primitive['id']}")
     uncertain = {e.id for e in part.evidence if e.status in {"assumed", "inferred", "unresolved"}}
     required_features = {(ref, feature) for feature in projected_features
                          for ref in feature_evidence.get(feature, set()) & uncertain}
@@ -451,9 +514,17 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
         if flag.target_id in evidence:
             affected.update(feature for feature, refs in feature_evidence.items() if flag.target_id in refs)
         required_features.update((ref, feature) for feature in affected & projected_features for ref in flag.evidence_ids)
+        for feature in affected & projected_features:
+            for ref in flag.evidence_ids:
+                origins.setdefault((ref, feature), set()).add(f"review flag {flag.id}")
+    status = {e.id: e.status for e in part.evidence}
     for ref, feature in sorted(required_features - marked_features):
+        causes = ", ".join(sorted(origins.get((ref, feature), {"review flag"})))
+        kind = status.get(ref) if status.get(ref) in {"assumed", "inferred", "unresolved"} else "flagged"
         fail("unmarked_feature_uncertainty", feature,
-             f"Add a visible marker for evidence {ref} at affected feature {feature}.")
+             f"Add a visible marker for {kind} evidence {ref} at affected feature {feature} "
+             f"(linked by {causes}). Explicit evidence without a review flag needs no marker.",
+             evidence_id=ref)
     for view in views:
         dimensioned = {d["primitive"] for d in view["dimensions"] if d["type"] in {"radius", "diameter"}}
         annotated = [p for p in view["geometry"] if p["id"] in dimensioned]
@@ -475,8 +546,17 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
     for index, first in enumerate(labels):
         for second in labels[index + 1:]:
             if _overlap(first["bounds"], second["bounds"]):
-                fail("label_overlap", first["id"], f"Label overlaps {second['id']}.")
-    layout_codes = {"label_overlap", "label_clipping", "geometry_clipping", "view_overlap"}
+                fail("label_overlap", first["id"], f"Label overlaps {second['id']}.", label_bounds=first["bounds"],
+                     other_id=second["id"], other_bounds=second["bounds"])
+    for marker in markers:
+        for other in labels:
+            # A leader can start in its own label and end at geometry below a label. Only a crossing is a defect.
+            ends = (marker["position"], marker["target"])
+            if (other["id"] != marker["id"] and not any(_inside([*p, *p], other["bounds"]) for p in ends)
+                    and _segment_crosses_box(*ends, other["bounds"])):
+                fail("leader_overlap", marker["id"], f"The marker leader crosses label {other['id']}. Move the marker label.",
+                     leader=[marker["position"], marker["target"]], other_id=other["id"], other_bounds=other["bounds"])
+    layout_codes = {"label_overlap", "label_clipping", "geometry_clipping", "view_overlap", "leader_overlap"}
     return {"status": "fail" if defects else "pass", "defects": defects[:100], "measurements": measurements,
             "diagnostic_eligible": bool(defects) and all(item["code"] in layout_codes for item in defects),
             "total_defects": len(defects), "defects_truncated": len(defects) > 100,
