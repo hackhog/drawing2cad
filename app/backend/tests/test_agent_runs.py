@@ -1,6 +1,7 @@
 """Agent runs through the web API and the shared domain service (ADR 0018). No model is called."""
 
 import io
+import json
 import re
 import socket
 import threading
@@ -14,6 +15,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
 from drawing_demo import api
+from drawing_demo.agent import model as model_module
 from drawing_demo.agent import runner as runner_module
 from drawing_demo.agent.mapping import artifact_view, part_view, phase_for, review_view, sheet_region
 
@@ -120,7 +122,7 @@ def environment(tmp_path, monkeypatch):
     skill = tmp_path / "SKILL.md"
     skill.write_text("skill")
     monkeypatch.setenv("DRAWING2CAD_SKILL_PATH", str(skill))
-    for name in ("BASE_URL", "MODEL", "API_KEY"):
+    for name in ("BASE_URL", "MODEL", "API_KEY", "PROFILES"):
         monkeypatch.delenv("DRAWING2CAD_AGENT_" + name, raising=False)
     return monkeypatch
 
@@ -148,18 +150,66 @@ def test_runs_are_unavailable_without_model_endpoint(environment):
 def test_a_run_is_queued_with_a_model_endpoint(environment):
     with_model_endpoint(environment)
     submitted = []
-    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id: submitted.append(run_id))
+    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id, settings: submitted.append(run_id))
     with TestClient(api.create_app()) as client:
         source = upload(client)
         capabilities = client.get("/api/capabilities").json()
-        assert capabilities["runs"] is True and capabilities["agent_model"] == "m"
+        assert capabilities["runs"] is True and capabilities["agent_model"] == "m" and capabilities["agent_profile"] == "Standard"
         res = client.post(f"/api/sources/{source['source_id']}/runs")
         assert res.status_code == 201
         run = res.json()
         assert run["phase"] == "queued" and run["part"] is None and submitted == [run["run_id"]]
-        assert run["agent"] == {"model": "m", "mcp_version": api.mcp_version}
+        assert run["agent"] == {"model": "m", "profile": "Standard", "mcp_version": api.mcp_version}
         assert [r["run_id"] for r in client.get(f"/api/sources/{source['source_id']}/runs").json()] == [run["run_id"]]
         assert client.get(f"/api/runs/{run['run_id']}").json()["job"]["status"] == "queued"
+
+
+def with_two_profiles(monkeypatch):
+    monkeypatch.setenv("DRAWING2CAD_AGENT_PROFILES", "Foundry,OpenRouter")
+    for prefix, model in (("FOUNDRY", "gpt-a"), ("OPENROUTER", "vendor/b")):
+        for name, value in (("BASE_URL", f"https://{prefix.lower()}.test/v1"), ("MODEL", model), ("API_KEY", "secret-" + prefix)):
+            monkeypatch.setenv(f"DRAWING2CAD_AGENT_{prefix}_{name}", value)
+    monkeypatch.setenv("DRAWING2CAD_AGENT_OPENROUTER_API", "responses")
+
+
+def test_profiles_are_listed_without_keys(environment):
+    with_two_profiles(environment)
+    with TestClient(api.create_app()) as client:
+        res = client.get("/api/agent/profiles")
+        data = res.json()
+        assert data["active"] == "Foundry"
+        assert [(p["name"], p["model"], p["api"], p["origin"], p["key_set"]) for p in data["profiles"]] == [
+            ("Foundry", "gpt-a", "chat", "env", True), ("OpenRouter", "vendor/b", "responses", "env", True)]
+        assert "secret" not in res.text
+
+
+def test_a_new_run_uses_the_selected_profile(environment):
+    with_two_profiles(environment)
+    submitted = []
+    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id, settings: submitted.append(settings.model))
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        first = client.post(f"/api/sources/{source['source_id']}/runs").json()
+        assert client.put("/api/agent/active", json={"name": "OpenRouter"}).json()["active"] == "OpenRouter"
+        capabilities = client.get("/api/capabilities").json()
+        assert capabilities["agent_profile"] == "OpenRouter" and capabilities["agent_model"] == "vendor/b"
+        second = client.post(f"/api/sources/{source['source_id']}/runs").json()
+        assert submitted == ["gpt-a", "vendor/b"]
+        assert first["agent"]["profile"] == "Foundry" and second["agent"]["profile"] == "OpenRouter"
+        # The first run keeps the profile that was active when it was created.
+        assert client.get(f"/api/runs/{first['run_id']}").json()["agent"]["model"] == "gpt-a"
+
+
+def test_no_profile_disables_runs_and_unknown_profiles_are_rejected(environment):
+    with_two_profiles(environment)
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        res = client.put("/api/agent/active", json={"name": "Missing"})
+        assert res.status_code == 422 and res.json()["detail"]["code"] == "UNKNOWN_PROFILE"
+        assert client.put("/api/agent/active", json={"name": None}).json()["active"] is None
+        capabilities = client.get("/api/capabilities").json()
+        assert capabilities["runs"] is False and capabilities["agent_model"] is None and capabilities["agent_profile"] is None
+        assert client.post(f"/api/sources/{source['source_id']}/runs").status_code == 503
 
 
 @pytest.mark.parametrize("path", ["/api/runs/run_" + "0" * 32, "/api/runs/..%2Fsources", "/api/sources/src_zz/analysis",
@@ -360,3 +410,72 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
     assert run["iterations"] == {"model_turns": 2, "tool_requests": 2, "step_budget": runner_module.LIMITS["step_budget"]}
     assert run["review"]["release_state"] == "draft" and run["artifacts"] == []
     assert "summary.json" in files and "trace/trace.jsonl" in files
+
+
+def test_ui_profiles_are_normalized_keep_their_key_and_persist(environment, tmp_path):
+    with TestClient(api.create_app()) as client:
+        assert client.get("/api/capabilities").json()["runs"] is False
+        res = client.put("/api/agent/profiles/Foundry", json={
+            "provider": "azure", "endpoint": "https://res.cognitiveservices.azure.com/openai/deployments/x/chat?api-version=1",
+            "model": "gpt-dep", "api": "responses", "api_key": "azure-secret", "reasoning_effort": "medium"})
+        assert res.status_code == 200 and "azure-secret" not in res.text
+        client.put("/api/agent/profiles/OpenRouter", json={"provider": "openrouter", "model": "vendor/m", "api_key": "or-secret"})
+        # A change without key keeps the stored key.
+        res = client.put("/api/agent/profiles/OpenRouter", json={"provider": "openrouter", "model": "vendor/n"})
+        profiles = {p["name"]: p for p in res.json()["profiles"]}
+        assert res.json()["active"] == "Foundry"
+        assert profiles["Foundry"]["base_url"] == "https://res.cognitiveservices.azure.com/openai/v1"
+        assert profiles["OpenRouter"] == {"name": "OpenRouter", "provider": "openrouter", "origin": "ui",
+                                          "base_url": "https://openrouter.ai/api/v1", "model": "vendor/n", "api": "chat",
+                                          "reasoning_effort": None, "key_set": True}
+        assert client.put("/api/agent/active", json={"name": "OpenRouter"}).status_code == 200
+        assert client.get("/api/capabilities").json()["agent_model"] == "vendor/n"
+    stored = tmp_path / "data" / "agent-profiles.json"
+    assert stored.stat().st_mode & 0o077 == 0
+    with TestClient(api.create_app()) as client:
+        assert client.get("/api/agent/profiles").json()["active"] == "OpenRouter"
+        runner = client.app.state.services.runner
+        assert runner.settings.api_key == "or-secret" and runner.settings.api_key_header == "Authorization"
+        assert runner.profiles.get("Foundry").api_key_header == "api-key"
+        assert client.delete("/api/agent/profiles/OpenRouter").json()["active"] == "Foundry"
+
+
+@pytest.mark.parametrize("body, field", [
+    ({"provider": "azure", "endpoint": "http://res.openai.azure.com", "model": "m", "api_key": "k"}, "endpoint"),
+    ({"provider": "openrouter", "model": " ", "api_key": "k"}, "model"),
+    ({"provider": "openrouter", "model": "m"}, "api_key"),
+    ({"provider": "openrouter", "model": "m", "api_key": "k", "reasoning_effort": "max"}, "reasoning_effort"),
+])
+def test_invalid_ui_profiles_are_rejected(environment, body, field):
+    with TestClient(api.create_app()) as client:
+        res = client.put("/api/agent/profiles/P", json=body)
+        assert res.status_code == 422 and res.json()["detail"]["field"] == field
+
+
+def test_environment_profiles_are_read_only(environment):
+    with_two_profiles(environment)
+    with TestClient(api.create_app()) as client:
+        res = client.put("/api/agent/profiles/Foundry", json={"provider": "openrouter", "model": "m", "api_key": "k"})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "PROFILE_READ_ONLY"
+        assert client.delete("/api/agent/profiles/Foundry").status_code == 409
+
+
+def test_the_connection_check_sends_one_request_with_one_tool(environment):
+    with_two_profiles(environment)
+    sent = []
+
+    class Answer(io.BytesIO):
+        def __enter__(self):
+            return self
+
+    def fake_urlopen(request, timeout):
+        sent.append((request.full_url, json.loads(request.data)))
+        return Answer(json.dumps({"output": [{"type": "message", "content": [{"type": "output_text", "text": "OK"}]}]}).encode())
+
+    environment.setattr(model_module, "urlopen", fake_urlopen)
+    with TestClient(api.create_app()) as client:
+        result = client.post("/api/agent/profiles/OpenRouter/check").json()
+        assert result["ok"] is True and result["message"] == "OK"
+        assert sent[0][0] == "https://openrouter.test/v1/responses"
+        assert [tool["name"] for tool in sent[0][1]["tools"]] == ["noop"]
+        assert client.post("/api/agent/profiles/Missing/check").status_code == 404

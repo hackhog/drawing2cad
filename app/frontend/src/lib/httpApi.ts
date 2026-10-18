@@ -1,6 +1,6 @@
 // Adapter for the web backend (app/backend, ADR 0018): stored sources, their analysis, agent runs, and artifacts.
 // Parameter edits are not available yet; the capabilities report this, and the UI explains it.
-import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
+import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Run, RunFiles, RunNote, Source } from "./contract";
 import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 import { unavailable } from "./errors";
 import { request, requestBlob, uploadFile } from "./http";
@@ -10,6 +10,19 @@ const id = encodeURIComponent;
 
 export class HttpApi implements WebApi {
   capabilities(): Promise<Capabilities> { return request("/api/capabilities"); }
+  agentProfiles(): Promise<AgentProfiles> { return request("/api/agent/profiles"); }
+  selectAgentProfile(name: string | null): Promise<AgentProfiles> {
+    return request("/api/agent/active", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+    });
+  }
+  saveAgentProfile(name: string, profile: AgentProfileInput): Promise<AgentProfiles> {
+    return request(`/api/agent/profiles/${id(name)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profile),
+    });
+  }
+  deleteAgentProfile(name: string): Promise<AgentProfiles> { return request(`/api/agent/profiles/${id(name)}`, { method: "DELETE" }); }
+  checkAgentProfile(name: string): Promise<ConnectionCheck> { return request(`/api/agent/profiles/${id(name)}/check`, { method: "POST" }); }
   listSources(): Promise<Source[]> { return request("/api/sources"); }
   getSource(sourceId: string): Promise<Source> { return request(`/api/sources/${id(sourceId)}`); }
   uploadSource(file: File, onProgress: (fraction: number) => void): Promise<Source> {

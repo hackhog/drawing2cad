@@ -1,8 +1,8 @@
-// Routes (TanStack Router, code-based): overview, drawing (source), and CAD run.
+// Routes (TanStack Router, code-based): overview, drawing (source), CAD run, and settings.
 // Loaders fill the query cache; an unknown ID becomes the not-found page instead of a broken view.
 import { QueryClient, useQuery } from "@tanstack/react-query";
 import {
-  createRootRouteWithContext, createRoute, createRouter, notFound, Outlet, useRouter, type ErrorComponentProps,
+  createRootRouteWithContext, createRoute, createRouter, notFound, Outlet, redirect, useRouter, type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { ErrorState } from "@/components/ErrorState";
 import { Sidebar } from "@/components/Sidebar";
@@ -12,9 +12,11 @@ import { useApi, type RouterContext } from "@/lib/apiContext";
 import { useEffect } from "react";
 import { errorCode } from "@/lib/errors";
 import { analysisQuery, capabilitiesQuery, runQuery, sourceQuery } from "@/lib/queries";
+import { isSettingsSection } from "@/lib/settings";
 import { UploadProvider } from "@/lib/uploads";
 import { OverviewPage } from "@/pages/OverviewPage";
 import { RUN_TABS, RunPage, type RunTab } from "@/pages/RunPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { SourcePage, type Step } from "@/pages/SourcePage";
 
 /** A file dropped outside a drop zone must not open in the browser: that would leave the app and lose its state. */
@@ -97,9 +99,22 @@ const runRoute = createRoute({
   component: RunPage,
 });
 
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  beforeLoad: () => { throw redirect({ to: "/settings/$section", params: { section: "agent" } }); },
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/$section",
+  loader: ({ params: { section } }) => { if (!isSettingsSection(section)) throw notFound(); },
+  component: SettingsPage,
+});
+
 export function createAppRouter(context: RouterContext) {
   return createRouter({
-    routeTree: rootRoute.addChildren([overviewRoute, sourceRoute, runRoute]),
+    routeTree: rootRoute.addChildren([overviewRoute, sourceRoute, runRoute, settingsIndexRoute, settingsRoute]),
     context,
     defaultPreload: "intent",
     // The query cache owns freshness; the router must not cache loader results separately.

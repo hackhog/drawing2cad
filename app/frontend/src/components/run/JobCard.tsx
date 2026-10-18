@@ -51,6 +51,7 @@ export function JobCard({ run }: { run: Run }) {
           )}
           {run.agent && (
             <>
+              {run.agent.profile && <><dt>Profil</dt><dd className="truncate">{run.agent.profile}</dd></>}
               <dt>Modell</dt><dd className="truncate font-mono text-[11px]" title={run.agent.model}>{run.agent.model}</dd>
               <dt>MCP</dt><dd className="font-mono text-[11px]">drawing2cad-mcp {run.agent.mcp_version}</dd>
             </>

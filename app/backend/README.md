@@ -34,14 +34,18 @@ uv sync --reinstall-package drawing2cad-mcp
 | Method | Path | Response |
 |---|---|---|
 | `GET` | `/api/health` | Status and `drawing2cad_mcp_version` |
-| `GET` | `/api/capabilities` | Available functions; `runs` is true only with a configured model endpoint |
+| `GET` | `/api/capabilities` | Available functions; `runs` is true only with an active model profile; `agent_profile` and `agent_model` name it |
+| `GET` | `/api/agent/profiles` | Model profiles (`name`, `provider`, `origin`, `base_url`, `model`, `api`, `reasoning_effort`, `key_set`) and the `active` profile; never a key ([ADR 0020](../../docs/adr/0020-agent-model-profiles-selected-in-the-web-ui.md)) |
+| `PUT` | `/api/agent/active` | Select the profile for new runs: `name`, or `null` for no agent (422 `UNKNOWN_PROFILE`) |
+| `PUT`/`DELETE` | `/api/agent/profiles/{name}` | Create, change, or delete a UI profile: `provider` (`openrouter`, `azure`, `openai`), `endpoint`, `model`, `api`, `api_key` (empty keeps the stored key), `reasoning_effort`. Environment profiles are read-only (409 `PROFILE_READ_ONLY`) |
+| `POST` | `/api/agent/profiles/{name}/check` | Send one short request without tools to the endpoint; returns `ok`, `message`, `latency_ms` |
 | `POST` | `/api/sources` | Upload a PDF (multipart field `file`) to the domain service; returns the source record |
 | `GET` | `/api/sources`, `/api/sources/{id}` | Source records: opaque ID, filename, size, SHA-256 |
 | `GET` | `/api/sources/{id}/analysis` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |
 | `GET` | `/api/sources/{id}/flags` | Review flags with the decisions of the user ([ADR 0019](../../docs/adr/0019-review-flag-decisions-in-the-domain-service.md)) |
 | `PUT` | `/api/sources/{id}/flags/{flag_id}` | Record a decision: `action` (`ignore`, `classify`, `correct`, `reopen`), `stroke_class`, `text`, `note` |
 | `GET` | `/api/feedback` | All flag decisions as a JSON download for the developers of the analysis |
-| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run (503 without model endpoint) |
+| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run with the active profile (503 without active profile) |
 | `DELETE` | `/api/sources/{id}` | Delete a source with its web run records (409 `RUN_ACTIVE` while a run is active) |
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
 | `GET`/`PUT` | `/api/runs/{id}/note` | Read / replace the run note; `PUT` takes `expected_revision` and `text` (409 on a stale revision or an active run) |
@@ -75,6 +79,7 @@ A built model without release is a finished run with release state `blocked`. On
 
 | Variable | Required | Meaning |
 |---|---|---|
+| `DRAWING2CAD_AGENT_PROFILES` | no | Names of more than one model profile, for example `Foundry,OpenRouter`. Each profile reads `DRAWING2CAD_AGENT_<NAME>_*` with the suffixes below. Without this list, the unprefixed variables make the profile `Standard` |
 | `DRAWING2CAD_AGENT_BASE_URL` | for runs | OpenAI-compatible base URL, for example `https://<resource>.cognitiveservices.azure.com/openai/v1` |
 | `DRAWING2CAD_AGENT_MODEL` | for runs | Model or deployment name; it must support function tools on the selected API |
 | `DRAWING2CAD_AGENT_API` | no | `chat` (Chat Completions, default) or `responses` (Responses API, for example for `gpt-6.1-sol`) |

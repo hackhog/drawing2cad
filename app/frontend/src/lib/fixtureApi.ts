@@ -1,10 +1,10 @@
 // Simulated service for UI work before the shared services exist. Every run is marked `simulated`.
 // It imitates the contract behavior that the UI must handle: job phases, revisions, stale artifacts,
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
-import type { Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";
+import type { AgentProfileInput, AgentProfiles, Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";
 import { CONTRACT_VERSION } from "./contract";
 import type { ExtractResult, FlagChange, FlagDecision, FlagsPage } from "./drawing";
-import { ApiFailure, notFound } from "./errors";
+import { ApiFailure, notFound, unavailable } from "./errors";
 import {
   FIXTURE_ASSUMPTIONS, FIXTURE_OPERATIONS, FIXTURE_UNCERTAINTIES, fixtureAnalysis, fixtureParameters, fixtureValidation,
 } from "./fixtures";
@@ -63,6 +63,33 @@ export class FixtureApi implements WebApi {
       contract_version: CONTRACT_VERSION, simulated: true, runs: true, parameter_edit: true, notes: true, flag_decisions: true,
       downloads: true, model_preview: false, step_preview_upload: false, max_pdf_bytes: MAX_PDF_BYTES,
     };
+  }
+
+  // The simulated service has no model profiles: its runs use no model.
+  async agentProfiles(): Promise<AgentProfiles> {
+    await this.latency();
+    return { active: null, profiles: [] };
+  }
+
+  async selectAgentProfile(name: string | null): Promise<AgentProfiles> {
+    await this.latency();
+    if (name !== null) throw unavailable("Das Modellprofil");
+    return { active: null, profiles: [] };
+  }
+
+  async saveAgentProfile(_name: string, _profile: AgentProfileInput): Promise<AgentProfiles> {
+    await this.latency();
+    throw unavailable("Das Modellprofil");
+  }
+
+  async deleteAgentProfile(name: string): Promise<AgentProfiles> {
+    await this.latency();
+    throw notFound("Modellprofil", name);
+  }
+
+  async checkAgentProfile(name: string): Promise<never> {
+    await this.latency();
+    throw notFound("Modellprofil", name);
   }
 
   async listSources(): Promise<Source[]> {

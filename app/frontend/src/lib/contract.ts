@@ -132,8 +132,8 @@ export interface Run {
   run_id: string;
   source_id: string;
   phase: RunPhase;
-  /** The model and the drawing2cad-mcp version that execute an agent run. */
-  agent?: { model: string; mcp_version: string } | null;
+  /** The model profile, its model, and the drawing2cad-mcp version that execute an agent run. */
+  agent?: { model: string; profile?: string; mcp_version: string } | null;
   /** Model turns and tool requests of the agent loop so far, with the tool request budget. */
   iterations?: { model_turns: number; tool_requests: number; step_budget: number } | null;
   /** The phase in which a failed run stopped. */
@@ -168,6 +168,49 @@ export interface Capabilities {
   model_preview: boolean;
   step_preview_upload: boolean;
   max_pdf_bytes: number;
-  /** The configured agent model, if the service starts agent runs. */
+  /** The model of the active agent profile, if the service starts agent runs. */
   agent_model?: string | null;
+  /** The name of the active agent profile, if the service starts agent runs. */
+  agent_profile?: string | null;
+}
+
+export type AgentProvider = "openrouter" | "azure" | "openai";
+export type AgentApi = "chat" | "responses";
+
+/** A model profile of the server. The server keeps the key; `key_set` tells if one is stored. */
+export interface AgentProfile {
+  name: string;
+  provider: AgentProvider;
+  /** "env" profiles come from the server configuration and are read-only. */
+  origin: "env" | "ui";
+  base_url: string;
+  model: string;
+  api: AgentApi;
+  reasoning_effort: string | null;
+  key_set: boolean;
+}
+
+/** A profile as the web UI saves it. The server derives the base URL and the key header from the provider. */
+export interface AgentProfileInput {
+  provider: AgentProvider;
+  /** Azure AI Foundry: any URL of the resource. OpenAI-compatible: the base URL. OpenRouter: not used. */
+  endpoint: string;
+  model: string;
+  api: AgentApi;
+  /** Empty keeps the stored key of a changed profile. */
+  api_key: string;
+  reasoning_effort: string | null;
+}
+
+/** Result of one short request without tools to the endpoint of a profile. */
+export interface ConnectionCheck {
+  ok: boolean;
+  message: string;
+  latency_ms?: number;
+}
+
+/** The configured model profiles. `active` is null when new runs use no agent. */
+export interface AgentProfiles {
+  active: string | null;
+  profiles: AgentProfile[];
 }
