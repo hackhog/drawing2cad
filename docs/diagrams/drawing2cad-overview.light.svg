@@ -50,7 +50,8 @@
 <g id="demoapi"><rect x="660" y="140" width="220" height="64" rx="8" fill="#ffffff" stroke="#c5d1df" stroke-width="1.5"/>
 <rect x="660" y="150" width="4" height="44" rx="2" fill="#176ba0"/>
 <text x="770" y="164" font-size="15" fill="#17263d" font-weight="700" text-anchor="middle">Web API</text>
-<text x="770" y="183" font-size="11.5" fill="#526477" font-weight="400" text-anchor="middle">FastAPI routes, run records</text>
+<text x="770" y="183" font-size="11.5" fill="#526477" font-weight="400" text-anchor="middle">FastAPI routes, run records,</text>
+<text x="770" y="197" font-size="11.5" fill="#526477" font-weight="400" text-anchor="middle">measurements</text>
 </g>
 <g id="demotools"><rect x="660" y="480" width="230" height="64" rx="8" fill="#ffffff" stroke="#c5d1df" stroke-width="1.5"/>
 <rect x="660" y="490" width="4" height="44" rx="2" fill="#176ba0"/>

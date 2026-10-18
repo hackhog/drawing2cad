@@ -49,8 +49,10 @@ uv sync --reinstall-package drawing2cad-mcp
 | `GET` | `/api/sources/{id}/flags` | Review flags with the decisions of the user ([ADR 0019](../../docs/adr/0019-review-flag-decisions-in-the-domain-service.md)) |
 | `PUT` | `/api/sources/{id}/flags/{flag_id}` | Record a decision: `action` (`ignore`, `classify`, `correct`, `reopen`), `stroke_class`, `text`, `note` |
 | `GET` | `/api/feedback` | All flag decisions as a JSON download for the developers of the analysis |
+| `GET` | `/api/measurements` | Review measurements of all sources, oldest first: review time, optional manual-effort estimate, and estimator |
+| `POST` | `/api/sources/{id}/measurements` | Record one review: `review_seconds`, optional `manual_hours` and `estimator` (`drafter`, `guest`, `team`) |
 | `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run with the active profile (503 without active profile) |
-| `DELETE` | `/api/sources/{id}` | Delete a source with its web run records (409 `RUN_ACTIVE` while a run is active) |
+| `DELETE` | `/api/sources/{id}` | Delete a source with its web run records and measurements (409 `RUN_ACTIVE` while a run is active) |
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
 | `GET`/`PUT` | `/api/runs/{id}/note` | Read / replace the run note; `PUT` takes `expected_revision` and `text` (409 on a stale revision or an active run) |
 | `GET` | `/api/runs/{id}/files`, `/api/runs/{id}/archive` | Run record and agent trace, as single files or a ZIP archive |
@@ -104,6 +106,7 @@ Tests use a scripted model and do not call a model endpoint.
 - `src/drawing_demo/api.py`: HTTP routes, analysis through the domain service, and STEP display conversion.
 - `src/drawing_demo/service.py`: the domain service of the process, its MCP endpoint, uploads, and verified artifact reads.
 - `src/drawing_demo/jobs.py`: web run records (job state, agent trace, domain part run ID).
+- `src/drawing_demo/measurements.py`: review measurements per source (review time, manual-effort estimate).
 - `src/drawing_demo/agent/`: model adapter (`model.py`), runner (`runner.py`), and mapping of domain results to the contract (`mapping.py`).
 - `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill.
 

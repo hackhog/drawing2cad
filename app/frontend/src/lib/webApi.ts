@@ -1,6 +1,6 @@
 // The one interface between the UI and a service. Components and routes use only this interface.
 // `http` uses the web backend (app/backend); `fixture` is a simulated service for UI work without a backend.
-import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Run, RunFiles, RunNote, Source } from "./contract";
+import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Measurement, MeasurementInput, Run, RunFiles, RunNote, Source } from "./contract";
 import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 
 export interface ParameterChange { name: string; value: number }
@@ -42,6 +42,9 @@ export interface WebApi {
   listRunFiles(runId: string): Promise<RunFiles>;
   /** Bounded artifact content by opaque ID. */
   readArtifact(artifactId: string): Promise<Blob>;
+  /** Review measurements of all sources, oldest first. Deleting a source deletes its measurements. */
+  listMeasurements(): Promise<Measurement[]>;
+  addMeasurement(sourceId: string, measurement: MeasurementInput): Promise<Measurement>;
   /** Display-only STEP to GLB conversion for a STEP file that the user supplies. */
   stepPreview(file: File): Promise<Blob>;
 }

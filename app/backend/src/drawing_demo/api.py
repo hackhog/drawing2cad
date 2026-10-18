@@ -33,6 +33,7 @@ from .agent.model import check_connection
 from .agent.profiles import ProfileStore, Provider
 from .agent.runner import AgentRunner
 from .jobs import JobStore
+from .measurements import MeasurementInput, MeasurementStore
 from .service import DomainBackend, ServiceError, checked_id, not_found, settings_from_env
 
 MAX_STEP_BYTES = 50 * 1024 * 1024
@@ -67,6 +68,7 @@ class Services:
         self.backend = DomainBackend(settings)
         data_dir = Path(os.environ.get("DRAWING2CAD_DATA_DIR", ".data"))
         self.jobs = JobStore(data_dir / "web-runs")
+        self.measurements = MeasurementStore(data_dir / "web-measurements")
         mcp_url = os.environ.get("DRAWING2CAD_MCP_URL", f"http://127.0.0.1:{os.environ.get('PORT', '8000')}/mcp")
         self.runner = AgentRunner(self.backend, self.jobs, ProfileStore(data_dir / "agent-profiles.json"), _skill_path(), mcp_url,
                                   os.environ.get(settings.http.token_env))
@@ -304,6 +306,7 @@ def delete_source(source_id: str, s: Services = Depends(services)) -> Response:
                            recovery="Warten, bis der Lauf beendet ist, und dann erneut löschen.")
     s.backend.delete_source(source_id)
     s.jobs.remove(source_id)
+    s.measurements.remove(source_id)
     s.forget(source_id)
     return Response(status_code=204)
 
@@ -311,6 +314,18 @@ def delete_source(source_id: str, s: Services = Depends(services)) -> Response:
 @router.get("/sources/{source_id}/analysis")
 def get_analysis(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
     return s.analysis(_source(s, source_id))
+
+
+@router.get("/measurements")
+def list_measurements(s: Services = Depends(services)) -> list[dict[str, Any]]:
+    """Review times and manual-effort estimates of all drawings, oldest first."""
+    return s.measurements.list()
+
+
+@router.post("/sources/{source_id}/measurements", status_code=201)
+def add_measurement(source_id: str, measurement: MeasurementInput, s: Services = Depends(services)) -> dict[str, Any]:
+    """Record one review of a drawing: the time on the stopwatch and, optionally, the estimated manual effort."""
+    return s.measurements.add(_source(s, source_id)["source_id"], measurement)
 
 
 def flag_view(flag: dict[str, Any]) -> dict[str, Any]:

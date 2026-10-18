@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { FlagList } from "@/components/FlagList";
 import { ModelFrame, ModelPanel } from "@/components/ModelPanel";
 import { PageHeader } from "@/components/PageHeader";
+import { ReviewTimer } from "@/components/ReviewTimer";
 import { SheetViewer } from "@/components/SheetViewer";
 import { StatusBadge } from "@/components/Status";
 import { UploadButton } from "@/components/UploadButton";
@@ -112,6 +113,7 @@ function SourceView({ sourceId }: { sourceId: string }) {
         </Card>
 
         <div className="flex min-h-0 flex-col gap-3">
+          {step === 3 && <ReviewTimer sourceId={sourceId} />}
           <FlagList
             flags={flags} active={focus} highlight={step === 3} sourceId={decidable ? sourceId : undefined}
             onSelect={(f) => { if (step !== 3) void navigate({ search: { step: 3 } }); setPicked(f); }}

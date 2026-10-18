@@ -53,8 +53,8 @@ The UI text is German, because the pitch audience is German.
 
 | Route | View |
 |---|---|
-| `/` | Overview: tiles for all drawings, a table with one row for each source or upload (upload progress, status, explained share, views, texts, items to review, size). |
-| `/sources/$sourceId?step=1…4` | Guided sequence (ADR 0007): **1 Drawing → 2 Recognized → 3 Review → 4 3D model**, the review list, and the CAD runs of the drawing. |
+| `/` | Overview: tiles for all drawings, benefit tiles (models, released, dimensions from the drawing, run time, review time, saved time), a table with one row for each source or upload (upload progress, status, explained share, views, texts, items to review, machine time, review time, manual estimate, size), and the key figures dialog. |
+| `/sources/$sourceId?step=1…4` | Guided sequence (ADR 0007): **1 Drawing → 2 Recognized → 3 Review → 4 3D model**, the review list, and the CAD runs of the drawing. Step 3 shows a stopwatch for the review time and asks for the manual effort. |
 | `/runs/$runId?tab=…` | CAD run: job phases and errors; tabs for parameters and operations, review (release state, assumptions, uncertainty markers, validation), results (downloads and previews), and notes. |
 
 - **Batch upload:** select or drag several PDFs. A maximum of 2 uploads run at the same time. Each upload shows its progress.

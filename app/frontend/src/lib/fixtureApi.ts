@@ -1,7 +1,10 @@
 // Simulated service for UI work before the shared services exist. Every run is marked `simulated`.
 // It imitates the contract behavior that the UI must handle: job phases, revisions, stale artifacts,
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
-import type { AgentProfileInput, AgentProfiles, Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";
+import type {
+  AgentProfileInput, AgentProfiles, Artifact, ArtifactRole, Capabilities, Measurement, MeasurementInput, Part, Run,
+  RunFiles, RunNote, RunPhase, Source,
+} from "./contract";
 import { CONTRACT_VERSION } from "./contract";
 import type { ExtractResult, FlagChange, FlagDecision, FlagsPage } from "./drawing";
 import { ApiFailure, notFound, unavailable } from "./errors";
@@ -44,6 +47,7 @@ export class FixtureApi implements WebApi {
   private readonly sources = new Map<string, Source>();
   private readonly runs = new Map<string, RunRecord>();
   private readonly contents = new Map<string, Blob>();
+  private measurements: Measurement[] = [];
   /** Flag decisions by source ID and flag ID. */
   private readonly decisions = new Map<string, Map<string, FlagDecision>>();
   private readonly now: () => number;
@@ -130,6 +134,7 @@ export class FixtureApi implements WebApi {
       throw new ApiFailure({ code: "RUN_ACTIVE", message: "Für diese Zeichnung läuft noch ein Lauf." }, 409);
     }
     for (const r of records) this.runs.delete(r.runId);
+    this.measurements = this.measurements.filter((m) => m.source_id !== sourceId);
     this.sources.delete(sourceId);
     this.decisions.delete(sourceId);
   }
@@ -252,6 +257,19 @@ export class FixtureApi implements WebApi {
     const content = this.contents.get(artifactId);
     if (!content) throw notFound("Artefakt", artifactId);
     return content;
+  }
+
+  async listMeasurements(): Promise<Measurement[]> {
+    await this.latency();
+    return [...this.measurements];
+  }
+
+  async addMeasurement(sourceId: string, input: MeasurementInput): Promise<Measurement> {
+    await this.latency();
+    this.source(sourceId);
+    const measurement = { ...input, measurement_id: this.id("msr"), source_id: sourceId, recorded_at: new Date(this.now()).toISOString() };
+    this.measurements.push(measurement);
+    return measurement;
   }
 
   stepPreview(): Promise<Blob> {

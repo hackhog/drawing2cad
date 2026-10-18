@@ -1,7 +1,7 @@
 // Benefit figures of the overview, from synthetic runs.
 import { describe, expect, it } from "vitest";
-import { benefit } from "../benefit";
-import type { Artifact, JobStatus, Parameter, ReleaseState, Run } from "../contract";
+import { benefit, effort, measurementsCsv, saving } from "../benefit";
+import type { Artifact, JobStatus, Measurement, Parameter, ReleaseState, Run } from "../contract";
 
 const param = (name: string, origin: Parameter["origin"]): Parameter =>
   ({ name, value: 10, unit: "mm", origin, editable: true, feature: "base" });
@@ -46,5 +46,59 @@ describe("benefit", () => {
     const b = benefit([[run("failed", 10, { simulated: true })]]);
     expect(b.medianSeconds).toBeNull();
     expect(b.simulated).toBe(true);
+  });
+});
+
+const measurement = (source: string, seconds: number, hours: number | null = null, estimator: Measurement["estimator"] = null): Measurement => ({
+  measurement_id: `msr_${source}_${seconds}`, source_id: source, review_seconds: seconds, manual_hours: hours, estimator,
+  recorded_at: "2026-01-01T00:00:00Z",
+});
+
+describe("effort", () => {
+  it("takes the median review time and the mean of the estimates only", () => {
+    const e = effort([measurement("a", 60, 2, "drafter"), measurement("b", 200), measurement("c", 100, 4, "guest"), measurement("d", 90, 3, "drafter")]);
+    expect(e).toEqual({ reviews: 4, reviewSeconds: 95, estimates: 3, manualHours: 3, estimators: ["drafter", "guest"] });
+  });
+
+  it("has no values without measurements", () => {
+    expect(effort([])).toEqual({ reviews: 0, reviewSeconds: null, estimates: 0, manualHours: null, estimators: [] });
+  });
+});
+
+describe("saving", () => {
+  const built = benefit([[run("succeeded", 120, { artifacts: [step(1)] })], [run("succeeded", 120, { artifacts: [step(1)] })]]);
+  const assumptions = { hourlyRate: 100, manualHours: 3 };
+
+  it("needs a machine time and a review time", () => {
+    expect(saving(benefit([]), effort([measurement("a", 60)]), assumptions)).toBeNull();
+    expect(saving(built, effort([]), assumptions)).toBeNull();
+  });
+
+  it("uses measured estimates before the assumption", () => {
+    const s = saving(built, effort([measurement("a", 240, 1, "drafter")]), assumptions)!;
+    // 1 h by hand against 2 min machine + 4 min review, for 2 built parts.
+    expect(s.manualAssumed).toBe(false);
+    expect(s.toolSeconds).toBe(360);
+    expect(s.factor).toBe(10);
+    expect(s.hours).toBeCloseTo(1.8);
+    expect(s.euros).toBeCloseTo(180);
+  });
+
+  it("falls back to the assumption and marks it", () => {
+    const s = saving(built, effort([measurement("a", 240)]), assumptions)!;
+    expect(s.manualAssumed).toBe(true);
+    expect(s.manualHours).toBe(3);
+  });
+});
+
+describe("measurementsCsv", () => {
+  it("writes one row per measurement and quotes cells with a separator", () => {
+    const csv = measurementsCsv([measurement("a", 95.4, 2, "drafter"), measurement("x", 30)],
+      new Map([["a", { name: "Flansch; groß", machineSeconds: 101.6 }]]));
+    expect(csv.split("\n")).toEqual([
+      "zeichnung;maschine_s;pruefung_s;von_hand_h;schaetzer;erfasst",
+      '"Flansch; groß";102;95;2;drafter;2026-01-01T00:00:00Z',
+      "x;;30;;;2026-01-01T00:00:00Z",
+    ]);
   });
 });
