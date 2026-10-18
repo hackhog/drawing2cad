@@ -67,6 +67,67 @@ def test_build_passes_while_the_service_has_many_threads(runner):
     assert built["status"] == "pass", built
 
 
+def test_concurrent_builds_pass_while_the_service_has_many_threads(runner):
+    # Two workers that run at the same time must not use the task margin of each other.
+    concurrent = WorkerRunner(runner.storage, WorkerLimits(timeout_seconds=60, concurrent_workers=2))
+    stop = threading.Event()
+    threads = [threading.Thread(target=stop.wait) for _ in range(80)]
+    for thread in threads:
+        thread.start()
+    results = [None, None]
+
+    def build(index):
+        results[index] = concurrent.run("build", description=sample_description())
+
+    builds = [threading.Thread(target=build, args=(index,)) for index in range(2)]
+    try:
+        for thread in builds:
+            thread.start()
+        for thread in builds:
+            thread.join()
+    finally:
+        stop.set()
+        for thread in threads:
+            thread.join()
+    for result in results:
+        assert result["status"] == "pass", result
+
+
+# Start threads until thread creation fails, then report the number. The threads are daemons, so the
+# worker can stop while they wait.
+THREAD_COUNT_CODE = """import threading
+stop = threading.Event()
+started = 0
+try:
+    while started < 1000:
+        threading.Thread(target=stop.wait, daemon=True).start()
+        started += 1
+except RuntimeError:
+    pass
+raise ValueError(f"started_threads={started}")
+"""
+
+
+def started_threads(result):
+    assert result["status"] == "fail", result
+    message = result["error"]["message"]
+    assert message.startswith("started_threads="), result
+    return int(message.split("=", 1)[1])
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_worker_cannot_add_more_tasks_than_its_margin(runner, workers):
+    from drawing2cad_mcp.sandbox import WORKER_TASKS
+
+    limited = WorkerRunner(runner.storage, WorkerLimits(timeout_seconds=60, concurrent_workers=workers))
+    started = started_threads(limited.run("build_code", description=sample_description(), code=THREAD_COUNT_CODE))
+    # The user task count at the worker start includes the worker itself. Threads that the CAD kernel
+    # starts later also use the margin.
+    assert 0 < started <= WORKER_TASKS * workers
+    if workers > 1:
+        # A larger margin permits more threads than the margin of one worker.
+        assert started > WORKER_TASKS
+
 def test_failed_feature_retains_identifier(runner):
     description = sample_description()
     description["features"].append({"id": "outside", "type": "hole", "position": [100, 100, 5],

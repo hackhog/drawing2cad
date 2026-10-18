@@ -35,22 +35,35 @@ def user_task_count(proc: Path = Path("/proc")) -> int:
     return count
 
 
-def task_limit() -> int:
-    """Return the RLIMIT_NPROC value that permits WORKER_TASKS more tasks than the user has now.
+def task_limit(concurrent_workers: int = 1) -> int:
+    """Return the RLIMIT_NPROC value that permits WORKER_TASKS more tasks for each concurrent worker.
 
-    RLIMIT_NPROC applies to all tasks of the real user ID, including the threads of the service.
-    A fixed value lets a busy service prevent thread creation in its workers.
-    Concurrent workers of the same user share the margin. In a PID namespace, /proc does not show
-    tasks of the same user ID in other namespaces, so the margin can be smaller than WORKER_TASKS.
+    RLIMIT_NPROC applies to all tasks of the real user ID, including the threads of the service and of
+    the other workers. A fixed value lets a busy service prevent thread creation in its workers.
+    The margin is WORKER_TASKS multiplied by the number of workers that can run at the same time.
+    The user task count at the start of this worker includes the tasks of the workers that run now.
+    If each worker uses at most WORKER_TASKS tasks, the other workers cannot use the margin of this
+    worker. One worker can add at most the complete margin.
+    In a PID namespace, /proc does not show tasks of the same user ID in other namespaces, so the
+    margin can be smaller than calculated.
     """
     import resource
 
+    if type(concurrent_workers) is not int or concurrent_workers < 1:
+        raise SandboxError("The number of concurrent workers must be a positive integer.")
     _, hard = resource.getrlimit(resource.RLIMIT_NPROC)
     try:
-        limit = user_task_count() + WORKER_TASKS
+        tasks = user_task_count()
     except (OSError, ValueError) as error:
         raise SandboxError("Cannot count the tasks of the worker user in /proc.") from error
-    return limit if hard == resource.RLIM_INFINITY else min(limit, hard)
+    limit = tasks + WORKER_TASKS * concurrent_workers
+    if hard != resource.RLIM_INFINITY and hard < limit:
+        # A smaller margin lets the CAD kernel hang at thread creation until the wall-clock limit.
+        raise SandboxError(
+            f"The hard RLIMIT_NPROC limit {hard} is too small: the worker user has {tasks} tasks, and "
+            f"{concurrent_workers} concurrent workers need {WORKER_TASKS * concurrent_workers} more. "
+            "Increase the hard process limit of the service user or decrease cad.concurrency.")
+    return limit
 
 
 def available() -> dict:
@@ -65,7 +78,7 @@ def available() -> dict:
             "reason": None if abi >= 3 and library else "Landlock ABI 3 or libseccomp is unavailable."}
 
 
-def restrict(work_dir: Path, *, memory_mb: int, cpu_seconds: int) -> dict:
+def restrict(work_dir: Path, *, memory_mb: int, cpu_seconds: int, concurrent_workers: int = 1) -> dict:
     """Restrict only a disposable worker, before importing the CAD kernel."""
     capability = available()
     if not capability["available"]:
@@ -80,7 +93,7 @@ def restrict(work_dir: Path, *, memory_mb: int, cpu_seconds: int) -> dict:
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
     resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024 * 1024,) * 2)
     resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
-    limit = task_limit()
+    limit = task_limit(concurrent_workers)
     resource.setrlimit(resource.RLIMIT_NPROC, (limit, limit))
 
     libc = ctypes.CDLL(None, use_errno=True)

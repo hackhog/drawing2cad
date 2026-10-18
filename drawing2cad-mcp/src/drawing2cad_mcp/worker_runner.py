@@ -21,6 +21,8 @@ from .sandbox import available
 class WorkerLimits:
     timeout_seconds: float = 90
     memory_mb: int = 3072
+    # The number of workers that can run at the same time. Each one receives its own task margin.
+    concurrent_workers: int = 1
     max_log_bytes: int = 262144
 
 
@@ -63,6 +65,7 @@ class WorkerRunner:
         request = {"operation": operation, "work_dir": str(directory), "description": description,
                    "memory_mb": memory_mb if memory_mb is not None else self.limits.memory_mb,
                    "cpu_seconds": max(1, math.ceil(deadline_seconds + 1)), "code": code,
+                   "concurrent_workers": self.limits.concurrent_workers,
                    "drawing_spec": drawing_spec, "revision": revision,
                    "export_profile": export_profile, "pmi": pmi,
                    "parameter_changes": parameter_changes, "page": page, "views": views}
