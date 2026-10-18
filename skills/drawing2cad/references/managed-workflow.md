@@ -22,6 +22,10 @@ Unknown fields, unsupported operations, invalid references, and nonfinite values
 A parameter must have evidence.
 An assumed value needs a reason and a source region.
 Keep `explicit`, `derived`, `inferred`, `assumed`, and `unresolved` distinct.
+If the drawing prints a number, keep that value `explicit` even when its feature association is uncertain.
+Record the association separately as `inferred` or `assumed`, with its reason and source region.
+Keep each plausible alternative open when it changes the construction type.
+Build from a reasonable interpretation, then record how the alternative affects source-review coverage.
 Use a supported closed review status.
 A reasonable geometric assumption can support construction without a new user question.
 An unresolved value that prevents a reasonable build remains a blocker.
@@ -58,9 +62,11 @@ After a lost response, read state before another call.
 Do not repeat an old mutation with a guessed revision.
 Keep mutations to the same part in sequence.
 The server counts part-service calls against its run budget.
+For a domain run with likely corrections, `step_budget=45` is a useful starting value within the live server limits.
+Keep the client's total tool-call budget separate; it can also count discovery, PDF, upload, and download calls.
 After the budget is reached, `part_read` and `part_export_review` remain available for audit.
 These calls cannot enable more construction or release operations.
-Reserve calls for candidate release and report export.
+Reserve calls for one final diagnostic build, `export_step`, and `part_export_review`.
 The agent separately tracks the overall budget, including PDF preparation, discovery, and retries.
 
 Jobs are optional for domain clients that permit `job_submit` and `job_get`. Other clients use synchronous calls.
@@ -95,8 +101,13 @@ The length must be positive and no greater than the bore depth. If length is abs
 The build and fresh STEP import check the entry, tap-drill diameter, and full cylindrical depth against this attribute. This check does not verify helical geometry or semantic PMI.
 Schema 1.1 also supports tapered cuts and pockets. Use [draft-and-fillets.md](draft-and-fillets.md) for their direction and validation rules.
 
-Geometry checks include cylindrical diameters and lengths, circular edges, cone angle and width,
-axis spacing, parallel-plane spacing, planar draft angles, and straight-edge angles.
+Use the 15 current measurement examples returned by `part_schema` to select a kind and its required anchors.
+Do not reuse an example position without placing it on the source feature.
+Use `arc_radius` for a circular profile edge. Use `outer_diameter` for a cylindrical outer face.
+For `outer_diameter`, put the axis position at a station inside the intended cylindrical face.
+Inspect the returned station and ambiguity details before accepting a stepped-shaft diameter.
+Use `axis_distance` for two distinct axes, not for length along one axis.
+For `plane_distance`, put both anchors on material faces, outside bores and axes.
 `section_distance` measures two trimmed planar faces along one line. It can measure a drafted rib at a selected height.
 Both anchors must lie on that line. `surface_radius` measures a cylindrical face near its surface anchor, including a trimmed fillet.
 Do not use an axis-center anchor for `surface_radius`.
@@ -145,6 +156,8 @@ Coverage identifies the reviewer, source hashes, view/feature/printed-dimension 
 Include the reason for the review conclusion.
 The service verifies the evidence structure; the attestation does not prove that the reviewer interpreted every source correctly.
 Keep a separate inventory that links each printed callout to its geometry check.
+Include every printed fillet radius and chamfer in that inventory, even when its edge is visually small.
+Compare each entry with the final feature list and model measurement.
 The reviewer must also check features that do not have dimensions, such as a visible web or a drill tip.
 Do not replace a failed local check with a bounding-box check that does not measure the same feature.
 
