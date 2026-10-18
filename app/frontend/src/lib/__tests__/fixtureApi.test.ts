@@ -181,3 +181,35 @@ describe("release presentation", () => {
     expect(state.revisionsAgree).toBe(false);
   });
 });
+
+describe("flag decisions", () => {
+  it("stores a decision per flag, exports it, and removes it on reopen", async () => {
+    const { api } = setup();
+    const source = await api.uploadSource(pdf(), () => {});
+    const [flag] = (await api.getFlags(source.source_id)).flags;
+    expect(flag.decision).toBeNull();
+
+    const decided = await api.decideFlag(source.source_id, flag.id, { action: "classify", stroke_class: "table", note: "Passmaß-Tabelle" });
+    expect(decided.flags[0].decision).toMatchObject({ action: "classify", stroke_class: "table", note: "Passmaß-Tabelle" });
+    const feedback = JSON.parse(await (await api.exportFeedback()).text());
+    expect(feedback.decisions).toEqual([expect.objectContaining({ source_id: source.source_id, flag_id: flag.id, stroke_class: "table" })]);
+
+    const reopened = await api.decideFlag(source.source_id, flag.id, { action: "reopen" });
+    expect(reopened.flags[0].decision).toBeNull();
+  });
+
+  it("rejects an unknown flag", async () => {
+    const { api } = setup();
+    const source = await api.uploadSource(pdf(), () => {});
+    expect((await failureOf(api.decideFlag(source.source_id, "strokes-999", { action: "ignore" })))?.code).toBe("NOT_FOUND");
+  });
+});
+
+describe("agent profiles", () => {
+  it("offers no model profile, so that only the agent-free selection is possible", async () => {
+    const { api } = setup();
+    expect(await api.agentProfiles()).toEqual({ active: null, profiles: [] });
+    expect(await api.selectAgentProfile(null)).toEqual({ active: null, profiles: [] });
+    expect((await failureOf(api.selectAgentProfile("Foundry")))?.code).toBe("CAPABILITY_UNAVAILABLE");
+  });
+});

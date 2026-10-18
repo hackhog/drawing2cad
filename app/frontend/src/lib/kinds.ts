@@ -1,4 +1,4 @@
-import type { StrokeKind } from "./drawing";
+import type { FlagDecision, StrokeClass, StrokeKind } from "./drawing";
 
 // Keep the established drawing-class colors for the existing UI.
 export const KINDS: [StrokeKind, string, string][] = [
@@ -19,3 +19,19 @@ export const FLAG_KIND: Record<string, string> = {
   unclear_strokes: "Striche keiner Klasse sicher zuordenbar",
   unreadable_text: "Zeichen nicht sicher erkannt",
 };
+
+/** Classes that a user can assign to unclear strokes. The last five are unknown to the analysis. */
+export const STROKE_CLASSES: [StrokeClass, string][] = [
+  ...KINDS.flatMap(([k, label]): [StrokeClass, string][] => (k === "unclear" ? [] : [[k, label]])),
+  ["frame", "Rahmen/Schriftfeld"],
+  ["table", "Tabelle"],
+  ["leader", "Hinweislinie"],
+  ["pitch_circle", "Lochkreis"],
+  ["tangent_edge", "Tangentenkante"],
+];
+
+export function decisionLabel(d: FlagDecision): string {
+  if (d.action === "classify") return `→ ${STROKE_CLASSES.find(([k]) => k === d.stroke_class)?.[1] ?? d.stroke_class}`;
+  if (d.action === "correct") return `→ „${d.text}“`;
+  return "ignoriert";
+}

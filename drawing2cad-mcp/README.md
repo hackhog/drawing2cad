@@ -79,8 +79,9 @@ Use the live catalog for exact schemas and limits.
 | `domain_schema` | Shared input contracts and public response-record schemas for MCP and web adapters. |
 | `job_submit`, `job_get`, `job_list`, `job_cancel` | Persistent CAD and drawing jobs, idempotent submission, and cancellation requests. |
 | `notes_read`, `notes_update` | Run notes with their own expected revision. |
+| `source_flags_read`, `source_flags_decide`, `source_flags_export` | Review flags of a source page, decisions of a human reviewer, and their export as feedback ([ADR 0019](../docs/adr/0019-review-flag-decisions-in-the-domain-service.md)). |
 | `pdf_info` | PDF hash, page count, page geometry, boxes, and rotation. |
-| `pdf_read_text` | Bounded embedded-text extraction; no OCR. |
+| `pdf_read_text` | Bounded native text and source-bound tolerance candidates. Optional client transcriptions; no OCR. |
 | `pdf_render_page`, `pdf_crop_region` | Page/detail images and artifact hashes. |
 | `drawing_extract` | Supported vector analysis, views, glyph text, and geometric candidates. |
 | `pdf_calibrate` | Scale from two distinct printed dimensions in one source view. |
@@ -187,6 +188,18 @@ A stepped bore is one connected cavity. Each of its bores has the outer opening 
 If this field is absent, `entry_side` is `not_tested`; diameter and depth alone do not prove the entry side.
 Named references update their direct uses. There is no algebraic constraint solver for derived profile coordinates.
 Rebuild and measure a changed description before claiming parameter editability.
+
+Part schema 1.3 stores manufacturing tolerances with literal source text, evidence references, and confidence.
+`pdf_read_text` extracts candidates from native callout lines and optional source-bound `tolerance_observations`.
+Native text has page-level locations. Client observations supply normalized regions after image review.
+Candidate confidence and parsing do not prove a correct source interpretation or feature association.
+Keep these requirements separate from the numerical tolerances of geometry measurements.
+Unclear notation and uncertain parameter associations need open review items.
+The service does not derive numerical fit limits from a designation such as `H7`.
+Use [tolerances-and-changes.md](../skills/drawing2cad/references/tolerances-and-changes.md) for capture and change reports.
+`part_update` records changed parameters, direct references, and potentially affected later features.
+A subsequent build records measured effects against the retained validated baseline.
+Manufacturing-tolerance data do not prove semantic tolerance PMI in STEP.
 
 ## Technical drawing delivery
 

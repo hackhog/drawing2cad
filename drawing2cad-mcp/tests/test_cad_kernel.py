@@ -85,3 +85,7 @@ def test_no_effect_disjoint_and_ambiguous_features_fail(tmp_path, feature, code)
         build(description, tmp_path)
     assert error.value.code == code
     assert error.value.feature_id == feature["id"]
+    assert error.value.checks == [
+        {"check": "feature_execution", "feature_id": "base", "status": "pass"},
+        {"check": "feature_execution", "feature_id": feature["id"], "status": "fail"},
+    ]

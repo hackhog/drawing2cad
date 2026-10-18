@@ -24,6 +24,7 @@ from ..jobs import JobStore, now
 from ..service import DomainBackend, ServiceError
 from .mapping import phase_for
 from .model import ModelSettings, make_model_call
+from .profiles import ProfileStore
 
 log = logging.getLogger(__name__)
 
@@ -53,31 +54,39 @@ class ProgressTrace(Trace):
 
 
 class AgentRunner:
-    """Execute runs one at a time in a background thread. Further runs wait as `queued`."""
+    """Execute runs one at a time in a background thread. Further runs wait as `queued`.
 
-    def __init__(self, backend: DomainBackend, jobs: JobStore, settings: ModelSettings | None, skill_path: Path,
+    A new run uses the active profile of the store; a later selection does not change queued or running runs.
+    """
+
+    def __init__(self, backend: DomainBackend, jobs: JobStore, profiles: ProfileStore, skill_path: Path,
                  mcp_url: str, token: str | None = None):
         self.backend = backend
         self.jobs = jobs
-        self.settings = settings
+        self.profiles = profiles
         self.skill_path = skill_path
         self.mcp_url = mcp_url
         self.token = token
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent")
 
     @property
+    def settings(self) -> ModelSettings | None:
+        """The endpoint of the active profile, or None when no profile is active."""
+        return self.profiles.get(self.profiles.active)
+
+    @property
     def available(self) -> bool:
         return self.settings is not None and self.skill_path.is_file()
 
-    def submit(self, run_id: str) -> None:
-        self.executor.submit(self._execute, run_id)
+    def submit(self, run_id: str, settings: ModelSettings) -> None:
+        self.executor.submit(self._execute, run_id, settings)
 
     def close(self) -> None:
         self.executor.shutdown(wait=False, cancel_futures=True)
 
-    def _execute(self, run_id: str) -> None:
+    def _execute(self, run_id: str, settings: ModelSettings) -> None:
         try:
-            asyncio.run(self._run(run_id))
+            asyncio.run(self._run(run_id, settings))
         except Exception as error:  # The run record must show every failure; the thread must not die silently.
             log.exception("Agent run %s failed", run_id)
             self._fail(run_id, "AGENT_FAILED", f"{type(error).__name__}: {error}"[:2000],
@@ -99,11 +108,10 @@ class AgentRunner:
                     await session.initialize()
                     yield session
 
-    async def _run(self, run_id: str) -> None:
-        assert self.settings is not None
+    async def _run(self, run_id: str, settings: ModelSettings) -> None:
         run = self.jobs.get(run_id)
         source = self.backend.call("source_get", source_id=run["source_id"])
-        plan = {"model": self.settings.model, "source_id": source["source_id"], "source_sha256": source["sha256"],
+        plan = {"model": settings.model, "source_id": source["source_id"], "source_sha256": source["sha256"],
                 "run_prefix": run["part_prefix"], **LIMITS}
         self.jobs.update(run_id, phase="analyzing", job={"status": "running", "started_at": now()})
         requested: dict[str, Any] = {}
@@ -125,7 +133,7 @@ class AgentRunner:
         async with self.session() as session:
             catalog = (await session.list_tools()).model_dump(mode="json", by_alias=True)["tools"]
             summary = await drive(session, catalog, plan, self.skill_path.read_text(encoding="utf-8"), trace,
-                                  model_call=make_model_call(self.settings))
+                                  model_call=make_model_call(settings))
         (directory / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         self.finish(run_id, summary)
 

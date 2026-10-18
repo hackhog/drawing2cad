@@ -19,6 +19,8 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0016](0016-shared-domain-service-and-drawing-delivery.md) | Shared domain services, persistent uploads and jobs, DXF/PDF drawing delivery, and current-review release gates |
 | [0017](0017-ap242-application-construction-and-pmi.md) | Bounded AP242 construction adapter and nominal PMI |
 | [0018](0018-agent-runner-in-the-web-backend.md) | Agent runner in the web backend on the shared domain service |
-| [0019](0019-review-measurements-for-benefit-figures.md) | Review measurements in the web backend for the benefit figures |
+| [0019](0019-review-flag-decisions-in-the-domain-service.md) | Review flags and user decisions in the domain service, with a feedback export |
+| [0020](0020-agent-model-profiles-selected-in-the-web-ui.md) | Agent model profiles from the server environment and the web UI, with server-side keys |
+| [0021](0021-review-measurements-for-benefit-figures.md) | Review measurements in the web backend for the benefit figures |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

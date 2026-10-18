@@ -3,7 +3,7 @@
 This service supplies the web API ([ADR 0012](../../docs/adr/0012-demo-app-as-frontend-and-backend-container.md), [ADR 0018](../../docs/adr/0018-agent-runner-in-the-web-backend.md)).
 It creates one shared domain service (`drawing2cad_mcp.server.Application`, domain profile) for the process.
 Web routes call this service. The backend also mounts its MCP endpoint at `/mcp` for agent runs.
-It derives review flags and converts STEP files to GLB for display.
+It passes review flags and user decisions through and converts STEP files to GLB for display.
 The frontend container serves the UI and forwards only `/api` requests to this service.
 The `/mcp` endpoint accepts loopback hosts only. The backend does not serve static UI files.
 
@@ -21,6 +21,10 @@ uv run drawing-demo
 Put `pdftoppm` on `PATH`, or set `DRAWING2CAD_PDFTOPPM` to its executable path.
 The health endpoint is `http://127.0.0.1:8000/api/health`.
 Sample-based tests are skipped when their source drawings are absent.
+`tests/test_browser.py` drives the built UI in Google Chrome (Playwright) against this backend, its domain service, and its mounted MCP endpoint, with a scripted model.
+It covers upload, run start, job state, review, parameter display, the run note with a revision conflict, run file download, and error messages.
+It does not cover a released STEP or drawing download, because the scripted model does not build a model.
+Run `npm run build` in `app/frontend` first. Without the UI build or Google Chrome, these tests are skipped.
 
 The MCP package is a non-editable path dependency.
 After a change in `../../drawing2cad-mcp`, run:
@@ -34,13 +38,20 @@ uv sync --reinstall-package drawing2cad-mcp
 | Method | Path | Response |
 |---|---|---|
 | `GET` | `/api/health` | Status and `drawing2cad_mcp_version` |
-| `GET` | `/api/capabilities` | Available functions; `runs` is true only with a configured model endpoint |
+| `GET` | `/api/capabilities` | Available functions; `runs` is true only with an active model profile; `agent_profile` and `agent_model` name it |
+| `GET` | `/api/agent/profiles` | Model profiles (`name`, `provider`, `origin`, `base_url`, `model`, `api`, `reasoning_effort`, `key_set`) and the `active` profile; never a key ([ADR 0020](../../docs/adr/0020-agent-model-profiles-selected-in-the-web-ui.md)) |
+| `PUT` | `/api/agent/active` | Select the profile for new runs: `name`, or `null` for no agent (422 `UNKNOWN_PROFILE`) |
+| `PUT`/`DELETE` | `/api/agent/profiles/{name}` | Create, change, or delete a UI profile: `provider` (`openrouter`, `azure`, `openai`), `endpoint`, `model`, `api`, `api_key` (empty keeps the stored key), `reasoning_effort`. Environment profiles are read-only (409 `PROFILE_READ_ONLY`) |
+| `POST` | `/api/agent/profiles/{name}/check` | Send one short request without tools to the endpoint; returns `ok`, `message`, `latency_ms` |
 | `POST` | `/api/sources` | Upload a PDF (multipart field `file`) to the domain service; returns the source record |
 | `GET` | `/api/sources`, `/api/sources/{id}` | Source records: opaque ID, filename, size, SHA-256 |
 | `GET` | `/api/sources/{id}/analysis` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |
+| `GET` | `/api/sources/{id}/flags` | Review flags with the decisions of the user ([ADR 0019](../../docs/adr/0019-review-flag-decisions-in-the-domain-service.md)) |
+| `PUT` | `/api/sources/{id}/flags/{flag_id}` | Record a decision: `action` (`ignore`, `classify`, `correct`, `reopen`), `stroke_class`, `text`, `note` |
+| `GET` | `/api/feedback` | All flag decisions as a JSON download for the developers of the analysis |
 | `GET` | `/api/measurements` | Review measurements of all sources, oldest first: review time, optional manual-effort estimate, and estimator |
 | `POST` | `/api/sources/{id}/measurements` | Record one review: `review_seconds`, optional `manual_hours` and `estimator` (`drafter`, `guest`, `team`) |
-| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run (503 without model endpoint) |
+| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run with the active profile (503 without active profile) |
 | `DELETE` | `/api/sources/{id}` | Delete a source with its web run records and measurements (409 `RUN_ACTIVE` while a run is active) |
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
 | `GET`/`PUT` | `/api/runs/{id}/note` | Read / replace the run note; `PUT` takes `expected_revision` and `text` (409 on a stale revision or an active run) |
@@ -74,6 +85,7 @@ A built model without release is a finished run with release state `blocked`. On
 
 | Variable | Required | Meaning |
 |---|---|---|
+| `DRAWING2CAD_AGENT_PROFILES` | no | Names of more than one model profile, for example `Foundry,OpenRouter`. Each profile reads `DRAWING2CAD_AGENT_<NAME>_*` with the suffixes below. Without this list, the unprefixed variables make the profile `Standard` |
 | `DRAWING2CAD_AGENT_BASE_URL` | for runs | OpenAI-compatible base URL, for example `https://<resource>.cognitiveservices.azure.com/openai/v1` |
 | `DRAWING2CAD_AGENT_MODEL` | for runs | Model or deployment name; it must support function tools on the selected API |
 | `DRAWING2CAD_AGENT_API` | no | `chat` (Chat Completions, default) or `responses` (Responses API, for example for `gpt-6.1-sol`) |
@@ -96,7 +108,6 @@ Tests use a scripted model and do not call a model endpoint.
 - `src/drawing_demo/jobs.py`: web run records (job state, agent trace, domain part run ID).
 - `src/drawing_demo/measurements.py`: review measurements per source (review time, manual-effort estimate).
 - `src/drawing_demo/agent/`: model adapter (`model.py`), runner (`runner.py`), and mapping of domain results to the contract (`mapping.py`).
-- `src/drawing_demo/review.py`: review flags from service results.
 - `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill.
 
 The Docker build context is the repository root because the MCP package is a path dependency.

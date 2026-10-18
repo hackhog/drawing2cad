@@ -57,10 +57,13 @@ export function fixtureAnalysis(filename: string): ExtractResult {
     page_png: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(PAGE_SVG),
     page_px_per_mm: 4,
     review: [{
+      id: "strokes-18",
       kind: "unclear_strokes",
-      message: "1 Strich ohne sichere Klasse (Ecke rechts unten)",
+      message: "1 Strich(e) ohne sichere Bedeutung",
       bbox: [150, 112, 158, 118],
       stroke_ids: [18],
+      text: null,
+      decision: null,
     }],
   };
 }

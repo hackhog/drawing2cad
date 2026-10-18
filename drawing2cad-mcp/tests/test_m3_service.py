@@ -67,6 +67,11 @@ def test_ap242_build_requires_fresh_step_only_replay(setup_service, bad_hash, ba
     service.runner = runner
     result = service.build_from_description(run_id="example", expected_revision=1, export_profile="ap242")
     assert result["status"] == ("fail" if bad_hash or bad_replay else "pass")
+    if bad_hash or bad_replay:
+        assert result["error"]["code"] == "STEP_RECONSTRUCTION_FAILED"
+        assert result["feature_id"] is None
+        assert {item["phase"] for item in result["checks"]} >= {"build", "validation", "reconstruction"}
+        assert {item["check"] for item in result["checks"]} >= {"step_only_reconstruction"}
     assert runner.calls == ["build", "validate", "reconstruct_step", "analyze_ap242"]
     assert runner.requests[-1][1] is None
     assert result["released"] is False
@@ -81,6 +86,10 @@ def test_ap242_build_rejects_failed_or_unbound_independent_analysis(setup_servic
     service.runner = runner
     result = service.build_from_description(run_id="example", expected_revision=1, export_profile="ap242")
     assert result["status"] == "fail" and result["released"] is False
+    assert result["error"]["code"] == "INDEPENDENT_ANALYSIS_FAILED"
+    assert result["feature_id"] is None
+    assert {item["phase"] for item in result["checks"]} >= {"build", "validation", "independent_analysis"}
+    assert {item["check"] for item in result["checks"]} >= {"independent_analysis_binding"}
     assert result["build"]["independent_analysis"]["input_sha256"] == (
         "0" * 64 if bad_hash else result["build"]["candidate_sha256"])
 

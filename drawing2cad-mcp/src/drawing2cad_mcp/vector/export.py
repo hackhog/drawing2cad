@@ -38,6 +38,7 @@ def to_dict(d: Drawing) -> dict[str, Any]:
         "units": "mm, sheet coordinates, origin at top left, positive y down",
         "sheet_size_mm": [_r(v) for v in d.sheet_size_mm],
         "rotation_degrees": d.rotation_degrees,
+        "drawing_template": d.template,
         "coordinate_system": "displayed_sheet_mm_top_left_y_down",
         "circle_candidates": circles(d),
         "dimension_candidates": dimensions(d),

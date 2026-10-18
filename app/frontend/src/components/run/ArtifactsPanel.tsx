@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/Status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/apiContext";
+import { saveBlob } from "@/lib/download";
 import { useArtifactUrl } from "@/lib/artifacts";
 import type { Artifact, ArtifactRole, ReleaseDrawing, Run } from "@/lib/contract";
 import { recoveryFor } from "@/lib/errors";
@@ -31,20 +32,13 @@ const DRAWING_STATUS: Record<ReleaseDrawing["status"], string> = {
   missing: "Keine Zeichnung erstellt.",
 };
 
-function save(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 export function ArtifactsPanel({ run }: { run: Run }) {
   const api = useApi();
   const { data: caps } = useQuery(capabilitiesQuery(api));
   const state = delivery(run);
   const revision = run.part?.revision;
   const download = useMutation({
-    mutationFn: async (a: Artifact) => save(await api.readArtifact(a.artifact_id), a.filename),
+    mutationFn: async (a: Artifact) => saveBlob(await api.readArtifact(a.artifact_id), a.filename),
     onError: (err) => toast.error("Download fehlgeschlagen", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const released = (a: Artifact) => isReleased(state, run, a);

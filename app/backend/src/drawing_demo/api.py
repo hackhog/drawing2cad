@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import struct
 import threading
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 import zipfile
 
@@ -29,11 +29,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .agent.mapping import artifact_view, part_view, review_view
-from .agent.model import ModelSettings
+from .agent.model import check_connection
+from .agent.profiles import ProfileStore, Provider
 from .agent.runner import AgentRunner
 from .jobs import JobStore
 from .measurements import MeasurementInput, MeasurementStore
-from .review import review_flags
 from .service import DomainBackend, ServiceError, checked_id, not_found, settings_from_env
 
 MAX_STEP_BYTES = 50 * 1024 * 1024
@@ -70,7 +70,7 @@ class Services:
         self.jobs = JobStore(data_dir / "web-runs")
         self.measurements = MeasurementStore(data_dir / "web-measurements")
         mcp_url = os.environ.get("DRAWING2CAD_MCP_URL", f"http://127.0.0.1:{os.environ.get('PORT', '8000')}/mcp")
-        self.runner = AgentRunner(self.backend, self.jobs, ModelSettings.from_env(), _skill_path(), mcp_url,
+        self.runner = AgentRunner(self.backend, self.jobs, ProfileStore(data_dir / "agent-profiles.json"), _skill_path(), mcp_url,
                                   os.environ.get(settings.http.token_env))
         self._analyses: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._results: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -107,8 +107,12 @@ class Services:
 
 
 def analyze(backend: DomainBackend, source: dict[str, Any]) -> dict[str, Any]:
-    """Drawing data, a page image, and review flags of the first page, from the shared domain service."""
-    data = backend.call("drawing_extract", source_id=source["source_id"], include_strokes=True)
+    """Drawing data, a page image, and review flags of the first page, from the shared domain service.
+    The flags have no decisions here: decisions change, the cached analysis does not."""
+    # The sheet viewer needs every stroke. One large page avoids a second vector analysis.
+    data = backend.call("drawing_extract", source_id=source["source_id"], include_strokes=True, stroke_limit=50_000)
+    if data["strokes_page"]["next_offset"] is not None:
+        raise ServiceError(422, "DRAWING_TOO_LARGE", "Die Zeichnung hat mehr Striche, als die Ansicht laden kann.")
     rendered = backend.call("pdf_render_page", source_id=source["source_id"], page=1, dpi=PAGE_DPI, include_image=False)
     if data["source"]["sha256"] != rendered["source"]["sha256"]:
         raise ServiceError(422, "SOURCE_HASH_MISMATCH", "Analyse und Seitenbild stammen aus verschiedenen Dateien.")
@@ -119,7 +123,8 @@ def analyze(backend: DomainBackend, source: dict[str, Any]) -> dict[str, Any]:
         "drawing": data,
         "page_png": "data:image/png;base64," + base64.b64encode(page_png).decode("ascii"),
         "page_px_per_mm": PAGE_PX_PER_MM,
-        "review": review_flags(data),
+        "review": [{**flag_view(f), "decision": None}
+                   for f in backend.call("source_flags_read", source_id=source["source_id"])["flags"]],
         "provenance": {
             "source_sha256": source["sha256"],
             "source_size_bytes": source["size_bytes"],
@@ -207,10 +212,63 @@ def health() -> dict[str, Any]:
 def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
     return {
         "contract_version": CONTRACT_VERSION, "simulated": False, "runs": s.runner.available, "parameter_edit": False,
-        "notes": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
+        "notes": True, "flag_decisions": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
         "max_pdf_bytes": s.backend.max_source_bytes,
         "agent_model": s.runner.settings.model if s.runner.available and s.runner.settings else None,
+        "agent_profile": s.runner.profiles.active if s.runner.available else None,
     }
+
+
+class ProfileSelection(BaseModel):
+    # None selects no profile: the service then starts no agent runs.
+    name: str | None
+
+
+class ProfileInput(BaseModel):
+    provider: Provider
+    # Azure AI Foundry: any URL of the resource. OpenAI-compatible: the base URL. OpenRouter: not used.
+    endpoint: str = ""
+    model: str
+    api: Literal["chat", "responses"] = "chat"
+    # None or empty keeps the stored key of a changed profile. No response contains a key.
+    api_key: str | None = None
+    reasoning_effort: str | None = None
+
+
+@router.get("/agent/profiles")
+def list_agent_profiles(s: Services = Depends(services)) -> dict[str, Any]:
+    """Model profiles and the active one. Keys stay on the server; `key_set` tells if a key is stored."""
+    return s.runner.profiles.view()
+
+
+@router.put("/agent/active")
+def select_agent_profile(selection: ProfileSelection, s: Services = Depends(services)) -> dict[str, Any]:
+    """Select the profile for new agent runs. Queued and running runs keep their profile."""
+    s.runner.profiles.select(selection.name)
+    return s.runner.profiles.view()
+
+
+@router.put("/agent/profiles/{name}")
+def save_agent_profile(name: str, profile: ProfileInput, s: Services = Depends(services)) -> dict[str, Any]:
+    """Create or change a profile of the web UI. Profiles from the server environment are read-only."""
+    s.runner.profiles.save(name, profile.provider, profile.endpoint, profile.model, profile.api, profile.api_key,
+                           profile.reasoning_effort or None)
+    return s.runner.profiles.view()
+
+
+@router.delete("/agent/profiles/{name}")
+def delete_agent_profile(name: str, s: Services = Depends(services)) -> dict[str, Any]:
+    s.runner.profiles.delete(name)
+    return s.runner.profiles.view()
+
+
+@router.post("/agent/profiles/{name}/check")
+def check_agent_profile(name: str, s: Services = Depends(services)) -> dict[str, Any]:
+    """Send one short request without tools to the endpoint of the profile. It uses a few tokens of its budget."""
+    settings = s.runner.profiles.get(name)
+    if settings is None:
+        raise not_found(name)
+    return check_connection(settings)
 
 
 @router.post("/sources")
@@ -270,6 +328,55 @@ def add_measurement(source_id: str, measurement: MeasurementInput, s: Services =
     return s.measurements.add(_source(s, source_id)["source_id"], measurement)
 
 
+def flag_view(flag: dict[str, Any]) -> dict[str, Any]:
+    """A review flag of the domain service with its German message for the UI."""
+    message = {
+        "no_views": "Keine Ansicht erkannt",
+        "unclear_strokes": f"{len(flag['stroke_ids'])} Strich(e) ohne sichere Bedeutung",
+        "unreadable_text": f"Text nicht sicher gelesen: „{flag['text']}“",
+    }.get(flag["kind"], flag["kind"])
+    decision = flag.get("decision")
+    if decision:
+        decision = {key: decision[key] for key in ("action", "stroke_class", "text", "note")} | {
+            "decided_at": datetime.fromtimestamp(decision["decided_at"], timezone.utc).isoformat()}
+    return {"id": flag["flag_id"], "kind": flag["kind"], "message": message, "bbox": flag["bbox"],
+            "stroke_ids": flag["stroke_ids"], "text": flag["text"], "decision": decision}
+
+
+def flags_view(page: dict[str, Any]) -> dict[str, Any]:
+    return {"flags": [flag_view(f) for f in page["flags"]], "decisions_without_flag": len(page["decisions_without_flag"])}
+
+
+@router.get("/sources/{source_id}/flags")
+def get_flags(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
+    """Review flags of the first page with the decisions of the user."""
+    return flags_view(s.backend.call("source_flags_read", source_id=_source(s, source_id)["source_id"]))
+
+
+class FlagDecision(BaseModel):
+    action: Literal["ignore", "classify", "correct", "reopen"]
+    stroke_class: str | None = None
+    text: str | None = None
+    note: str | None = None
+
+
+@router.put("/sources/{source_id}/flags/{flag_id}")
+def decide_flag(source_id: str, flag_id: str, change: FlagDecision, s: Services = Depends(services)) -> dict[str, Any]:
+    """Record the decision of the user on one flag. New agent runs read it through the MCP."""
+    arguments = {key: value for key, value in change.model_dump().items() if value not in (None, "")}
+    return flags_view(s.backend.call("source_flags_decide", source_id=_source(s, source_id)["source_id"],
+                                     flag_id=flag_id, reviewer="web-ui", **arguments))
+
+
+@router.get("/feedback")
+def export_feedback(s: Services = Depends(services)) -> Response:
+    """All flag decisions as a JSON download for the developers of the drawing analysis."""
+    feedback = s.backend.call("source_flags_export")
+    day = datetime.fromtimestamp(feedback["exported_at"], timezone.utc).strftime("%Y-%m-%d")
+    return Response(json.dumps(feedback, ensure_ascii=False, indent=2), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="drawing2cad-feedback-{day}.json"'})
+
+
 @router.get("/sources/{source_id}/runs")
 def list_runs(source_id: str, s: Services = Depends(services)) -> list[dict[str, Any]]:
     _source(s, source_id)
@@ -278,14 +385,17 @@ def list_runs(source_id: str, s: Services = Depends(services)) -> list[dict[str,
 
 @router.post("/sources/{source_id}/runs", status_code=201)
 def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
-    """Queue one agent run. The agent builds the model only through the MCP endpoint (ADR 0018)."""
-    if not s.runner.available:
-        raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modell-Endpunkt konfiguriert (DRAWING2CAD_AGENT_*).",
-                           recovery="Endpunkt in .env eintragen und das Backend neu starten.")
-    assert s.runner.settings is not None
+    """Queue one agent run with the active model profile. The agent builds the model only through the MCP endpoint (ADR 0018)."""
+    # Read the active profile once, so that a selection during this request cannot mix two profiles.
+    profile = s.runner.profiles.active
+    settings = s.runner.profiles.get(profile)
+    if settings is None or not s.runner.available:
+        raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modellprofil aktiv (DRAWING2CAD_AGENT_*).",
+                           recovery="In den Einstellungen ein Modellprofil wählen oder einen Endpunkt in .env eintragen "
+                                    "und das Backend neu starten.")
     record = s.jobs.add(_source(s, source_id)["source_id"],
-                        agent={"model": s.runner.settings.model, "mcp_version": mcp_version})
-    s.runner.submit(record["run_id"])
+                        agent={"model": settings.model, "profile": profile, "mcp_version": mcp_version})
+    s.runner.submit(record["run_id"], settings)
     return run_view(s, record)
 
 

@@ -1,12 +1,21 @@
 // The one interface between the UI and a service. Components and routes use only this interface.
 // `http` uses the web backend (app/backend); `fixture` is a simulated service for UI work without a backend.
-import type { Capabilities, Measurement, MeasurementInput, Run, RunFiles, RunNote, Source } from "./contract";
-import type { ExtractResult } from "./drawing";
+import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Measurement, MeasurementInput, Run, RunFiles, RunNote, Source } from "./contract";
+import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 
 export interface ParameterChange { name: string; value: number }
 
 export interface WebApi {
   capabilities(): Promise<Capabilities>;
+  /** Model profiles of the server, without keys. */
+  agentProfiles(): Promise<AgentProfiles>;
+  /** Select the profile for new runs; null selects no agent. Queued and running runs keep their profile. */
+  selectAgentProfile(name: string | null): Promise<AgentProfiles>;
+  /** Create or change a profile. The key goes to the server and does not come back. */
+  saveAgentProfile(name: string, profile: AgentProfileInput): Promise<AgentProfiles>;
+  deleteAgentProfile(name: string): Promise<AgentProfiles>;
+  /** Send one short request to the endpoint of a profile. It uses a few tokens. */
+  checkAgentProfile(name: string): Promise<ConnectionCheck>;
   listSources(): Promise<Source[]>;
   getSource(sourceId: string): Promise<Source>;
   /** Upload PDF bytes. The service returns the source identity; the browser assumes no local path. */
@@ -15,6 +24,12 @@ export interface WebApi {
   deleteSource(sourceId: string): Promise<void>;
   /** Drawing analysis of a source: strokes, views, texts, and review flags. */
   getAnalysis(sourceId: string): Promise<ExtractResult>;
+  /** Review flags of a source with the decisions of the user. */
+  getFlags(sourceId: string): Promise<FlagsPage>;
+  /** Record or, with "reopen", remove the decision on one flag. */
+  decideFlag(sourceId: string, flagId: string, change: FlagChange): Promise<FlagsPage>;
+  /** All flag decisions as JSON feedback for the developers of the drawing analysis. */
+  exportFeedback(): Promise<Blob>;
   listRuns(sourceId: string): Promise<Run[]>;
   createRun(sourceId: string): Promise<Run>;
   getRun(runId: string): Promise<Run>;

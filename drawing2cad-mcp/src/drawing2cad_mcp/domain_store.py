@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import base64
 import binascii
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -100,6 +101,10 @@ class DomainStore:
                 CREATE TABLE IF NOT EXISTS notes (
                     subject TEXT NOT NULL, run_id TEXT NOT NULL, revision INTEGER NOT NULL,
                     text TEXT NOT NULL, PRIMARY KEY(subject, run_id));
+                CREATE TABLE IF NOT EXISTS flag_decisions (
+                    subject TEXT NOT NULL, source_id TEXT NOT NULL, page INTEGER NOT NULL,
+                    flag_id TEXT NOT NULL, decision TEXT NOT NULL, created REAL NOT NULL,
+                    PRIMARY KEY(subject, source_id, page, flag_id));
                 CREATE TABLE IF NOT EXISTS upload_chunks (
                     upload_id TEXT NOT NULL, offset INTEGER NOT NULL,
                     size_bytes INTEGER NOT NULL, sha256 TEXT NOT NULL,
@@ -326,6 +331,7 @@ class DomainStore:
             row = self._row(db, "sources", ctx, source_id)
             self._path(ctx, "sources", source_id).unlink(missing_ok=True)
             db.execute("DELETE FROM sources WHERE id=?", (source_id,))
+            db.execute("DELETE FROM flag_decisions WHERE subject=? AND source_id=?", (ctx.subject, source_id))
             return self._public(row, "source")
 
     def source_path(self, ctx: AccessContext, source_id: str) -> Path:
@@ -445,3 +451,26 @@ class DomainStore:
                        "DO UPDATE SET revision=excluded.revision,text=excluded.text",
                        (ctx.subject, run_id, current + 1, text))
             return {"run_id": run_id, "revision": current + 1, "text": text}
+
+    def flag_decisions(self, ctx: AccessContext, source_id: str | None = None, page: int | None = None,
+                       limit: int = 1000) -> list[dict]:
+        """Decisions of this principal, oldest first: of one source page, or of all sources."""
+        query, values = "SELECT * FROM flag_decisions WHERE subject=?", [ctx.subject]
+        if source_id is not None:
+            query += " AND source_id=? AND page=?"
+            values += [source_id, page]
+        with self._db() as db:
+            rows = db.execute(query + " ORDER BY created, flag_id LIMIT ?", (*values, limit)).fetchall()
+        return [{"source_id": row["source_id"], "page": row["page"], "flag_id": row["flag_id"],
+                 **json.loads(row["decision"])} for row in rows]
+
+    def flag_decision_set(self, ctx: AccessContext, source_id: str, page: int, flag_id: str,
+                          decision: dict | None) -> None:
+        """Store or, with None, remove the decision on one flag. The source must exist."""
+        with self._db() as db:
+            self._row(db, "sources", ctx, source_id)
+            db.execute("DELETE FROM flag_decisions WHERE subject=? AND source_id=? AND page=? AND flag_id=?",
+                       (ctx.subject, source_id, page, flag_id))
+            if decision is not None:
+                db.execute("INSERT INTO flag_decisions VALUES (?,?,?,?,?,?)",
+                           (ctx.subject, source_id, page, flag_id, json.dumps(decision, ensure_ascii=False), time.time()))
