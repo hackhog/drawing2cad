@@ -1,9 +1,9 @@
 """Translation between the drive() message format and OpenAI Chat Completions (ADR 0018)."""
 
-import io
 import json
 import os
 
+import httpx2
 import pytest
 
 from drawing_demo.agent import model
@@ -50,29 +50,40 @@ def test_final_answer_has_no_tool_calls():
     assert response["message"] == {"role": "assistant", "content": "Report"}
 
 
+OK_CHAT = {"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]}
+
+
+def fake_endpoint(monkeypatch, outcomes):
+    """Send the SDK requests to a mock transport. Each outcome is an answer body, an httpx2.Response, or an exception.
+
+    A single outcome that is not a list answers every request. The returned list records each request as
+    (URL, headers, JSON body, read timeout).
+    """
+    seen = []
+    real_client_for = model.client_for
+
+    def handle(request):
+        seen.append((str(request.url), request.headers, json.loads(request.content), request.extensions["timeout"]["read"]))
+        outcome = outcomes.pop(0) if isinstance(outcomes, list) else outcomes
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome if isinstance(outcome, httpx2.Response) else httpx2.Response(200, json=outcome)
+
+    monkeypatch.setattr(model, "client_for", lambda settings: real_client_for(settings, httpx2.MockTransport(handle)))
+    return seen
+
+
 @pytest.mark.parametrize("header,expected", [("Authorization", "Bearer k"), ("api-key", "k")])
 def test_model_call_posts_chat_completions(monkeypatch, header, expected):
-    seen = {}
-
-    class Response(io.BytesIO):
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-    def fake_urlopen(request, timeout):
-        seen.update(url=request.full_url, header=request.get_header(header.capitalize()), body=json.loads(request.data), timeout=timeout)
-        return Response(json.dumps({"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]}).encode())
-
-    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    seen = fake_endpoint(monkeypatch, [OK_CHAT])
     call = make_model_call(ModelSettings("https://example.test/openai/v1", "m", "k", header))
     result = call({"options": {"temperature": 0}}, {"messages": [{"role": "user", "content": "x"}], "tools": []}, 30)
     assert result["message"]["content"] == "ok"
-    assert seen["url"] == "https://example.test/openai/v1/chat/completions"
-    assert seen["header"] == expected
-    assert seen["body"]["model"] == "m" and seen["body"]["temperature"] == 0
-    assert 29 < seen["timeout"] <= 30  # The remaining time of the call budget.
+    url, headers, body, timeout = seen[0]
+    assert url == "https://example.test/openai/v1/chat/completions"
+    assert headers[header] == expected
+    assert body["model"] == "m" and body["temperature"] == 0
+    assert 29 < timeout <= 30  # The remaining time of the call budget.
 
 
 def test_settings_require_endpoint_model_and_key(monkeypatch):
@@ -87,61 +98,42 @@ def test_settings_require_endpoint_model_and_key(monkeypatch):
     assert ModelSettings.from_env().reasoning_effort == "none"
 
 
-def _response(payload):
-    class Response(io.BytesIO):
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-    return Response(json.dumps(payload).encode())
-
-
 def test_transient_failures_are_retried(monkeypatch):
-    from urllib.error import HTTPError
-    outcomes = [TimeoutError("timed out"), HTTPError("u", 503, "busy", {}, io.BytesIO(b"busy")),
-                _response({"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]})]
-
-    def fake_urlopen(request, timeout):
-        outcome = outcomes.pop(0)
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    outcomes = [httpx2.ReadTimeout("timed out"), httpx2.Response(503, text="busy"), httpx2.ConnectError("refused"), OK_CHAT]
+    fake_endpoint(monkeypatch, outcomes)
     monkeypatch.setattr(model, "RETRY_DELAY_SECONDS", 0)
     call = make_model_call(ModelSettings("https://example.test/v1", "m", "k"))
     assert call({}, {"messages": [], "tools": []}, 60)["message"]["content"] == "ok"
     assert outcomes == []
 
 
+def test_retryable_failures_stop_after_the_attempt_limit(monkeypatch):
+    seen = fake_endpoint(monkeypatch, httpx2.Response(503, text="busy"))
+    monkeypatch.setattr(model, "RETRY_DELAY_SECONDS", 0)
+    with pytest.raises(RuntimeError, match="HTTP 503: busy"):
+        make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 60)
+    assert len(seen) == model.ATTEMPTS
+
+
 def test_a_client_error_is_not_retried(monkeypatch):
-    from urllib.error import HTTPError
-    calls = []
-
-    def fake_urlopen(request, timeout):
-        calls.append(1)
-        raise HTTPError("u", 400, "bad", {}, io.BytesIO(b"tools not supported"))
-
-    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    seen = fake_endpoint(monkeypatch, httpx2.Response(400, text="tools not supported"))
     with pytest.raises(RuntimeError, match="HTTP 400: tools not supported"):
         make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 60)
-    assert len(calls) == 1
+    assert len(seen) == 1
 
 
 def test_each_attempt_has_its_own_bounded_timeout(monkeypatch):
-    timeouts = []
-
-    def fake_urlopen(request, timeout):
-        timeouts.append(timeout)
-        if len(timeouts) < 3:
-            raise TimeoutError("stalled")
-        return _response({"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]})
-
-    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    seen = fake_endpoint(monkeypatch, [httpx2.ReadTimeout("stalled"), httpx2.ReadTimeout("stalled"), OK_CHAT])
     monkeypatch.setattr(model, "RETRY_DELAY_SECONDS", 0)
     make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 300)
-    assert len(timeouts) == 3 and all(t <= model.ATTEMPT_TIMEOUT_SECONDS for t in timeouts)
+    assert len(seen) == 3 and all(timeout <= model.ATTEMPT_TIMEOUT_SECONDS for *_, timeout in seen)
+
+
+def test_a_response_above_the_size_limit_is_rejected(monkeypatch):
+    monkeypatch.setattr(model, "MAX_RESPONSE_BYTES", 100)
+    fake_endpoint(monkeypatch, httpx2.Response(200, content=b"x" * 1000))
+    with pytest.raises(ValueError, match="exceeds"):
+        make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 60)
 
 
 def test_only_the_latest_image_messages_keep_their_images():
@@ -152,54 +144,32 @@ def test_only_the_latest_image_messages_keep_their_images():
 
 
 def test_rate_limit_waits_for_retry_after(monkeypatch):
-    from email.message import Message
-    from urllib.error import HTTPError
-    headers = Message()
-    headers["Retry-After"] = "7"
-    outcomes = [HTTPError("u", 429, "limit", headers, io.BytesIO(b"rate limit")),
-                _response({"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]})]
+    outcomes = [httpx2.Response(429, headers={"Retry-After": "7"}, text="rate limit"), OK_CHAT]
     waits = []
-    def fake_urlopen(request, timeout):
-        outcome = outcomes.pop(0)
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    fake_endpoint(monkeypatch, outcomes)
     monkeypatch.setattr(model.time, "sleep", waits.append)
     assert make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 300)["message"]["content"] == "ok"
     assert waits == [7.0]
 
 
 def test_rate_limits_are_retried_until_the_turn_deadline(monkeypatch):
-    from urllib.error import HTTPError
     clock = [0.0]
     waits = []
     monkeypatch.setattr(model.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(model.time, "sleep", lambda seconds: (waits.append(seconds), clock.__setitem__(0, clock[0] + seconds)))
-    outcomes = [HTTPError("u", 429, "limit", {}, io.BytesIO(b"rate limit")) for _ in range(model.ATTEMPTS + 2)]
-    outcomes.append(_response({"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]}))
-
-    def fake_urlopen(request, timeout):
-        outcome = outcomes.pop(0)
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    outcomes = [httpx2.Response(429, text="rate limit") for _ in range(model.ATTEMPTS + 2)] + [OK_CHAT]
+    fake_endpoint(monkeypatch, outcomes)
     assert make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 300)["message"]["content"] == "ok"
     # More rate-limit answers than ATTEMPTS, with longer waits up to one minute.
     assert waits == [10.0, 15.0, 30.0, 45.0, 60.0, 60.0]
 
 
 def test_a_rate_limit_after_the_turn_deadline_is_reported(monkeypatch):
-    from urllib.error import HTTPError
     clock = [0.0]
     monkeypatch.setattr(model.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(model.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
-    monkeypatch.setattr(model, "urlopen", lambda request, timeout: (_ for _ in ()).throw(
-        HTTPError("u", 429, "limit", {}, io.BytesIO(b"rate limit"))))
-    with pytest.raises(RuntimeError, match="HTTP 429"):
+    fake_endpoint(monkeypatch, httpx2.Response(429, text="rate limit"))
+    with pytest.raises(RuntimeError, match="HTTP 429: rate limit"):
         make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 100)
     assert clock[0] < 100
 
@@ -260,20 +230,14 @@ def test_responses_output_becomes_the_drive_message():
 
 
 def test_model_call_posts_responses_with_reasoning(monkeypatch):
-    seen = {}
-
-    def fake_urlopen(request, timeout):
-        seen.update(url=request.full_url, body=json.loads(request.data))
-        return _response({"status": "completed", "output": [
-            {"type": "message", "content": [{"type": "output_text", "text": "ok"}]}]})
-
-    monkeypatch.setattr(model, "urlopen", fake_urlopen)
+    seen = fake_endpoint(monkeypatch, [{"status": "completed", "output": [
+        {"type": "message", "content": [{"type": "output_text", "text": "ok"}]}]}])
     settings = ModelSettings("https://example.test/openai/v1", "gpt-6.1-sol", "k", "api-key", "medium", "responses")
     payload = {"messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "x"}],
                "tools": [{"type": "function", "function": {"name": "t", "parameters": {}}}]}
     assert make_model_call(settings)({}, payload, 30)["message"]["content"] == "ok"
-    assert seen["url"] == "https://example.test/openai/v1/responses"
-    body = seen["body"]
+    url, _, body, _ = seen[0]
+    assert url == "https://example.test/openai/v1/responses"
     assert body["instructions"] == "S" and body["input"] == [{"role": "user", "content": "x"}]
     assert body["reasoning"] == {"effort": "medium"} and body["store"] is False and body["tools"][0]["strict"] is False
     assert "messages" not in body and "reasoning_effort" not in body
@@ -334,3 +298,49 @@ def test_chat_reasoning_uses_the_parameter_of_the_provider(base_url, expected):
     path, _, body = model.request_for(settings, {"messages": [{"role": "user", "content": "x"}], "tools": []})
     assert path == "/chat/completions"
     assert {k: body[k] for k in ("reasoning", "reasoning_effort") if k in body} == expected
+
+
+PROVIDERS = [
+    # Profile settings, the expected key header and value, a header that must be absent, and the reasoning fields.
+    (ModelSettings("https://openrouter.ai/api/v1", "vendor/m", "k", reasoning_effort="low"),
+     ("authorization", "Bearer k"), "api-key", {"reasoning": {"effort": "low"}}),
+    (ModelSettings("https://res.openai.azure.com/openai/v1", "gpt", "k", "api-key", "low"),
+     ("api-key", "k"), "authorization", {"reasoning_effort": "low"}),
+    (ModelSettings("https://api.openai.com/v1", "gpt", "k", reasoning_effort="high"),
+     ("authorization", "Bearer k"), "api-key", {"reasoning_effort": "high"}),
+    (ModelSettings("http://localhost:11434/v1", "qwen", "ollama"),
+     ("authorization", "Bearer ollama"), "api-key", {}),
+]
+
+
+@pytest.mark.parametrize("settings, key_header, absent_header, reasoning", PROVIDERS)
+def test_the_sdk_sends_the_chat_body_and_headers_of_each_provider(monkeypatch, settings, key_header, absent_header, reasoning):
+    seen = fake_endpoint(monkeypatch, [OK_CHAT])
+    payload = {"messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "x"}], "tools": [model.CHECK_TOOL]}
+    options = {"temperature": 0, "max_tokens": 50}
+    make_model_call(settings)({"options": options}, payload, 30)
+    url, headers, body, _ = seen[0]
+    assert url == settings.base_url + "/chat/completions"
+    assert headers[key_header[0]] == key_header[1] and absent_header not in headers
+    # The SDK sends the body of request_for without change, including the options and the reasoning fields.
+    assert body == model.request_for(settings, payload, options)[2]
+    assert {k: body[k] for k in ("reasoning", "reasoning_effort") if k in body} == reasoning
+
+
+@pytest.mark.parametrize("settings, key_header, absent_header, reasoning", PROVIDERS[:2])
+def test_the_sdk_sends_the_responses_body_without_change(monkeypatch, settings, key_header, absent_header, reasoning):
+    settings = ModelSettings(settings.base_url, settings.model, settings.api_key, settings.api_key_header, "medium", "responses")
+    seen = fake_endpoint(monkeypatch, [{"status": "completed", "output": []}])
+    payload = {"messages": [{"role": "system", "content": "S"}, {"role": "user", "content": "x"}], "tools": [model.CHECK_TOOL]}
+    make_model_call(settings)({"options": {"max_output_tokens": 50}}, payload, 30)
+    url, headers, body, _ = seen[0]
+    assert url == settings.base_url + "/responses"
+    assert headers[key_header[0]] == key_header[1] and absent_header not in headers
+    assert body == model.request_for(settings, payload, {"max_output_tokens": 50})[2]
+    assert body["store"] is False and body["reasoning"] == {"effort": "medium"}
+
+
+def test_the_connection_check_reports_the_status_and_body(monkeypatch):
+    fake_endpoint(monkeypatch, httpx2.Response(401, text="invalid key"))
+    result = model.check_connection(ModelSettings("https://example.test/v1", "m", "k"))
+    assert result == {"ok": False, "message": "HTTP 401: invalid key"}

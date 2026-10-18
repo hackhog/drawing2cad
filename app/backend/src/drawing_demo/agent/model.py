@@ -4,7 +4,8 @@
 This module translates them to Chat Completions or to the Responses API and back, so that Azure AI Foundry,
 OpenRouter, OpenAI, or the OpenAI endpoint of Ollama can supply the model. Some models (for example, gpt-6.1-sol
 on Azure AI Foundry) accept function tools with reasoning only through the Responses API.
-It reads no files and runs no tools.
+The official openai SDK is the HTTP transport only. This module keeps the retry policy, the response size limit,
+and the translation. It reads no files and runs no tools.
 """
 
 from __future__ import annotations
@@ -16,12 +17,14 @@ import os
 import re
 import time
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+
+import httpx2
+from openai import APIConnectionError, APIStatusError, Omit, OpenAI
 
 log = logging.getLogger(__name__)
 
+# The SDK has no response size limit. A streamed read stops after this limit.
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 ENV_PREFIX = "DRAWING2CAD_AGENT_"
 # A profile name is also part of its variable names, for example Foundry -> DRAWING2CAD_AGENT_FOUNDRY_MODEL.
@@ -29,6 +32,7 @@ PROFILE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9]{0,31}")
 # The profile of the unprefixed DRAWING2CAD_AGENT_* variables when DRAWING2CAD_AGENT_PROFILES is not set.
 DEFAULT_PROFILE = "Standard"
 # A hosted endpoint can fail transiently (spike: one Azure server error; web run: one request without answer).
+# The SDK retries are off (max_retries=0): they have no turn deadline and do not retry a rate limit until it clears.
 ATTEMPTS = 4
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 RETRY_DELAY_SECONDS = 2.0
@@ -259,12 +263,66 @@ def from_openai(body: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
-def _retry_after(error: HTTPError) -> float:
+def _retry_after(headers: Any) -> float:
     """Seconds to wait after a rate-limit answer: the Retry-After header, else a fixed delay."""
     try:
-        return max(RETRY_DELAY_SECONDS, float(error.headers.get("Retry-After", "")))
+        return max(RETRY_DELAY_SECONDS, float(headers.get("Retry-After", "")))
     except (TypeError, ValueError):
         return 10.0
+
+
+# The keys that the SDK method accepts as named arguments. Other keys (call options and the OpenRouter reasoning
+# object) go into extra_body. The SDK merges extra_body into the JSON body without change.
+SDK_ARGUMENTS = {
+    "/chat/completions": {"model", "messages", "tools", "reasoning_effort"},
+    "/responses": {"model", "input", "tools", "store", "instructions", "reasoning"},
+}
+
+
+def client_for(settings: ModelSettings, transport: Any = None) -> OpenAI:
+    """An OpenAI SDK client for the endpoint of the profile. The SDK does not retry; `make_model_call` does.
+
+    `transport` replaces the network connection of the SDK, for example with an httpx2.MockTransport in tests.
+    """
+    return OpenAI(api_key=settings.api_key, base_url=settings.base_url, max_retries=0,
+                  http_client=httpx2.Client(transport=transport) if transport is not None else None)
+
+
+def _auth_headers(settings: ModelSettings) -> dict[str, Any]:
+    """Request headers for a key header other than Authorization, for example "api-key" on Azure AI Foundry.
+
+    The SDK always sends "Authorization: Bearer <key>". It accepts the removal of that header only in the request
+    headers, not in the client headers.
+    """
+    if settings.api_key_header.lower() == "authorization":
+        return {}
+    return {"Authorization": Omit(), settings.api_key_header: settings.api_key}
+
+
+def _post(client: OpenAI, settings: ModelSettings, path: str, body: dict[str, Any], timeout: float) -> bytes:
+    """Send one request through the SDK and return the raw response body, at most MAX_RESPONSE_BYTES + 1 bytes.
+
+    The raw body goes to the existing parsers, so that the SDK models do not change the fields that `drive` reads.
+    A streamed read keeps the memory limit for a defective or hostile endpoint.
+    """
+    resource = client.chat.completions if path == "/chat/completions" else client.responses
+    named = {key: value for key, value in body.items() if key in SDK_ARGUMENTS[path]}
+    extra = {key: value for key, value in body.items() if key not in SDK_ARGUMENTS[path]}
+    with resource.with_streaming_response.create(**named, extra_body=extra or None,
+                                                 extra_headers=_auth_headers(settings) or None,
+                                                 timeout=timeout) as response:
+        raw = bytearray()
+        for chunk in response.iter_bytes():
+            raw += chunk
+            if len(raw) > MAX_RESPONSE_BYTES:
+                break
+    return bytes(raw[:MAX_RESPONSE_BYTES + 1])
+
+
+def _parse_limited(parse, raw: bytes) -> dict[str, Any]:
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise ValueError("The model response exceeds 8 MiB.")
+    return parse(json.loads(raw))
 
 
 def request_for(settings: ModelSettings, payload: dict[str, Any], options: dict[str, Any] | None = None):
@@ -297,13 +355,10 @@ def check_connection(settings: ModelSettings, timeout: float = 60.0) -> dict[str
     path, parse, body = request_for(settings, {"messages": [{"role": "user", "content": CHECK_PROMPT}], "tools": [CHECK_TOOL]})
     started = time.monotonic()
     try:
-        with urlopen(Request(settings.base_url + path, json.dumps(body).encode("utf-8"), settings.headers()),
-                     timeout=timeout) as response:
-            parsed = parse(json.loads(response.read(MAX_RESPONSE_BYTES)))
-    except HTTPError as error:
-        detail = error.read(2000).decode("utf-8", errors="replace")
-        return {"ok": False, "message": f"HTTP {error.code}: {detail}"}
-    except (TimeoutError, URLError, ValueError) as error:
+        parsed = _parse_limited(parse, _post(client_for(settings), settings, path, body, timeout))
+    except APIStatusError as error:
+        return {"ok": False, "message": f"HTTP {error.status_code}: {error.response.text[:2000]}"}
+    except (APIConnectionError, ValueError) as error:
         return {"ok": False, "message": f"{type(error).__name__}: {error}"}
     message = parsed["message"]
     answer = message["content"] or ", ".join(f"Werkzeugaufruf {call['function']['name']}" for call in message.get("tool_calls", []))
@@ -312,37 +367,35 @@ def check_connection(settings: ModelSettings, timeout: float = 60.0) -> dict[str
 
 def make_model_call(settings: ModelSettings):
     """Return a `model_call(plan, payload, timeout)` function for `drive()`."""
+    client = client_for(settings)
 
     def model_call(plan: dict[str, Any], payload: dict[str, Any], timeout: float) -> dict[str, Any]:
         path, parse, body = request_for(settings, payload, plan.get("options"))
-        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         deadline = time.monotonic() + timeout
         attempt = rate_limits = 0
         while True:
             attempt += 1
             remaining = deadline - time.monotonic()
             try:
-                with urlopen(Request(settings.base_url + path, data, settings.headers()),
-                             timeout=max(1.0, min(ATTEMPT_TIMEOUT_SECONDS, remaining))) as response:
-                    raw = response.read(MAX_RESPONSE_BYTES + 1)
+                raw = _post(client, settings, path, body, max(1.0, min(ATTEMPT_TIMEOUT_SECONDS, remaining)))
                 break
-            except HTTPError as error:
-                detail = error.read(4096).decode("utf-8", errors="replace")
+            except APIStatusError as error:
+                code = error.status_code
+                detail = error.response.text[:4096]
                 wait = RETRY_DELAY_SECONDS
-                if error.code == 429:
-                    wait = max(_retry_after(error), min(RATE_LIMIT_MAX_WAIT_SECONDS, RATE_LIMIT_STEP_SECONDS * rate_limits))
+                if code == 429:
+                    wait = max(_retry_after(error.response.headers), min(RATE_LIMIT_MAX_WAIT_SECONDS, RATE_LIMIT_STEP_SECONDS * rate_limits))
                     rate_limits += 1
-                exhausted = attempt >= ATTEMPTS and error.code != 429
-                if error.code not in RETRY_STATUS or exhausted or deadline - time.monotonic() <= wait:
-                    raise RuntimeError(f"Model endpoint returned HTTP {error.code}: {detail}") from None
+                exhausted = attempt >= ATTEMPTS and code != 429
+                if code not in RETRY_STATUS or exhausted or deadline - time.monotonic() <= wait:
+                    raise RuntimeError(f"Model endpoint returned HTTP {code}: {detail}") from None
                 time.sleep(wait)
                 continue
-            except (TimeoutError, URLError) as error:
+            except APIConnectionError as error:
+                # APITimeoutError is a subclass: a stalled attempt and a failed connection are both retried.
                 if attempt >= ATTEMPTS or deadline - time.monotonic() <= RETRY_DELAY_SECONDS:
                     raise RuntimeError(f"Model endpoint did not answer: {error}") from None
             time.sleep(RETRY_DELAY_SECONDS)
-        if len(raw) > MAX_RESPONSE_BYTES:
-            raise ValueError("The model response exceeds 8 MiB.")
-        return parse(json.loads(raw))
+        return _parse_limited(parse, raw)
 
     return model_call
