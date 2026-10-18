@@ -128,17 +128,21 @@ def test_komplexe_zeichnung_3_annotations_are_not_review_items():
     assert len(drawing.views) == 10
 
 
-@pytest.mark.parametrize(("folder", "filename", "template", "views"), [
-    ("Achse", "Achse.pdf", "a4_portrait", 3),
-    ("3-Loch-Hebel", "3-Loch-Hebel.pdf", "cax_a3", 2),
+@pytest.mark.parametrize(("folder", "filename", "template", "views", "unclear"), [
+    ("Achse", "Achse.pdf", "a4_portrait", 3, 1),
+    ("3-Loch-Hebel", "3-Loch-Hebel.pdf", "cax_a3", 2, 1),
+    ("Schnittmenge", "Schnittmenge.pdf", "bct_a3", 6, 0),
+    ("Trägerplatte V2", "Traegerplatte.pdf", "bct_a3", 4, 1),
+    ("Grundplatte", "Grundplatte.pdf", "bct_a3", 5, 2),
 ])
-def test_cax_template_contours_are_not_cutting_planes(folder, filename, template, views):
-    """The CAx template draws contours with 0.5 mm and has a higher title block."""
+def test_thick_contours_are_not_cutting_planes(folder, filename, template, views, unclear):
+    """The CAx template draws contours with 0.5 mm and has a higher title block.
+    Schnittmenge, Trägerplatte V2, and Grundplatte use the ISO 128 line groups 0.7 and 0.5 with 0.35 mm thin lines."""
     pdf = SAMPLES / folder / filename
     if not pdf.exists():
         pytest.skip(f"Regression drawing is absent: {pdf}")
     drawing = extract(pdf)
     assert drawing.template == template
     assert len(drawing.views) == views
-    assert sum(s.kind is Kind.UNCLEAR for s in drawing.strokes) <= 1
+    assert sum(s.kind is Kind.UNCLEAR for s in drawing.strokes) <= unclear
     assert sum(s.kind is Kind.CONTOUR for s in drawing.strokes) > sum(s.kind is Kind.CUTTING_PLANE for s in drawing.strokes)

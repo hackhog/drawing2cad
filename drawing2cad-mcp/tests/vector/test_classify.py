@@ -80,3 +80,36 @@ def test_line_thicker_than_the_contours_is_a_cutting_plane():
     classify(strokes)
     assert strokes[4].kind is Kind.CUTTING_PLANE
     assert {s.kind for s in strokes[:4]} == {Kind.CONTOUR}
+
+
+def _arrowheads(width, count, path=60, x=200.0):
+    """Arrowheads of the given width, one PDF path each."""
+    return [Stroke(0, Line(*(tuple((px + x + 10.0 * n, py) for px, py in seg))), width, path + n)
+            for n in range(count) for seg in (BASE, LEG0, LEG1, FILL)]
+
+
+def _numbered(strokes):
+    for i, s in enumerate(strokes):
+        s.id = i
+    return strokes
+
+
+@pytest.mark.parametrize(("thin", "thick"), [(0.35, 0.5), (0.35, 0.7), (0.35, 0.489)])
+def test_thicker_line_group_keeps_its_contours(thin, thick):
+    """In ISO 128 line groups 0.5 and 0.7, thin lines are 0.35 mm. The arrowhead width identifies them.
+    The thin lines have a greater total length than the contours."""
+    strokes = _numbered(_outline(thick, 80.0) + _arrowheads(thin, 5) + [
+        Stroke(0, Line((0, -40), (500, -40)), thin, 90), Stroke(0, Line((120, 0), (120, 6)), thick + 0.2, 95)])
+    classify(strokes)
+    assert {s.kind for s in strokes[:4]} == {Kind.CONTOUR}
+    assert strokes[-1].kind is Kind.CUTTING_PLANE
+    assert sum(s.kind is Kind.ARROW for s in strokes) == 20
+
+
+def test_one_thick_arrow_shape_does_not_set_the_thin_width():
+    """A single arrow-like triangle in contour width is not evidence for the line group, also with many fill strokes."""
+    fills = [Stroke(0, Line((200.0, y / 10), (203.5, 0)), 0.5, 60) for y in range(-4, 5)]
+    strokes = _numbered(_outline(0.5, 80.0) + _arrowheads(0.5, 1) + fills + [Stroke(0, Line((120, 0), (120, 6)), 0.7, 95)])
+    classify(strokes)
+    assert {s.kind for s in strokes[:4]} == {Kind.CONTOUR}
+    assert strokes[-1].kind is Kind.CUTTING_PLANE
