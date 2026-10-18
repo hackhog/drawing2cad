@@ -1,6 +1,6 @@
 // German status labels for sources, uploads, and runs.
 import type { Run, RunPhase } from "./contract";
-import type { ExtractResult } from "./drawing";
+import type { ExtractResult, ReviewFlag } from "./drawing";
 import type { Upload } from "./uploads";
 
 // Status colors of the established UI: wait, run, done, flag (to review), error.
@@ -13,10 +13,15 @@ export function uploadStatus(upload: Upload): [Tone, string] {
   return ["error", "Fehler"];
 }
 
-export function analysisStatus(analysis: ExtractResult | undefined, failed: boolean): [Tone, string] {
+/** Flags without a user decision. `flags` holds the current decisions; the cached analysis has none. */
+export function openFlags(analysis: ExtractResult, flags?: ReviewFlag[]): number {
+  return (flags ?? analysis.review).filter((f) => !f.decision).length;
+}
+
+export function analysisStatus(analysis: ExtractResult | undefined, failed: boolean, flags?: ReviewFlag[]): [Tone, string] {
   if (failed) return ["error", "Fehler"];
   if (!analysis) return ["run", "lädt"];
-  const n = analysis.review.length;
+  const n = openFlags(analysis, flags);
   return n ? ["flag", `${n} prüfen`] : ["done", "fertig"];
 }
 

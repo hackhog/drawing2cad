@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { LayoutGrid } from "lucide-react";
 import { useApi } from "@/lib/apiContext";
 import { partName } from "@/lib/format";
-import { analysisQuery, capabilitiesQuery, sourcesQuery } from "@/lib/queries";
+import { analysisQuery, capabilitiesQuery, flagsQuery, sourcesQuery } from "@/lib/queries";
 import { analysisStatus, uploadStatus } from "@/lib/status";
 import { useUploads } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ export function Sidebar() {
   const { data: sources = [] } = useQuery(sourcesQuery(api));
   const { data: caps } = useQuery(capabilitiesQuery(api));
   const analyses = useQueries({ queries: sources.map((s) => analysisQuery(api, s.source_id)) });
+  const flags = useQueries({ queries: sources.map((s) => ({ ...flagsQuery(api, s.source_id), enabled: !!caps?.flag_decisions })) });
   const { uploads } = useUploads();
 
   return (
@@ -37,7 +38,7 @@ export function Sidebar() {
       <ul aria-label="Hochgeladene Zeichnungen" className="min-h-0 overflow-y-auto">
         {!sources.length && !uploads.length && <li className="px-2 py-1 text-faint">Noch keine</li>}
         {sources.map((source, i) => {
-          const [tone, label] = analysisStatus(analyses[i]?.data, analyses[i]?.isError ?? false);
+          const [tone, label] = analysisStatus(analyses[i]?.data, analyses[i]?.isError ?? false, flags[i]?.data?.flags);
           return (
             <li key={source.source_id}>
               <Link to="/sources/$sourceId" params={{ sourceId: source.source_id }} search={(prev) => ({ step: "step" in prev ? prev.step : undefined })}
