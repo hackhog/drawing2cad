@@ -2,21 +2,38 @@
 
 ## Read manufacturing tolerances
 
-Use `pdf_read_text` for native text.
-Compare tolerance callouts with `pdf_render_page` and `pdf_crop_region` images.
-Record the literal text, page, normalized displayed-page region, view, units, and observation confidence.
-The current PDF tools do not return structured tolerance candidates.
-For outlined text, transcribe the visible callout after image inspection. Do not claim OCR.
+Use `pdf_read_text` for native text and `tolerance_candidates`.
+Compare each candidate with `pdf_render_page` and `pdf_crop_region` images.
+Native candidates use a whole-page source region and `location_precision="page"`.
+Their confidence is a fixed heuristic, not a measured recognition probability.
+Native extraction supports separate callout lines. It does not associate arbitrary page text with model features.
+
+For outlined text, inspect the source image first.
+Supply the visible callout through `tolerance_observations` in `pdf_read_text`.
+Each observation requires `raw_text`, `page`, `view`, `region`, `source_sha256`, and `confidence`.
+The page must be selected. The hash must match the current PDF bytes.
+Use normalized displayed-page bounds `[left, top, right, bottom]` for `region`.
+Supply `unit` when the permitted source establishes it. Use the live schema for optional `notation_hint` values.
+These records have `provenance="client_observation"`; they are transcriptions, not OCR results.
 Do not use confidence as proof that a value or association is correct.
 
-The part schema stores explicit deviations, limits, fit designations, and general tolerance statements.
+The tool accepts at most 100 observations and returns at most 200 candidates.
+If the candidate limit is exceeded, select fewer pages.
+Inspect truncation and skipped-line information. Do not treat omitted text as an absent requirement.
+
+The parser supports explicit deviations, limits, fit designations, and general tolerance statements.
 A fit designation such as `H7` does not supply numerical limits by itself.
 Keep the printed designation. Do not invent a tolerance class or use an unverified table.
+Unclear notation, contradictory bounds, and conflicting units need review.
 
 ## Store the source requirement
 
 Use part schema 1.3 for nonempty `tolerances`.
 Associate each tolerance with source evidence and, when known, its parameter.
+Put the candidate `source` in an evidence record. Reference its ID from the tolerance.
+Do not copy transport fields such as `provenance` into the closed tolerance record.
+Use `part_schema` for its permitted fields and supply stable IDs.
+Both `association_required` and `source_review_required` require agent review; they are not proof of an accepted association.
 Keep the source hash, page, region, literal text, and confidence.
 Use construction evidence with normalized displayed-page coordinates.
 

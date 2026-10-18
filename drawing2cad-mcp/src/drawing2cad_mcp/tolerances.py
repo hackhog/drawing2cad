@@ -7,6 +7,24 @@ import re
 from typing import Any
 
 
+TOLERANCE_OBSERVATIONS_SCHEMA = {
+    "type": "array", "maxItems": 100,
+    "items": {"type": "object", "additionalProperties": False,
+              "required": ["raw_text", "page", "view", "region", "source_sha256", "confidence"],
+              "properties": {
+                  "raw_text": {"type": "string", "minLength": 1, "maxLength": 500},
+                  "page": {"type": "integer", "minimum": 1},
+                  "view": {"type": "string", "minLength": 1, "maxLength": 100},
+                  "region": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1},
+                             "minItems": 4, "maxItems": 4},
+                  "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                  "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                  "unit": {"enum": ["mm", "deg"]},
+                  "notation_hint": {"enum": ["deviation", "limits", "fit", "general", "unclear"]},
+              }},
+}
+
+
 _NUM = r"[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)"
 _UNIT = r"(?:\s*(mm|deg|°))?"
 _PLUS_MINUS = re.compile(rf"^\s*(?:[⌀ØR]?\s*)?({_NUM})\s*(?:±|\+/-)\s*({_NUM}){_UNIT}\s*$", re.I)

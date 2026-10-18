@@ -307,6 +307,10 @@ class DomainService:
         if result.get("source", {}).get("sha256", source["sha256"]) != source["sha256"]:
             raise DomainError("SOURCE_HASH_MISMATCH", "The PDF preparation used different source bytes.")
         result["source"] = source
+        if name == "pdf_read_text":
+            for found in result["tolerance_candidates"]:
+                found["source"]["source_id"] = source_id
+                found["source"]["source_sha256"] = source["sha256"]
         if "artifact" in result:
             internal = result["artifact"]
             result["artifact"] = self.store.artifact_register(ctx, internal["path"], "source_preview", source_id,

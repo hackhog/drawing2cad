@@ -25,7 +25,7 @@ Use the exact live schema for the selected profile; a local path must be authori
 | Tool | Inputs and interpretation |
 |---|---|
 | `pdf_info` | Uploaded `source_id`; source hash, page count, boxes, sizes, and rotation. |
-| `pdf_read_text` | Source ID and selected pages; embedded text only, without OCR. |
+| `pdf_read_text` | Source ID and selected pages; native text and tolerance candidates. Optional `tolerance_observations` accepts source-bound client transcriptions, without OCR. |
 | `pdf_render_page` | Source ID, page, DPI, and image option; inspect the returned page image. |
 | `pdf_crop_region` | Source ID, page, normalized displayed-page bounds, DPI, and image option. |
 | `drawing_extract` | `source_id`, optional one-based `page=1`, `include_strokes=false`, and `stroke_kinds`; candidate views, glyph text, strokes, circles, and dimensions. See stroke paging below. |

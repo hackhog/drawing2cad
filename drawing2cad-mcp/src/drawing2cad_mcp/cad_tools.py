@@ -53,13 +53,13 @@ for _name in ("create_base_body", "add_hole", "add_pocket", "add_cut", "add_cham
 
 CAD_DESCRIPTIONS = {
     "pmi_schema": "Read the supported semantic PMI dimensions and geometric association contract. Target-CAD display and full EXPRESS conformance require separate tests.",
-    "part_schema": "Read the closed, versioned JSON part contract and feature scope. This does not execute CAD.",
+    "part_schema": "Read the closed, versioned JSON part contract and feature scope. Schema 1.3 includes source-bound manufacturing tolerances, separate from geometry-test tolerances. This does not execute CAD.",
     "part_validate": "Validate part structure, named values, evidence references, and unresolved inputs. No CAD geometry is created.",
     "part_create": "Create an M1 server-side part run from authorized PDF paths and exact hashes. Read part_schema for the complete description contract. source_id defaults to sha256. Verification sources cannot supply construction values.",
     "part_read": "Read current part, revision, build state, budget, and events. This call is recorded. Audit reads and report export remain available after the execution budget is reached.",
-    "part_update": "Replace the editable JSON part description with an optimistic revision check. Read part_schema for the complete description contract. Invalidate prior builds and releases.",
+    "part_update": "Replace the editable JSON part description with an optimistic revision check. Return changed parameters, direct references, and potentially affected later features. Invalidate prior builds and releases. Rebuild to measure effects against the retained validated baseline. Printed expectations are not changed automatically.",
     "create_base_body": "Replace the first base body or append an additive box, cylinder, polygon, or line-and-arc profile extrusion. Schema 1.1 supports tapered cylinders. Positive taper reduces their radius along the signed axis. Read part_schema for the closed feature contract.",
-    "add_hole": "Append a through, blind, counterbore, countersink, or tap-drill hole with evidence. Schema 1.2 permits explicit thread.length on a plain blind hole. The worker checks the attribute against the cylindrical tap-drill bore after construction and STEP re-import.",
+    "add_hole": "Append a through, blind, counterbore, countersink, or tap-drill hole with evidence. Schema 1.2 and later permit explicit thread.length on a plain blind hole. The worker checks the attribute against the cylindrical tap-drill bore after construction and STEP re-import.",
     "add_pocket": "Append a bounded box, cylinder, polygon, or line-and-arc profile pocket with evidence. Schema 1.1 supports taper_angle. Positive taper reduces the cutter along its signed local axis. Read part_schema for coordinate rules.",
     "add_cut": "Append a bounded box, cylinder, polygon, or line-and-arc profile material cut with evidence. Schema 1.1 supports taper_angle. Positive taper reduces the cutter along its signed local axis. Read part_schema for coordinate rules.",
     "add_chamfer": "Append a chamfer using a geometric edge-center region and an exact expected edge count.",

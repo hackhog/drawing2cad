@@ -32,6 +32,7 @@ from .step_tools import STEP_DESCRIPTIONS, STEP_SCHEMAS
 from .workflow import WorkflowError, WorkflowService
 from .workflow_tools import WORKFLOW_DESCRIPTIONS, WORKFLOW_SCHEMAS
 from .pdf import PdfError, PdfService
+from .tolerances import TOLERANCE_OBSERVATIONS_SCHEMA
 from .vector.export import SCHEMA_VERSION
 from .vector.model import Kind
 
@@ -61,9 +62,10 @@ LOCAL_TOOLS = [
     _tool("cad_capabilities", "Read configured CAD services, runtime availability, and unimplemented delivery requirements. Availability does not prove a completed validation run.", _schema({})),
     _tool("pdf_info", "Inspect one authorized PDF: source SHA-256, page count, metadata, displayed CropBox dimensions and rotation. No OCR.",
           _schema({"path": PATH}, ["path"])),
-    _tool("pdf_read_text", "Extract native text from selected pages of one PDF. Reports native_text_missing on image-only pages; does not perform OCR or infer dimensions.",
+    _tool("pdf_read_text", "Extract native PDF text and bounded, source-linked tolerance candidates. Optional client observations transcribe outlined glyphs with page, displayed region, source hash, and explicit provenance. Candidates require source review and feature association; no OCR or dimension inference.",
           _schema({"path": PATH, "pages": {"type": ["array", "null"], "items": PAGE, "minItems": 1, "uniqueItems": True},
-                   "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000, "default": 50000}}, ["path"])),
+                   "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000, "default": 50000},
+                   "tolerance_observations": TOLERANCE_OBSERVATIONS_SCHEMA}, ["path"])),
     _tool("pdf_render_page", "Render one PDF page using Poppler. Returns a full-resolution PNG artifact, provenance and optional inline preview. Page numbers are one-based.",
           _schema({"path": PATH, "page": {**PAGE, "default": 1}, "dpi": {**DPI, "default": 150},
                    "include_image": INCLUDE_IMAGE}, ["path"]), False),
