@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools>=77"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "drawing2cad-mcp"
 version = "0.12.0"
@@ -26,12 +22,18 @@ test = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "httpx2>=2.13,<3"]
 [project.scripts]
 drawing2cad-mcp = "drawing2cad_mcp.server:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.poetry]
+# Poetry includes all non-ignored files in the package directory, including the package data
+# origins.json, glyph_templates.json, and py.typed. Check built wheels after a layout change.
+packages = [{ include = "drawing2cad_mcp", from = "src" }]
 
-[tool.setuptools.package-data]
-"drawing2cad_mcp.adapters" = ["origins.json"]
-"drawing2cad_mcp.vector" = ["glyph_templates.json", "py.typed"]
+[tool.poetry.dependencies]
+# Locking range only. build123d 0.13.0 requires Python <3.15; requires-python stays unchanged.
+python = ">=3.11,<3.15"
+
+[build-system]
+requires = ["poetry-core>=2.2,<3"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

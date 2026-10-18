@@ -255,27 +255,32 @@ These clients are evaluation tools. They are not part of the production API.
 
 ## Installation
 
-Install Python 3.11 or later and Poppler with `pdftoppm`.
+Install Python 3.11 or later (earlier than 3.15), [Poetry](https://python-poetry.org/) 2.4.1, and Poppler with `pdftoppm`.
+CI and the Docker image use Python 3.12 and Poetry 2.4.1.
+The lock file covers Python versions earlier than 3.15, because build123d 0.13.0 requires them.
 Installation includes PyMuPDF 1.28.2 for vector analysis.
 For CAD work, use the Docker image with its supported Linux sandbox.
-A local `[cad]` installation does not bypass the sandbox requirement.
+A local `cad` installation does not bypass the sandbox requirement.
 
-On Windows, run these commands from this directory:
+Run these commands from this directory:
 
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[test]"
-Copy-Item drawing2cad-mcp.example.toml drawing2cad-mcp.local.toml
+```bash
+poetry install --extras test
+cp drawing2cad-mcp.example.toml drawing2cad-mcp.local.toml
 ```
+
+`poetry install` installs the locked versions from `poetry.lock` and this package as an editable installation.
+The committed `poetry.toml` puts the environment in `.venv`. The commands below use this path.
+Add the `cad` extra for the build123d worker: `poetry install --extras "cad test"`.
+For a production installation without test packages, use `poetry install --only main --extras cad`.
+On Windows, use `Copy-Item` in PowerShell in place of `cp`.
 
 Vector analysis is part of this package. No second package or CLI installation is necessary.
 `drawing2cad_status` reports the built-in analysis under `drawing_analysis`.
 
-On Linux or macOS, use `python3 -m venv .venv` and `.venv/bin/python`.
 Install Poppler separately, or configure the existing absolute path to `pdftoppm`.
-`requirements-tested.txt` records the Python package versions from the test.
-To use those versions, run `pip install -c requirements-tested.txt -e ".[test]"`.
-The constraints file records a previous environment. Use current run reports for actual platform test results.
+`requirements-tested.txt` records the Python package versions of a previous pip environment.
+It is not an installation path. Use current run reports for actual platform test results.
 
 Set the TOML configuration:
 

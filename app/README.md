@@ -30,15 +30,15 @@ The backend image includes the MCP package and Poppler.
 Neither image includes source drawings or local configuration.
 Both containers use a read-only file system. Temporary uploads and render artifacts use `/tmp`.
 
-For a local installation, use Python 3.12 or later, uv, Node.js 22.12 or later, and Poppler.
+For a local installation, use Python 3.12 or later (earlier than 3.15), Poetry 2.4.1, Node.js 22.12 or later, and Poppler.
 Put `pdftoppm` on `PATH`, or set `DRAWING2CAD_PDFTOPPM` to its executable path.
 
 Start the API in one terminal:
 
 ```bash
 cd app/backend
-uv sync --locked
-uv run drawing-demo
+poetry install
+poetry run drawing-demo
 ```
 
 Start the UI in another terminal:
@@ -51,11 +51,14 @@ npm run dev
 
 Open `http://localhost:5173` for UI development.
 Vite forwards `/api` requests to port 8000.
-After an MCP source change, refresh the non-editable dependency from `app/backend/`:
+After an MCP source change, install the non-editable dependency again from `app/backend/`:
 
 ```bash
-uv sync --reinstall-package drawing2cad-mcp
+poetry run python -m pip uninstall -y drawing2cad-mcp
+poetry install
 ```
+
+After a change to the MCP version or dependencies, run `poetry lock` in `app/backend/` first and commit the lock.
 
 ## User interface
 
@@ -112,7 +115,7 @@ Docker Compose also takes `DRAWING2CAD_AGENT_API_KEY` from the shell, so the key
 - `frontend/`: React and TypeScript UI, nginx configuration, and frontend Dockerfile.
 - `frontend/dist/`: ignored UI build output.
 
-Run `uv run pytest` in `backend/` for API and review tests.
+Run `poetry run pytest` in `backend/` for API and review tests.
 Sample-based tests are skipped when their inputs are absent.
 Synthetic tests verify the shared service boundary, path-free records, and one agent run through the mounted MCP endpoint.
 Run `npm test` and `npm run build` in `frontend/` for the unit tests, the type check, and the build.

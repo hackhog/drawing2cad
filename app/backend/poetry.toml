@@ -1,0 +1,3 @@
+# Keep the environment in .venv in this directory, as the documentation and the image expect.
+[virtualenvs]
+in-project = true

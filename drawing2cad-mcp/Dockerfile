@@ -14,7 +14,13 @@ RUN cmake -S /stepcode -B /build -DSC_SDAI_ADDITIONAL_EXES_SRCS=/reader.cc \
     && cmake --build /build --target reader_sdai_ap242 --parallel 2
 
 FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS runtime
-COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
+# Poetry has its own environment, separate from the application environment /opt/venv.
+# Use the same Poetry version as the CI workflows.
+ARG POETRY_VERSION=2.4.1
+RUN python -m venv /opt/poetry \
+    && /opt/poetry/bin/pip install --no-cache-dir "poetry==${POETRY_VERSION}" \
+    && ln -s /opt/poetry/bin/poetry /usr/local/bin/poetry \
+    && python -m venv /opt/venv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils libseccomp2 libstdc++6 libgl1 libglu1-mesa libxrender1 libxext6 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
@@ -22,13 +28,17 @@ COPY --from=stepcode-build /build/bin/reader_sdai_ap242 /usr/local/bin/drawing2c
 COPY --from=stepcode-build /stepcode/COPYING /stepcode/AUTHORS /stepcode/INTENT.md /usr/local/share/licenses/stepcode/
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
-    UV_PROJECT_ENVIRONMENT=/opt/venv UV_PYTHON_DOWNLOADS=never \
-    PATH=/opt/venv/bin:$PATH
+    POETRY_NO_INTERACTION=1 POETRY_CACHE_DIR=/tmp/poetry-cache \
+    VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH
 WORKDIR /opt/drawing2cad-mcp
-COPY drawing2cad-mcp/pyproject.toml drawing2cad-mcp/uv.lock ./
-RUN uv sync --locked --extra cad --no-dev --no-install-project
+# Poetry installs into the active environment (VIRTUAL_ENV=/opt/venv).
+COPY drawing2cad-mcp/pyproject.toml drawing2cad-mcp/poetry.lock ./
+RUN poetry install --only main --extras cad --no-root && rm -rf /tmp/poetry-cache
 COPY drawing2cad-mcp /opt/drawing2cad-mcp
-RUN uv sync --locked --extra cad --no-dev --no-editable \
+# Install the package from a wheel, not as a link to the source directory.
+RUN poetry build --format wheel --output /tmp/dist \
+    && pip install --no-cache-dir --no-deps /tmp/dist/*.whl \
+    && rm -rf /tmp/dist \
     && useradd --system --uid 10001 --no-create-home cad \
     && mkdir /data /inputs && chown cad:cad /data
 COPY drawing2cad-mcp/docker.toml /etc/drawing2cad.toml
@@ -38,7 +48,8 @@ ENTRYPOINT ["drawing2cad-mcp", "--config", "/etc/drawing2cad.toml"]
 
 FROM runtime AS test
 USER root
-RUN cd /opt/drawing2cad-mcp && uv sync --locked --extra cad --extra test --no-dev --no-editable
+RUN cd /opt/drawing2cad-mcp && poetry install --only main --extras "cad test" --no-root \
+    && rm -rf /tmp/poetry-cache
 USER cad
 ENTRYPOINT ["python", "-m", "pytest"]
 

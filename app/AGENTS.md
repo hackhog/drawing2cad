@@ -26,8 +26,10 @@ The UI design history is in [ADR 0007](../docs/adr/0007-demo-ui-guided-sequence-
 - SVG coordinates use sheet millimeters, with the Y axis down. Keep the established UI class colors.
 - The backend image includes `drawing2cad-mcp/` and `app/backend/`. The frontend image contains the UI build.
 - Do not include input data or local configuration in either image.
-- The MCP package is a non-editable path dependency. After an MCP change, run `uv sync --reinstall-package drawing2cad-mcp` in `backend/`.
-- After a change, run `uv run pytest` in `backend/`, and `npm test` and `npm run build` in `frontend/`.
+- The MCP package is a non-editable path dependency. After an MCP change, run `poetry run python -m pip uninstall -y drawing2cad-mcp` and then `poetry install` in `backend/`.
+- After a change to the MCP version or dependencies, run `poetry lock` in `backend/`. Commit the changed `poetry.lock`.
+- Use Poetry 2.4.1 for the backend. Do not use uv. Use pip in the backend environment only to remove the MCP package.
+- After a change, run `poetry run pytest` in `backend/`, and `npm test` and `npm run build` in `frontend/`.
 - Test both containers with Docker Compose when Docker is available.
 - Test PDF upload and the STEP viewer in the browser when browser access is available. Report tests that could not run.
 
