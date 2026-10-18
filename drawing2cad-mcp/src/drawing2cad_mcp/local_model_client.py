@@ -223,6 +223,24 @@ class Trace:
         return {"path": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
+# The model has no tool to open linked skill files, so the domain profile embeds the drawing references.
+DOMAIN_SKILL_REFERENCES = ("drawing-delivery.md", "verification-loop.md")
+
+
+def skill_text(skill_path, domain):
+    """SKILL.md, followed in the domain profile by the embedded drawing references."""
+    skill_path = Path(skill_path)
+    text = skill_path.read_text(encoding="utf-8-sig")
+    if not domain:
+        return text
+    parts = [text, "\n\n# Embedded references\n\nThe following referenced files are included here. "
+                   "Other files under references/ are not available in this run.\n"]
+    for name in DOMAIN_SKILL_REFERENCES:
+        reference = (skill_path.parent / "references" / name).read_text(encoding="utf-8-sig")
+        parts.append(f"\n\n<reference path=\"references/{name}\">\n{reference.strip()}\n</reference>\n")
+    return "".join(parts)
+
+
 async def drive(session, catalog, plan, skill, trace, model_call=call_model):
     """Execute one bounded conversation. Tool errors remain visible to the model."""
     tools = tool_catalog(catalog)
@@ -232,17 +250,25 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
     prompt = ("Follow the supplied drawing2cad skill. Use only listed MCP tools for PDF and CAD work. "
               "Do not write or execute model code. Inspect the actual source image before construction. "
               "Do not claim independent review, source completeness, or measured checks without evidence. "
-              "The M1 target is a validated STEP geometry artifact and editable JSON description. "
-              "AP242, drawings, semantic PMI, independent conformance and target-CAD opening remain untested unless a tool proves them. "
-              "Record reasonable assumptions and continue. Use request_user_input only for a required question with no reasonable assumption. "
+              + ("The target is a validated STEP model, an editable JSON description, and a complete dimensioned drawing. "
+                 "AP242, semantic PMI, independent conformance and target-CAD opening remain untested unless a tool proves them. "
+                 if domain else
+                 "The M1 target is a validated STEP geometry artifact and editable JSON description. "
+                 "AP242, drawings, semantic PMI, independent conformance and target-CAD opening remain untested unless a tool proves them. ")
+              + "Record reasonable assumptions and continue. Use request_user_input only for a required question with no reasonable assumption. "
               f"Use only the authorized PDF {source}. Use run IDs that start with {plan['run_prefix']}-. "
-              + ("Make a dimensioned drawing of the current part revision with drawing_schema, drawing_validate, drawing_render, "
-                 "artifact_preview, and drawing_review. The validated model gates export_step, not the drawing: "
-                 "if the drawing still fails, release the STEP and report release.drawing.status with its reason. "
+              + ("The drawing is a required deliverable, not an optional detail. Make it with drawing_schema, drawing_validate, "
+                 "drawing_render, artifact_preview, and drawing_review, following the embedded references/drawing-delivery.md: "
+                 "its views must show every feature of the current part revision, with thicknesses, depths, and hole positions dimensioned. "
+                 "If your drawing_review rejects the drawing, correct the drawing_spec, render it, and review it again. "
+                 "Call export_step only after an accepted drawing review, or when the remaining tool requests cannot fit "
+                 "another drawing attempt plus export_step and part_export_review; then report release.drawing.status with its reason. "
                  "Read source_flags_read before construction and apply the user decisions on review flags. " if domain else "")
               + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
-    messages = [{"role": "system", "content": prompt}, {"role": "user", "content":
-        "Reconstruct the authorized PDF as a parameterized part description. Validate the model, release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits."}]
+    task = ("Reconstruct the authorized PDF as a parameterized part description. Validate the model, "
+            + ("make a complete dimensioned drawing of it, " if domain else "")
+            + "release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits.")
+    messages = [{"role": "system", "content": prompt}, {"role": "user", "content": task}]
     summary = {"status": "running", "model": plan["model"], "tool_requests": 0, "mcp_calls": 0, "model_turns": 0,
                "model_seconds": 0.0, "mcp_seconds": 0.0, "questions": [], "released": False, "model_statistics": []}
     started = time.monotonic()
@@ -349,7 +375,7 @@ async def run(plan_path, output):
     plan = json.loads(plan_bytes.decode("utf-8-sig"))
     validate_plan(plan)
     skill_path = (plan_path.parent / plan["skill_path"]).resolve(strict=True)
-    skill_bytes = skill_path.read_bytes()
+    skill_bytes = skill_text(skill_path, "source_id" in plan).encode("utf-8")
     if len(skill_bytes) > 128 * 1024:
         raise ValueError("The skill exceeds 128 KiB.")
     output.mkdir(parents=True, exist_ok=False)
@@ -366,7 +392,7 @@ async def run(plan_path, output):
                     catalog = await session.list_tools()
                     catalog_json = catalog.model_dump(mode="json", by_alias=True)
                     trace.write("catalog", {"response": catalog_json})
-                    summary = await drive(session, catalog_json["tools"], plan, skill_bytes.decode("utf-8-sig"), trace)
+                    summary = await drive(session, catalog_json["tools"], plan, skill_bytes.decode("utf-8"), trace)
     except Exception as error:
         summary.update(status="failed", error=_error(error))
         trace.write("session-error", summary)

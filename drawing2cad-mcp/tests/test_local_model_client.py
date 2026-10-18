@@ -1,12 +1,13 @@
 """Tests for the bounded model client, without inference or CAD execution."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from drawing2cad_mcp.local_model_client import (
-    Trace, authorize_call, drive, response_messages, tool_catalog, validate_plan,
+    DOMAIN_SKILL_REFERENCES, Trace, authorize_call, drive, response_messages, skill_text, tool_catalog, validate_plan,
 )
 
 
@@ -92,7 +93,7 @@ def test_uploaded_source_scope():
         {"source_id": source_id, "sha256": digest, "role": "construction"}]}, config, {"part_create"})
 
 
-async def test_uploaded_source_prompt_asks_for_a_drawing_without_gating_the_release(tmp_path):
+async def test_uploaded_source_prompt_requires_a_complete_drawing_before_release(tmp_path):
     session = Session()
     config = plan(source_id="src_" + "a" * 32, source_sha256="b" * 64)
     requests = []
@@ -104,8 +105,29 @@ async def test_uploaded_source_prompt_asks_for_a_drawing_without_gating_the_rele
     await drive(session, catalog("drawing_review"), config, "Skill", Trace(tmp_path), model_call=model)
     system = requests[0]["messages"][0]["content"]
     assert "src_" + "a" * 32 in system and "/inputs/part.pdf" not in system
-    assert "drawing_review" in system and "The validated model gates export_step, not the drawing" in system
+    assert "drawing is a required deliverable" in system and "drawings, semantic PMI" not in system
+    assert "rejects the drawing, correct the drawing_spec" in system
+    assert "Call export_step only after an accepted drawing review" in system
+    assert "complete dimensioned drawing" in requests[0]["messages"][1]["content"]
     assert [tool["function"]["name"] for tool in requests[0]["tools"]] == ["drawing_review", "request_user_input"]
+
+
+def test_the_domain_skill_embeds_the_drawing_references(tmp_path):
+    (tmp_path / "references").mkdir()
+    (tmp_path / "SKILL.md").write_text("# Skill")
+    for name in DOMAIN_SKILL_REFERENCES:
+        (tmp_path / "references" / name).write_text(f"Rules of {name}")
+    assert skill_text(tmp_path / "SKILL.md", domain=False) == "# Skill"
+    text = skill_text(tmp_path / "SKILL.md", domain=True)
+    assert text.startswith("# Skill")
+    for name in DOMAIN_SKILL_REFERENCES:
+        assert f'<reference path="references/{name}">\nRules of {name}\n</reference>' in text
+
+
+def test_the_maintained_skill_has_the_embedded_references():
+    skill = Path(__file__).resolve().parents[2] / "skills" / "drawing2cad" / "SKILL.md"
+    text = skill_text(skill, domain=True)
+    assert "fully describe the required shape" in text and len(text.encode()) < 128 * 1024
 
 
 def test_images_and_truncation_are_explicit():

@@ -18,8 +18,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /src
 COPY drawing2cad-mcp/ drawing2cad-mcp/
 COPY app/backend/ app/backend/
-# The agent receives the maintained skill as its work instruction.
+# The agent receives the maintained skill and its embedded drawing references as its work instruction.
 COPY skills/drawing2cad/SKILL.md skills/drawing2cad/SKILL.md
+COPY skills/drawing2cad/references/drawing-delivery.md skills/drawing2cad/references/verification-loop.md \
+     skills/drawing2cad/references/
 
 WORKDIR /src/app/backend
 RUN uv sync --locked --no-dev --no-editable \
