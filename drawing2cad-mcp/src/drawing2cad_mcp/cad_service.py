@@ -65,7 +65,8 @@ class CadService:
         self.output_root = Path(output_root).expanduser().resolve()
         self.storage = self.output_root / "cad"
         self.settings = cad_settings
-        self.runner = runner or WorkerRunner(self.storage / "workers", WorkerLimits(timeout_seconds=cad_settings.timeout_seconds, memory_mb=cad_settings.memory_mb))
+        self.runner = runner or WorkerRunner(self.storage / "workers", WorkerLimits(timeout_seconds=cad_settings.timeout_seconds, memory_mb=cad_settings.memory_mb,
+                                                                                   concurrent_workers=cad_settings.concurrency))
         self._probe = None
 
     def capabilities(self):

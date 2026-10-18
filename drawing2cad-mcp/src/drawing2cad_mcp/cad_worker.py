@@ -15,7 +15,8 @@ PREFIX = "D2C_RESULT:"
 
 def execute(request: dict) -> dict:
     directory = Path(request["work_dir"]).resolve(strict=True)
-    scope = restrict(directory, memory_mb=request["memory_mb"], cpu_seconds=request["cpu_seconds"])
+    scope = restrict(directory, memory_mb=request["memory_mb"], cpu_seconds=request["cpu_seconds"],
+                     concurrent_workers=request["concurrent_workers"])
     operation = request["operation"]
     if operation == "probe":
         import socket
