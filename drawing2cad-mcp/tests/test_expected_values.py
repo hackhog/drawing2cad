@@ -84,6 +84,15 @@ def test_three_collinear_overlapping_holes():
     assert row["volume"]["value"] == pytest.approx(2000 - (3 * math.pi * r * r - 2 * pair) * 5)
 
 
+def test_three_holes_with_a_shared_triple_intersection():
+    base = _feature("base", "box", operation="base", length=10, width=10, height=5)
+    holes = [_feature(f"hole{index}", "hole", position=[x, y, 5], diameter=2)
+             for index, (x, y) in enumerate([(4, 4), (5, 4), (4.5, 4 + math.sqrt(3) / 2)])]
+    row = _expected([base, *holes])["final"]
+    union_area = 1.5 * math.pi + math.sqrt(3)
+    assert row["volume"]["value"] == pytest.approx(500 - 5 * union_area)
+
+
 def test_mixed_circular_polygon_cut_and_off_body_tool():
     base = _feature("base", "box", operation="base", length=20, width=20, height=5)
     pocket = _feature("pocket", "pocket", origin=[0, 10, 5], axis="-Z",
