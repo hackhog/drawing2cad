@@ -46,7 +46,7 @@ def classify(strokes: list[Stroke]) -> list[ArrowHead]:
 
     # A cutting plane is thicker than the contour lines of the drawing.
     # Some templates draw part contours with 0.5 mm; those lines are contour candidates.
-    cutting_width = max(_CUTTING_PLANE_WIDTH, _contour_width(strokes) + _CUTTING_PLANE_MARGIN)
+    cutting_width = max(_CUTTING_PLANE_WIDTH, _contour_width(strokes, grid) + _CUTTING_PLANE_MARGIN)
     for s in strokes:
         if s.width_mm >= cutting_width:
             s.kind = Kind.CUTTING_PLANE
@@ -411,14 +411,41 @@ def _extend_centerlines(strokes: list[Stroke]) -> None:
 _CONTOUR_MIN_WIDTH = 0.3  # mm: thinner lines are dimension, hatch, or center lines
 
 
-def _contour_width(strokes: list[Stroke]) -> float:
+_THICK_TO_THIN = 1.25  # ISO 128 line groups use thick lines twice as wide as thin lines. The margin accepts rounded widths.
+_MIN_ARROW_STROKES = 12  # About four arrowheads. Fewer arrow-like triangles do not identify the thin width.
+
+
+def _arrow_width(strokes: list[Stroke], grid: Grid) -> float:
+    """Return the line width of most dimension arrowhead strokes, or 0 if the drawing has none.
+    Arrowheads are thin lines in each ISO 128 line group. The trial run does not change the stroke kinds."""
+    kinds = [s.kind for s in strokes]
+    _find_arrows(strokes, grid)
+    count: dict[float, int] = defaultdict(int)
+    for s, kind in zip(strokes, kinds):
+        if s.kind is Kind.ARROW:
+            count[round(s.width_mm, 3)] += 1
+        s.kind = kind
+    if not count:
+        return 0.0
+    width = max(count, key=count.__getitem__)
+    return width if count[width] >= _MIN_ARROW_STROKES else 0.0
+
+
+def _contour_width(strokes: list[Stroke], grid: Grid | None = None) -> float:
     """Return the thick line width with the greatest total length. Part contours use this width.
-    Thin lines are excluded, because hatching and dimensions can have a greater total length."""
+    Thin lines are excluded, because hatching and dimensions can have a greater total length.
+    In thicker line groups (for example 0.35 mm thin and 0.5 mm thick), the thin width is above 0.3 mm.
+    The arrowhead width then identifies the thin lines."""
+    minimum = _CONTOUR_MIN_WIDTH
+    if grid is not None:
+        minimum = max(minimum, _THICK_TO_THIN * _arrow_width(strokes, grid))
     total: dict[float, float] = defaultdict(float)
     for s in strokes:
-        if s.width_mm >= _CONTOUR_MIN_WIDTH:
+        if s.width_mm >= minimum:
             total[round(s.width_mm, 3)] += s.geom.length
-    return max(total, key=total.__getitem__) if total else 0.0
+    if not total:
+        return _contour_width(strokes) if grid is not None else 0.0
+    return max(total, key=total.__getitem__)
 
 
 def _dominant_width(strokes: list[Stroke]) -> float:
