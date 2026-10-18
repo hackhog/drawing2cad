@@ -85,7 +85,7 @@ def test_nonfinite_worker_result_is_a_protocol_error(runner):
 def test_inline_code_uses_current_description_without_changing_validation(runner):
     description = sample_description()
     code = ("length = description['parameters'][0]['value']\n"
-            "result = build123d.Box(length, 10, 5)\n"
+            "result = build123d.Box(length, 10, 5, align=(build123d.Align.MIN,) * 3)\n"
             "description['measurements'][0]['expected'] = [999, 10, 5]\n")
     first = runner.run("build_code", description=description, code=code)
     assert first["status"] == "pass", first

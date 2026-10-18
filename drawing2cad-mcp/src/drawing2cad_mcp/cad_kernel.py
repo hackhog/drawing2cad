@@ -217,7 +217,12 @@ def export_shape(shape, description: dict[str, Any], output_dir: str | Path, *, 
         raise CadBuildError("INVALID_RESULT", "The worker result must be a build123d Shape.")
     measured = measure_shape(shape, part)
     if measured["status"] != "pass":
-        return {**measured, "candidate_step": None}
+        mismatch = next((row for row in measured["checks"] if row["status"] == "fail" and row["check"].startswith("computed_")), None)
+        result = {**measured, "candidate_step": None}
+        if mismatch:
+            result["error"] = {"code": "COMPUTED_EXPECTED_MISMATCH", "feature_id": mismatch["feature_id"],
+                               "message": "Calculated reference values do not agree with the build or supplied measurements."}
+        return result
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     candidate = directory / "candidate.step"
@@ -232,15 +237,19 @@ def export_shape(shape, description: dict[str, Any], output_dir: str | Path, *, 
     export_step(shape, candidate, unit=Unit.MM)
     metadata = step_metadata(candidate, part.name)
     checks = [*measured["checks"], *metadata["checks"], {"check": "fresh_worker_reimport", "status": "not_tested", "reason": "The service must import this candidate in a separate restricted worker."}]
-    return {"status": "fail" if any(item["status"] == "fail" for item in checks) else "pass", "candidate_step": str(candidate), "checks": checks, "measured": measured["measured"], "step": {key: value for key, value in metadata.items() if key != "checks"}, "versions": {"build123d": version("build123d"), "ocp": version("cadquery-ocp-novtk")}}
+    return {"status": "fail" if any(item["status"] == "fail" for item in checks) else "pass", "candidate_step": str(candidate), "checks": checks, "computed_expected": measured["computed_expected"], "measured": measured["measured"], "step": {key: value for key, value in metadata.items() if key != "checks"}, "versions": {"build123d": version("build123d"), "ocp": version("cadquery-ocp-novtk")}}
 
 
 def build_shape(description: dict[str, Any]):
     """Replay the ordered feature list and measure each resulting solid."""
     part = parse_description(description)
+    from .expected_values import compute_expected
+    from .expected_checks import compare_expected
+
+    references = compute_expected(part)["features"]
     shape = None
     feature_results = []
-    for feature in part.features:
+    for feature, reference in zip(part.features, references):
         before = float(shape.volume) if shape is not None else 0
         try:
             if feature.type in {"box", "cylinder", "extrusion", "profile_extrusion"}:
@@ -261,18 +270,30 @@ def build_shape(description: dict[str, Any]):
                 raise CadBuildError("NO_MATERIAL_CHANGED", "The edge operation did not change material.")
             if getattr(feature, "operation", None) == "add" and after <= before + 1e-8:
                 raise CadBuildError("NO_MATERIAL_ADDED", "The additive feature did not add material.")
-            feature_results.append({"feature_id": feature.id, "type": feature.type, "status": "pass", "volume_before_mm3": before, "volume_after_mm3": after})
+            bounds = shape.bounding_box()
+            measured = {"volume_mm3": after, "bbox_min": list(bounds.min),
+                        "bbox_max": list(bounds.max), "bbox_size": list(bounds.size)}
+            computed_checks = compare_expected(reference, measured)
+            feature_results.append({"feature_id": feature.id, "type": feature.type,
+                                    "status": "fail" if any(row["status"] == "fail" for row in computed_checks) else "pass",
+                                    "volume_before_mm3": before, "volume_after_mm3": after,
+                                    "measured": measured, "computed_expected": reference,
+                                    "computed_checks": computed_checks})
         except CadBuildError as error:
             error.feature_id = feature.id
             error.checks = [*({"check": "feature_execution", "feature_id": item["feature_id"], "status": "pass"}
                                for item in feature_results),
                             {"check": "feature_execution", "feature_id": feature.id, "status": "fail"}]
+            error.checks.extend(row for item in feature_results for row in item["computed_checks"]
+                                if row["status"] == "fail")
             raise
         except Exception as error:
             failure = CadBuildError("KERNEL_OPERATION", str(error)[:1000], feature.id)
             failure.checks = [*({"check": "feature_execution", "feature_id": item["feature_id"], "status": "pass"}
                                 for item in feature_results),
                               {"check": "feature_execution", "feature_id": feature.id, "status": "fail"}]
+            failure.checks.extend(row for item in feature_results for row in item["computed_checks"]
+                                  if row["status"] == "fail")
             raise failure from error
     return shape, feature_results
 
@@ -281,7 +302,15 @@ def build(description: dict[str, Any], output_dir: str | Path, *, export_profile
     """Build a candidate with the selected exchange adapter."""
     shape, feature_results = build_shape(description)
     part = parse_description(description)
-    result = export_shape(shape, description, output_dir, export_profile=export_profile, pmi=pmi)
+    feature_checks = [row for feature in feature_results for row in feature["computed_checks"]]
+    if any(row["status"] == "fail" for row in feature_checks):
+        mismatch = next(row for row in feature_checks if row["status"] == "fail")
+        result = {"status": "fail", "candidate_step": None, "checks": feature_checks,
+                  "error": {"code": "COMPUTED_EXPECTED_MISMATCH", "feature_id": mismatch["feature_id"],
+                            "message": "Calculated reference values do not agree with a feature result."}}
+    else:
+        result = export_shape(shape, description, output_dir, export_profile=export_profile, pmi=pmi)
+        result["checks"] = [*feature_checks, *result.get("checks", [])]
     result["feature_results"] = feature_results
     result["coverage"] = {"constructed_features": len(feature_results), "declared_features": len(part.features), "status": "pass", "source_feature_coverage": "not_tested", "reason": "Execution coverage is not proof that all source features were declared."}
     return result

@@ -257,7 +257,10 @@ def test_toroidal_radius_requires_its_axis(axis, status):
     data["measurements"] = [{"id": "radius", "kind": "fillet_radius", "position": [12, 0, 0],
         "axis": axis, "expected": [2], "basis": "printed_dimension", "evidence_ids": ["drawing"]}]
     result = measure_shape(Solid.make_torus(10, 2), parse_description(data))
-    assert result["status"] == status
+    assert next(row for row in result["checks"] if row["check"] == "radius")["status"] == status
+    # This synthetic torus is not the box in the construction description.
+    assert next(row for row in result["checks"] if row["check"] == "computed_volume")["status"] == "fail"
+    assert result["status"] == "fail"
 
 
 @pytest.mark.parametrize("axis", ["X", "Y", "Z"])
@@ -269,7 +272,10 @@ def test_spherical_radius_is_direction_independent(axis):
     data["schema_version"] = "1.1"
     data["measurements"] = [{"id": "radius", "kind": "fillet_radius", "position": [3, 0, 0],
         "axis": axis, "expected": [3], "basis": "printed_dimension", "evidence_ids": ["drawing"]}]
-    assert measure_shape(Solid.make_sphere(3), parse_description(data))["status"] == "pass"
+    result = measure_shape(Solid.make_sphere(3), parse_description(data))
+    assert next(row for row in result["checks"] if row["check"] == "radius")["status"] == "pass"
+    assert next(row for row in result["checks"] if row["check"] == "computed_volume")["status"] == "fail"
+    assert result["status"] == "fail"
 
 
 def test_edge_selection_diagnostics_are_bounded():
@@ -333,7 +339,9 @@ def test_bspline_fillet_measures_actual_local_curvature(mode, status):
     if mode in {"valid", "wrong_radius"}:
         assert row["actual"] == pytest.approx([1.5] * 5, abs=0.02)
         assert row["surface_sampling"][0]["sample_count"] == 5
-    assert result["status"] == ("pass" if status == "pass" else "fail")
+    # The surface fixture is separate from the declared box construction.
+    assert next(row for row in result["checks"] if row["check"] == "computed_volume")["status"] == "fail"
+    assert result["status"] == "fail"
 
 
 def test_bspline_sphere_has_no_separated_fillet_curvature():

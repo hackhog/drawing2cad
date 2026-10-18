@@ -30,6 +30,8 @@ Use actual worker results and artifact review for those separate claims.
 ## Measure the model
 
 Build the validated description through the MCP.
+Use the calculated volumes and extents from `part_validate`; do not calculate these values by hand.
+Follow [computed-expected.md](computed-expected.md) for exact values, bounds, unavailable results, and build comparisons.
 Compare measurements from the resulting geometry with independent source expectations.
 Inspect feature coverage and local details. A bounding-box pass cannot prove a hole, rib, or pocket.
 If geometry is incorrect, revise the responsible parameters or features and rebuild.
