@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 import struct
 import threading
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 import zipfile
 
@@ -32,7 +32,6 @@ from .agent.mapping import artifact_view, part_view, review_view
 from .agent.model import ModelSettings
 from .agent.runner import AgentRunner
 from .jobs import JobStore
-from .review import review_flags
 from .service import DomainBackend, ServiceError, checked_id, not_found, settings_from_env
 
 MAX_STEP_BYTES = 50 * 1024 * 1024
@@ -104,7 +103,8 @@ class Services:
 
 
 def analyze(backend: DomainBackend, source: dict[str, Any]) -> dict[str, Any]:
-    """Drawing data, a page image, and review flags of the first page, from the shared domain service."""
+    """Drawing data, a page image, and review flags of the first page, from the shared domain service.
+    The flags have no decisions here: decisions change, the cached analysis does not."""
     # The sheet viewer needs every stroke. One large page avoids a second vector analysis.
     data = backend.call("drawing_extract", source_id=source["source_id"], include_strokes=True, stroke_limit=50_000)
     if data["strokes_page"]["next_offset"] is not None:
@@ -119,7 +119,8 @@ def analyze(backend: DomainBackend, source: dict[str, Any]) -> dict[str, Any]:
         "drawing": data,
         "page_png": "data:image/png;base64," + base64.b64encode(page_png).decode("ascii"),
         "page_px_per_mm": PAGE_PX_PER_MM,
-        "review": review_flags(data),
+        "review": [{**flag_view(f), "decision": None}
+                   for f in backend.call("source_flags_read", source_id=source["source_id"])["flags"]],
         "provenance": {
             "source_sha256": source["sha256"],
             "source_size_bytes": source["size_bytes"],
@@ -207,7 +208,7 @@ def health() -> dict[str, Any]:
 def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
     return {
         "contract_version": CONTRACT_VERSION, "simulated": False, "runs": s.runner.available, "parameter_edit": False,
-        "notes": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
+        "notes": True, "flag_decisions": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
         "max_pdf_bytes": s.backend.max_source_bytes,
         "agent_model": s.runner.settings.model if s.runner.available and s.runner.settings else None,
     }
@@ -255,6 +256,55 @@ def delete_source(source_id: str, s: Services = Depends(services)) -> Response:
 @router.get("/sources/{source_id}/analysis")
 def get_analysis(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
     return s.analysis(_source(s, source_id))
+
+
+def flag_view(flag: dict[str, Any]) -> dict[str, Any]:
+    """A review flag of the domain service with its German message for the UI."""
+    message = {
+        "no_views": "Keine Ansicht erkannt",
+        "unclear_strokes": f"{len(flag['stroke_ids'])} Strich(e) ohne sichere Bedeutung",
+        "unreadable_text": f"Text nicht sicher gelesen: „{flag['text']}“",
+    }.get(flag["kind"], flag["kind"])
+    decision = flag.get("decision")
+    if decision:
+        decision = {key: decision[key] for key in ("action", "stroke_class", "text", "note")} | {
+            "decided_at": datetime.fromtimestamp(decision["decided_at"], timezone.utc).isoformat()}
+    return {"id": flag["flag_id"], "kind": flag["kind"], "message": message, "bbox": flag["bbox"],
+            "stroke_ids": flag["stroke_ids"], "text": flag["text"], "decision": decision}
+
+
+def flags_view(page: dict[str, Any]) -> dict[str, Any]:
+    return {"flags": [flag_view(f) for f in page["flags"]], "decisions_without_flag": len(page["decisions_without_flag"])}
+
+
+@router.get("/sources/{source_id}/flags")
+def get_flags(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
+    """Review flags of the first page with the decisions of the user."""
+    return flags_view(s.backend.call("source_flags_read", source_id=_source(s, source_id)["source_id"]))
+
+
+class FlagDecision(BaseModel):
+    action: Literal["ignore", "classify", "correct", "reopen"]
+    stroke_class: str | None = None
+    text: str | None = None
+    note: str | None = None
+
+
+@router.put("/sources/{source_id}/flags/{flag_id}")
+def decide_flag(source_id: str, flag_id: str, change: FlagDecision, s: Services = Depends(services)) -> dict[str, Any]:
+    """Record the decision of the user on one flag. New agent runs read it through the MCP."""
+    arguments = {key: value for key, value in change.model_dump().items() if value not in (None, "")}
+    return flags_view(s.backend.call("source_flags_decide", source_id=_source(s, source_id)["source_id"],
+                                     flag_id=flag_id, reviewer="web-ui", **arguments))
+
+
+@router.get("/feedback")
+def export_feedback(s: Services = Depends(services)) -> Response:
+    """All flag decisions as a JSON download for the developers of the drawing analysis."""
+    feedback = s.backend.call("source_flags_export")
+    day = datetime.fromtimestamp(feedback["exported_at"], timezone.utc).strftime("%Y-%m-%d")
+    return Response(json.dumps(feedback, ensure_ascii=False, indent=2), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="drawing2cad-feedback-{day}.json"'})
 
 
 @router.get("/sources/{source_id}/runs")

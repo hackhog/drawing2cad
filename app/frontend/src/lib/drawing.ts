@@ -23,11 +23,37 @@ export interface Drawing {
   strokes: Stroke[];
 }
 
+/** Stroke classes that a user can assign to unclear strokes: the analysis classes and classes the analysis does not know yet. */
+export type StrokeClass = Exclude<StrokeKind, "unclear"> | "frame" | "table" | "leader" | "pitch_circle" | "tangent_edge";
+export type FlagAction = "ignore" | "classify" | "correct";
+
+/** A user decision on a flag. New agent runs read it through the MCP. */
+export interface FlagDecision {
+  action: FlagAction;
+  stroke_class: StrokeClass | null;
+  text: string | null;
+  note: string | null;
+  decided_at: string;
+}
+
+export interface FlagChange { action: FlagAction | "reopen"; stroke_class?: StrokeClass; text?: string; note?: string }
+
 export interface ReviewFlag {
+  /** Stable for the same source bytes and analysis version. */
+  id: string;
   kind: "no_views" | "unclear_strokes" | "unreadable_text" | string;
   message: string;
   bbox: Box | null;
   stroke_ids: number[];
+  /** The extracted text of an unreadable-text flag. */
+  text: string | null;
+  decision: FlagDecision | null;
+}
+
+export interface FlagsPage {
+  flags: ReviewFlag[];
+  /** Decisions whose flag the current analysis no longer produces. */
+  decisions_without_flag: number;
 }
 
 export interface ExtractResult {

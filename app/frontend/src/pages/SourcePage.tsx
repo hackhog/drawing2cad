@@ -21,7 +21,7 @@ import type { ReviewFlag } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { recoveryFor } from "@/lib/errors";
 import { explainedShare, partName, pct, shortHash, time } from "@/lib/format";
-import { analysisQuery, capabilitiesQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
+import { analysisQuery, capabilitiesQuery, flagsQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
 import { delivery, isActive } from "@/lib/release";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
 import { setStepPreview, useStepPreview } from "@/lib/stepPreviews";
@@ -49,11 +49,17 @@ function SourceView({ sourceId }: { sourceId: string }) {
   const { addFiles } = useUploads();
   const { data: source } = useSuspenseQuery(sourceQuery(api, sourceId));
   const { data: result } = useSuspenseQuery(analysisQuery(api, sourceId));
+  const { data: caps } = useQuery(capabilitiesQuery(api));
+  // The analysis holds the flags; the flags query adds the current decisions of the user.
+  const decidable = !!caps?.flag_decisions;
+  const { data: page } = useQuery({ ...flagsQuery(api, sourceId), enabled: decidable });
+  const flags = page?.flags ?? result.review;
+  const open = flags.filter((f) => !f.decision).length;
   const [picked, setPicked] = useState<Pick>(null);
   const [fitKey, setFitKey] = useState(0);
   const drop = dropTarget((files) => addFiles(files.filter(isPdf)), () => {});
 
-  const focus = step !== 3 || picked === "sheet" ? null : picked ?? result.review.find((f) => f.bbox) ?? null;
+  const focus = step !== 3 || picked === "sheet" ? null : flags.find((f) => f.id === picked?.id) ?? flags.find((f) => f.bbox) ?? null;
   const fitSheet = () => { setPicked("sheet"); setFitKey((k) => k + 1); };
   const setStep = (next: Step) => {
     setPicked(null);
@@ -65,7 +71,8 @@ function SourceView({ sourceId }: { sourceId: string }) {
   const story = {
     1: `Eine Zeichnung ohne 3D-Modell: ${d.sheet_size_mm[0]} × ${d.sheet_size_mm[1]} mm, keine Textebene, nur Striche.`,
     2: `${d.summary.strokes.toLocaleString("de-DE")} Striche klassifiziert, ${d.summary.views} Ansichten gefunden, ${d.summary.text_blocks} Maße und Texte gelesen. Ohne KI, nachvollziehbar.`,
-    3: result.review.length ? `${result.review.length} Stelle(n) ohne sichere Bedeutung: markiert statt geraten.` : "Keine unklaren Stellen: alles erklärt.",
+    3: open ? `${open} Stelle(n) ohne sichere Bedeutung: markiert statt geraten. Deine Entscheidung nutzt der nächste Lauf.`
+      : flags.length ? "Alle Stellen entschieden: der nächste Lauf nutzt deine Entscheidungen." : "Keine unklaren Stellen: alles erklärt.",
     4: "Aus der geprüften Zeichnung baut der Dienst ein parametrisches Modell und exportiert STEP.",
   }[step];
 
@@ -106,7 +113,7 @@ function SourceView({ sourceId }: { sourceId: string }) {
 
         <div className="flex min-h-0 flex-col gap-3">
           <FlagList
-            flags={result.review} active={focus} highlight={step === 3}
+            flags={flags} active={focus} highlight={step === 3} sourceId={decidable ? sourceId : undefined}
             onSelect={(f) => { if (step !== 3) void navigate({ search: { step: 3 } }); setPicked(f); }}
           />
           <RunsCard sourceId={sourceId} />

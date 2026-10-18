@@ -8,6 +8,7 @@ export const keys = {
   sources: ["sources"] as const,
   source: (id: string) => ["sources", id] as const,
   analysis: (id: string) => ["analysis", id] as const,
+  flags: (id: string) => ["flags", id] as const,
   runs: (sourceId: string) => ["runs", { sourceId }] as const,
   run: (id: string) => ["run", id] as const,
   note: (runId: string) => ["note", runId] as const,
@@ -28,6 +29,9 @@ export const sourceQuery = (api: WebApi, id: string) =>
 // An analysis belongs to one immutable source, so it never becomes stale.
 export const analysisQuery = (api: WebApi, id: string) =>
   queryOptions({ queryKey: keys.analysis(id), queryFn: () => api.getAnalysis(id), staleTime: Infinity });
+
+export const flagsQuery = (api: WebApi, id: string) =>
+  queryOptions({ queryKey: keys.flags(id), queryFn: () => api.getFlags(id) });
 
 export const runsQuery = (api: WebApi, sourceId: string) =>
   queryOptions({

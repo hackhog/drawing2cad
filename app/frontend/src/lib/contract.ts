@@ -162,6 +162,8 @@ export interface Capabilities {
   runs: boolean;
   parameter_edit: boolean;
   notes: boolean;
+  /** Decisions on review flags and their feedback export. */
+  flag_decisions: boolean;
   downloads: boolean;
   model_preview: boolean;
   step_preview_upload: boolean;

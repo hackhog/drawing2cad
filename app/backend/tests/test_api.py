@@ -73,7 +73,7 @@ def test_synthetic_pdf_uses_real_service(client, tmp_path):
     assert body["provenance"]["source_sha256"] == sha256(content).hexdigest()
     assert body["provenance"]["render"]["renderer"] == "poppler.pdftoppm"
     assert base64.b64decode(body["page_png"].split(",")[1]).startswith(b"\x89PNG\r\n\x1a\n")
-    assert any(flag["kind"] == "no_views" for flag in body["review"])
+    assert [flag["id"] for flag in body["review"]] == ["views"]
     # Records carry IDs and hashes, never a private server path.
     assert str(tmp_path) not in res.text and str(tmp_path) not in str(body)
     assert client.get("/api/sources").json() == [res.json()]
@@ -92,6 +92,32 @@ def test_sample_analysis_and_render_agree(client, pdf):
     assert drawing["summary"]["text_blocks"] == len(drawing["text_blocks"])
     assert body["provenance"]["source_sha256"] == sha256(content).hexdigest()
     assert body["page_png"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.skipif(not POPPLER, reason="Poppler pdftoppm is not available.")
+def test_flag_decisions_reach_the_feedback_export(client):
+    writer = PdfWriter()
+    writer.add_blank_page(width=300, height=200)
+    stream = BytesIO()
+    writer.write(stream)
+    res, _ = upload(client, "blank.pdf", stream.getvalue())
+    source_id = res.json()["source_id"]
+    flags = client.get(f"/api/sources/{source_id}/flags").json()["flags"]
+    assert [(f["id"], f["message"], f["decision"]) for f in flags] == [("views", "Keine Ansicht erkannt", None)]
+
+    decided = client.put(f"/api/sources/{source_id}/flags/views", json={"action": "ignore", "note": "Leeres Blatt"})
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["flags"][0]["decision"]["note"] == "Leeres Blatt"
+    wrong = client.put(f"/api/sources/{source_id}/flags/views", json={"action": "correct", "text": "R2"})
+    assert wrong.status_code == 422
+
+    feedback = client.get("/api/feedback")
+    assert feedback.headers["content-disposition"].startswith('attachment; filename="drawing2cad-feedback-')
+    assert [(d["filename"], d["flag_id"], d["note"]) for d in feedback.json()["decisions"]] == [
+        ("blank.pdf", "views", "Leeres Blatt")]
+
+    reopened = client.put(f"/api/sources/{source_id}/flags/views", json={"action": "reopen"})
+    assert reopened.json()["flags"][0]["decision"] is None
 
 
 def test_model_rejects_non_step(client):

@@ -126,7 +126,8 @@ class Application:
                 name: _tool(name, DOMAIN_DESCRIPTIONS[name], schema,
                             read_only=name in {"domain_schema", "part_schema", "pmi_schema", "part_validate", "drawing_schema", "drawing_validate",
                                                "source_get", "source_list", "artifact_get", "artifact_list",
-                                               "artifact_read", "job_get", "job_list", "notes_read", "upload_get"})
+                                               "artifact_read", "job_get", "job_list", "notes_read", "upload_get",
+                                               "source_flags_read", "source_flags_export"})
                 for name, schema in DOMAIN_SCHEMAS.items()
             }
             self.domain_catalog.update({tool.name: tool for tool in LOCAL_TOOLS[:2]})

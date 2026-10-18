@@ -1,7 +1,7 @@
 // The one interface between the UI and a service. Components and routes use only this interface.
 // `http` uses the web backend (app/backend); `fixture` is a simulated service for UI work without a backend.
 import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
-import type { ExtractResult } from "./drawing";
+import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 
 export interface ParameterChange { name: string; value: number }
 
@@ -15,6 +15,12 @@ export interface WebApi {
   deleteSource(sourceId: string): Promise<void>;
   /** Drawing analysis of a source: strokes, views, texts, and review flags. */
   getAnalysis(sourceId: string): Promise<ExtractResult>;
+  /** Review flags of a source with the decisions of the user. */
+  getFlags(sourceId: string): Promise<FlagsPage>;
+  /** Record or, with "reopen", remove the decision on one flag. */
+  decideFlag(sourceId: string, flagId: string, change: FlagChange): Promise<FlagsPage>;
+  /** All flag decisions as JSON feedback for the developers of the drawing analysis. */
+  exportFeedback(): Promise<Blob>;
   listRuns(sourceId: string): Promise<Run[]>;
   createRun(sourceId: string): Promise<Run>;
   getRun(runId: string): Promise<Run>;

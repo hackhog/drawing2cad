@@ -3,7 +3,7 @@
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
 import type { Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";
 import { CONTRACT_VERSION } from "./contract";
-import type { ExtractResult } from "./drawing";
+import type { ExtractResult, FlagChange, FlagDecision, FlagsPage } from "./drawing";
 import { ApiFailure, notFound } from "./errors";
 import {
   FIXTURE_ASSUMPTIONS, FIXTURE_OPERATIONS, FIXTURE_UNCERTAINTIES, fixtureAnalysis, fixtureParameters, fixtureValidation,
@@ -44,6 +44,8 @@ export class FixtureApi implements WebApi {
   private readonly sources = new Map<string, Source>();
   private readonly runs = new Map<string, RunRecord>();
   private readonly contents = new Map<string, Blob>();
+  /** Flag decisions by source ID and flag ID. */
+  private readonly decisions = new Map<string, Map<string, FlagDecision>>();
   private readonly now: () => number;
   private readonly phaseMs: number;
   private readonly latencyMs: number;
@@ -58,7 +60,7 @@ export class FixtureApi implements WebApi {
   async capabilities(): Promise<Capabilities> {
     await this.latency();
     return {
-      contract_version: CONTRACT_VERSION, simulated: true, runs: true, parameter_edit: true, notes: true,
+      contract_version: CONTRACT_VERSION, simulated: true, runs: true, parameter_edit: true, notes: true, flag_decisions: true,
       downloads: true, model_preview: false, step_preview_upload: false, max_pdf_bytes: MAX_PDF_BYTES,
     };
   }
@@ -102,11 +104,41 @@ export class FixtureApi implements WebApi {
     }
     for (const r of records) this.runs.delete(r.runId);
     this.sources.delete(sourceId);
+    this.decisions.delete(sourceId);
   }
 
   async getAnalysis(sourceId: string): Promise<ExtractResult> {
     await this.latency();
     return fixtureAnalysis(this.source(sourceId).filename);
+  }
+
+  async getFlags(sourceId: string): Promise<FlagsPage> {
+    await this.latency();
+    const decided = this.decisions.get(sourceId) ?? new Map<string, FlagDecision>();
+    const flags = fixtureAnalysis(this.source(sourceId).filename).review;
+    return { flags: flags.map((f) => ({ ...f, decision: decided.get(f.id) ?? null })), decisions_without_flag: 0 };
+  }
+
+  async decideFlag(sourceId: string, flagId: string, change: FlagChange): Promise<FlagsPage> {
+    const flag = fixtureAnalysis(this.source(sourceId).filename).review.find((f) => f.id === flagId);
+    if (!flag) throw notFound("Prüfpunkt", flagId);
+    const decided = this.decisions.get(sourceId) ?? new Map<string, FlagDecision>();
+    this.decisions.set(sourceId, decided);
+    if (change.action === "reopen") decided.delete(flagId);
+    else {
+      decided.set(flagId, {
+        action: change.action, stroke_class: change.stroke_class ?? null, text: change.text ?? null,
+        note: change.note || null, decided_at: new Date(this.now()).toISOString(),
+      });
+    }
+    return this.getFlags(sourceId);
+  }
+
+  async exportFeedback(): Promise<Blob> {
+    await this.latency();
+    const decisions = [...this.decisions].flatMap(([sourceId, decided]) =>
+      [...decided].map(([flagId, d]) => ({ source_id: sourceId, flag_id: flagId, ...d })));
+    return new Blob([JSON.stringify({ schema_version: 1, simulated: true, decisions }, null, 2)], { type: "application/json" });
   }
 
   async listRuns(sourceId: string): Promise<Run[]> {

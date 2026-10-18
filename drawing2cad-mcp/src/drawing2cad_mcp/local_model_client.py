@@ -32,6 +32,8 @@ ALLOWED_TOOLS = frozenset({
     # The domain profile adds drawing delivery and run notes. The local-path profile does not list these tools.
     "drawing_schema", "drawing_validate", "drawing_render", "drawing_read", "drawing_review", "artifact_preview",
     "notes_read", "notes_update",
+    # User decisions on review flags. Only a human reviewer records them, through an adapter.
+    "source_flags_read",
 })
 # Model changes invalidate a STEP release. Drawing renders and reviews do not; the release records the drawing status.
 MUTATION_TOOLS = frozenset({"part_create", "part_update", "create_base_body", "add_hole", "add_pocket",
@@ -236,7 +238,8 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
               f"Use only the authorized PDF {source}. Use run IDs that start with {plan['run_prefix']}-. "
               + ("Make a dimensioned drawing of the current part revision with drawing_schema, drawing_validate, drawing_render, "
                  "artifact_preview, and drawing_review. The validated model gates export_step, not the drawing: "
-                 "if the drawing still fails, release the STEP and report release.drawing.status with its reason. " if domain else "")
+                 "if the drawing still fails, release the STEP and report release.drawing.status with its reason. "
+                 "Read source_flags_read before construction and apply the user decisions on review flags. " if domain else "")
               + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content":
         "Reconstruct the authorized PDF as a parameterized part description. Validate the model, release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits."}]

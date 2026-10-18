@@ -1,7 +1,7 @@
 // Adapter for the web backend (app/backend, ADR 0018): stored sources, their analysis, agent runs, and artifacts.
 // Parameter edits are not available yet; the capabilities report this, and the UI explains it.
 import type { Capabilities, Run, RunFiles, RunNote, Source } from "./contract";
-import type { ExtractResult } from "./drawing";
+import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 import { unavailable } from "./errors";
 import { request, requestBlob, uploadFile } from "./http";
 import type { ParameterChange, WebApi } from "./webApi";
@@ -17,6 +17,13 @@ export class HttpApi implements WebApi {
   }
   deleteSource(sourceId: string): Promise<void> { return request(`/api/sources/${id(sourceId)}`, { method: "DELETE" }); }
   getAnalysis(sourceId: string): Promise<ExtractResult> { return request(`/api/sources/${id(sourceId)}/analysis`); }
+  getFlags(sourceId: string): Promise<FlagsPage> { return request(`/api/sources/${id(sourceId)}/flags`); }
+  decideFlag(sourceId: string, flagId: string, change: FlagChange): Promise<FlagsPage> {
+    return request(`/api/sources/${id(sourceId)}/flags/${id(flagId)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change),
+    });
+  }
+  exportFeedback(): Promise<Blob> { return requestBlob("/api/feedback"); }
   listRuns(sourceId: string): Promise<Run[]> { return request(`/api/sources/${id(sourceId)}/runs`); }
   createRun(sourceId: string): Promise<Run> { return request(`/api/sources/${id(sourceId)}/runs`, { method: "POST" }); }
   getRun(runId: string): Promise<Run> { return request(`/api/runs/${id(runId)}`); }

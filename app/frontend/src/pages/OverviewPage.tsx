@@ -15,12 +15,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useApi } from "@/lib/apiContext";
 import { benefit } from "@/lib/benefit";
 import type { Source } from "@/lib/contract";
-import type { ExtractResult } from "@/lib/drawing";
+import type { ExtractResult, ReviewFlag } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { errorCode, recoveryFor } from "@/lib/errors";
 import { bytes, duration, explainedShare, fmt, partName, pct } from "@/lib/format";
-import { analysisQuery, keys, runsQuery, sourcesQuery } from "@/lib/queries";
-import { analysisStatus, uploadStatus } from "@/lib/status";
+import { analysisQuery, capabilitiesQuery, flagsQuery, keys, runsQuery, sourcesQuery } from "@/lib/queries";
+import { analysisStatus, openFlags, uploadStatus } from "@/lib/status";
 import { isPdf, useUploads, type Upload } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +48,9 @@ export function OverviewPage() {
   const api = useApi();
   const { uploads, addFiles } = useUploads();
   const { data: sources = [] } = useQuery(sourcesQuery(api));
+  const { data: caps } = useQuery(capabilitiesQuery(api));
   const analyses = useQueries({ queries: sources.map((s) => analysisQuery(api, s.source_id)) });
+  const pages = useQueries({ queries: sources.map((s) => ({ ...flagsQuery(api, s.source_id), enabled: !!caps?.flag_decisions })) });
   const runs = useQueries({ queries: sources.map((s) => runsQuery(api, s.source_id)) });
   const [gauge, setGauge] = useState(false);
   const [over, setOver] = useState(false);
@@ -63,7 +65,7 @@ export function OverviewPage() {
   const share = total ? explained / total : 0;
   const texts = done.flatMap((r) => r.drawing.text_blocks);
   const unsure = texts.filter((t) => t.text.includes("?")).length;
-  const flags = done.reduce((a, r) => a + r.review.length, 0);
+  const flags = analyses.reduce((a, q, i) => a + (q.data ? openFlags(q.data, pages[i]?.data?.flags) : 0), 0);
   const empty = !sources.length && !uploads.length;
   const b = benefit(runs.map((q) => q.data ?? []));
   const built = b.models > 0;
@@ -165,7 +167,8 @@ export function OverviewPage() {
               </TableHeader>
               <TableBody>
                 {sources.map((source, i) => (
-                  <SourceRow key={source.source_id} source={source} analysis={analyses[i]?.data} error={analyses[i]?.error ?? null} />
+                  <SourceRow key={source.source_id} source={source} analysis={analyses[i]?.data} flags={pages[i]?.data?.flags}
+                    error={analyses[i]?.error ?? null} />
                 ))}
                 {uploads.map((upload) => <UploadRow key={upload.id} upload={upload} />)}
               </TableBody>
@@ -179,9 +182,10 @@ export function OverviewPage() {
 
 const NUM = "text-right tabular-nums";
 
-export function SourceRow({ source, analysis, error }: { source: Source; analysis: ExtractResult | undefined; error: Error | null }) {
+export function SourceRow({ source, analysis, flags, error }:
+  { source: Source; analysis: ExtractResult | undefined; flags?: ReviewFlag[]; error: Error | null }) {
   const navigate = useNavigate();
-  const [tone, label] = analysisStatus(analysis, error !== null);
+  const [tone, label] = analysisStatus(analysis, error !== null, flags);
   const open = () => void navigate({ to: "/sources/$sourceId", params: { sourceId: source.source_id } });
   const d = analysis?.drawing;
   return (
@@ -198,7 +202,7 @@ export function SourceRow({ source, analysis, error }: { source: Source; analysi
       <TableCell className={NUM}>{analysis ? pct(explainedShare(analysis).share) : "–"}</TableCell>
       <TableCell className={NUM}>{d ? fmt(d.views.length) : "–"}</TableCell>
       <TableCell className={NUM}>{d ? fmt(d.text_blocks.length) : "–"}</TableCell>
-      <TableCell className={NUM}>{analysis ? fmt(analysis.review.length) : "–"}</TableCell>
+      <TableCell className={NUM}>{analysis ? fmt(openFlags(analysis, flags)) : "–"}</TableCell>
       <TableCell className={NUM}>{bytes(source.byte_count)}</TableCell>
       <TableCell className="w-8"><DeleteButton source={source} /></TableCell>
     </TableRow>
