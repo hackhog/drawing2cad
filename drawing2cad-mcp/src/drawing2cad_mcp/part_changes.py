@@ -51,16 +51,20 @@ def proposed_change(base, description, revision):
                           if old_features.get(identifier) != new_features.get(identifier))
     old_order = [feature["id"] for feature in base["features"]]
     order = [feature["id"] for feature in description["features"]]
-    if old_order != order:
-        changed_defs = sorted(set(changed_defs) | {identifier for index, identifier in enumerate(order)
-                                                   if index >= len(old_order) or old_order[index] != identifier})
+    order_changes = [{"feature_id": identifier,
+                      "before_index": old_order.index(identifier) if identifier in old_order else None,
+                      "after_index": order.index(identifier) if identifier in order else None}
+                     for identifier in sorted(set(old_order) | set(order))
+                     if (old_order.index(identifier) if identifier in old_order else None)
+                     != (order.index(identifier) if identifier in order else None)]
     direct = {path["feature_id"] for change in changes for path in change["direct_references"]}
     direct.update(changed_defs)
+    direct.update(item["feature_id"] for item in order_changes)
     downstream = {identifier for item in direct for sequence in (old_order, order) if item in sequence
                   for identifier in sequence[sequence.index(item) + 1:]}
     downstream &= set(order)
     return {"status": "pending_rebuild", "baseline": deepcopy(base), "target_revision": revision,
-            "parameter_changes": changes, "changed_feature_definitions": changed_defs,
+            "parameter_changes": changes, "changed_feature_definitions": changed_defs, "feature_order_changes": order_changes,
             "direct_features": sorted(direct), "potentially_affected_downstream_features": sorted(downstream),
             "actual_effect": {"status": "not_tested"}}
 

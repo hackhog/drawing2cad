@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -9,11 +10,12 @@ from typing import Any
 _NUM = r"[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)"
 _UNIT = r"(?:\s*(mm|deg|°))?"
 _PLUS_MINUS = re.compile(rf"^\s*(?:[⌀ØR]?\s*)?({_NUM})\s*(?:±|\+/-)\s*({_NUM}){_UNIT}\s*$", re.I)
-_DEVIATIONS = re.compile(rf"^\s*(?:[⌀ØR]?\s*)?({_NUM})\s+([+-](?:\d+(?:[.,]\d*)?|[.,]\d+))\s*(?:/|\s)\s*([+-](?:\d+(?:[.,]\d*)?|[.,]\d+)){_UNIT}\s*$", re.I)
+_SIGNED_DEVIATION = r"(?:[+-](?:\d+(?:[.,]\d*)?|[.,]\d+)|0(?:[.,]0+)?)"
+_DEVIATIONS = re.compile(rf"^\s*(?:[⌀ØR]?\s*)?({_NUM})\s+({_SIGNED_DEVIATION})\s*(?:/|\s)\s*({_SIGNED_DEVIATION}){_UNIT}\s*$", re.I)
 _LIMITS = re.compile(rf"^\s*(?:LIMITS?\s*[:=]?\s*)?({_NUM})\s*(?:\.\.|TO)\s*({_NUM}){_UNIT}\s*$", re.I)
 _STACKED_LIMITS = re.compile(rf"^\s*({_NUM})\s*\n\s*({_NUM}){_UNIT}\s*$", re.I)
 _FIT = re.compile(r"^\s*(?:[⌀Ø]?\s*)?(?:(\d+(?:[.,]\d+)?)\s*)?([A-Za-z]{1,3}\d{1,2})\s*$")
-_GENERAL = re.compile(r"\b(?:ISO\s*2768(?:\s*[-–]\s*[A-Za-z0-9-]+)?|GENERAL\s+TOLERANCES?\s*[:=]?\s*[^\n]{1,100})\b", re.I)
+_GENERAL = re.compile(r"\b(?:ISO\s*2768\b[^\n]*|GENERAL\s+TOLERANCES?\b[^\n]*)", re.I)
 
 
 def _unit(value: str | None) -> str | None:
@@ -26,7 +28,7 @@ def _number(value: str) -> float:
     return float(value.replace(",", "."))
 
 
-def parse_tolerance(raw_text: str, *, unit: str | None = None, notation_hint: str | None = None) -> dict[str, Any] | None:
+def _parse_literal(raw_text: str, *, unit: str | None = None, notation_hint: str | None = None) -> dict[str, Any] | None:
     """Parse one literal. Do not infer a unit or a fit table value."""
     text = raw_text.strip()
     if not text:
@@ -44,7 +46,9 @@ def parse_tolerance(raw_text: str, *, unit: str | None = None, notation_hint: st
     match = _DEVIATIONS.fullmatch(text)
     if match:
         nominal, first, second, printed_unit = match.groups()
-        lower, upper = sorted((_number(first), _number(second)))
+        upper, lower = _number(first), _number(second)
+        if lower > upper:
+            return {"kind": "unclear", "reason": "The printed upper deviation is below the lower deviation."}
         return {"kind": "deviation", "printed_nominal": _number(nominal),
                 "lower_deviation": lower, "upper_deviation": upper, "unit": _unit(printed_unit or unit)}
     stacked = _STACKED_LIMITS.fullmatch(text) if notation_hint == "limits" else None
@@ -65,16 +69,35 @@ def parse_tolerance(raw_text: str, *, unit: str | None = None, notation_hint: st
         return result
     match = _GENERAL.search(text)
     if match:
-        return {"kind": "general", "designation": match.group(0).strip()}
+        designation = match.group(0).strip()
+        requirement = re.sub(r"^GENERAL\s+TOLERANCES?\s*[:=]?\s*", "", designation, flags=re.I)
+        if not requirement or "?" in designation or "�" in designation or re.fullmatch(r"ISO\s*2768\s*[-–]?", requirement, re.I):
+            return {"kind": "unclear", "reason": "The general tolerance requirement is incomplete or unclear."}
+        return {"kind": "general", "designation": designation}
     if notation_hint in {"deviation", "limits", "fit", "general", "unclear"} or any(mark in text for mark in ("±", "+/-", "⌀", "Ø")):
         return {"kind": "unclear", "reason": "Tolerance notation needs source review."}
     return None
+
+
+def parse_tolerance(raw_text: str, *, unit: str | None = None, notation_hint: str | None = None) -> dict[str, Any] | None:
+    """Retain unclear numerical values and unit conflicts for review."""
+    parsed = _parse_literal(raw_text, unit=unit, notation_hint=notation_hint)
+    if parsed is None:
+        return None
+    values = [value for value in parsed.values() if type(value) in (int, float)]
+    if any(not math.isfinite(value) or abs(value) > 100000 for value in values):
+        return {"kind": "unclear", "reason": "A numerical value is outside the supported finite range."}
+    if unit is not None and parsed.get("unit") is not None and _unit(unit) != parsed["unit"]:
+        return {"kind": "unclear", "reason": "The supplied unit conflicts with the printed unit."}
+    return parsed
 
 
 def candidate(raw_text: str, *, source: dict[str, Any], provenance: str,
               unit: str | None = None, confidence: float = 0.5,
               notation_hint: str | None = None) -> dict[str, Any] | None:
     """Return a source-linked candidate with explicit review state."""
+    if type(confidence) not in (int, float) or not math.isfinite(confidence) or not 0 <= confidence <= 1:
+        raise ValueError("Confidence must be a finite number from zero to one.")
     parsed = parse_tolerance(raw_text, unit=unit, notation_hint=notation_hint)
     if parsed is None:
         return None

@@ -51,6 +51,8 @@ Advance by the returned byte count until the complete size from `artifact_get` i
 Avoid shell output capture and long command-line arguments for base64 data; Windows can reject them before decoding.
 Local-path outputs use the server paths returned by the tools.
 
+Use [tolerances-and-changes.md](tolerances-and-changes.md) to retain manufacturing tolerances and their source evidence.
+
 ## Extraction limits
 
 `pdf_read_text` can return `native_text_missing` for vector drawings with outlined glyphs and for image-only pages.

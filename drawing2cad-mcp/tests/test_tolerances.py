@@ -106,3 +106,39 @@ def test_candidate_can_be_saved_with_source_evidence_and_review_flag():
     saved = parse_description(part).model_dump()
     assert saved["tolerances"][0]["lower_deviation"] == -0.2
     assert saved["evidence"][1]["source"]["region"] == (0.2, 0.3, 0.4, 0.5)
+
+
+@pytest.mark.parametrize("text", ["9" * 500 + " +/- 0.1 mm", "100001 +/- 0.1 mm"])
+def test_parser_keeps_out_of_range_values_unclear(text):
+    assert parse_tolerance(text)["kind"] == "unclear"
+
+
+def test_parser_reports_conflicting_units():
+    assert parse_tolerance("20 +/- 0.1 mm", unit="deg")["kind"] == "unclear"
+
+
+@pytest.mark.parametrize("confidence", [True, -0.1, 1.1, float("nan"), float("inf")])
+def test_candidate_rejects_invalid_confidence(confidence):
+    with pytest.raises(ValueError, match="Confidence"):
+        candidate("20 +/- 0.1 mm", source={}, provenance="client_observation", confidence=confidence)
+
+
+@pytest.mark.parametrize("text", ["20 +0.1/+0.2 mm", "20 -0.2/-0.1 mm"])
+def test_reversed_signed_deviations_remain_unclear(text):
+    assert parse_tolerance(text)["kind"] == "unclear"
+
+
+@pytest.mark.parametrize("text, lower, upper", [("20 +0.2/0 mm", 0, 0.2), ("20 0/-0.1 mm", -0.1, 0)])
+def test_unilateral_deviation_accepts_unsigned_zero(text, lower, upper):
+    parsed = parse_tolerance(text)
+    assert parsed["kind"] == "deviation"
+    assert parsed["lower_deviation"] == lower
+    assert parsed["upper_deviation"] == upper
+
+
+@pytest.mark.parametrize("text", ["GENERAL TOLERANCES: ?", "GENERAL TOLERANCES", "ISO 2768", "ISO 2768-?"])
+def test_incomplete_general_tolerances_remain_unclear(text):
+    parsed = candidate(text, source={}, provenance="native_text")
+    assert parsed["kind"] == "unclear"
+    assert parsed["resolution"] == "review_required"
+    assert parsed["raw_text"] == text

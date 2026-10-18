@@ -188,6 +188,15 @@ If this field is absent, `entry_side` is `not_tested`; diameter and depth alone 
 Named references update their direct uses. There is no algebraic constraint solver for derived profile coordinates.
 Rebuild and measure a changed description before claiming parameter editability.
 
+Part schema 1.3 stores manufacturing tolerances with literal source text, evidence references, and confidence.
+Keep these requirements separate from the numerical tolerances of geometry measurements.
+Unclear notation and uncertain parameter associations need open review items.
+The service does not derive numerical fit limits from a designation such as `H7`.
+Use [tolerances-and-changes.md](../skills/drawing2cad/references/tolerances-and-changes.md) for capture and change reports.
+`part_update` records changed parameters, direct references, and potentially affected later features.
+A subsequent build records measured effects against the retained validated baseline.
+Manufacturing-tolerance data do not prove semantic tolerance PMI in STEP.
+
 ## Technical drawing delivery
 
 Read `drawing_schema`. DrawingSpec 1.0 binds the sheet to `part_revision` and the canonical `description_sha256` returned by the part service.

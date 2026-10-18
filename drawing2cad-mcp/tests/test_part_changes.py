@@ -143,3 +143,18 @@ def test_sandbox_changed_parameter_with_unchanged_printed_dimension_fails(tmp_pa
     assert result["status"] == "fail", result
     assert result["change_report"]["status"] == "rebuild_failed"
     assert result["change_report"]["baseline"]["revision"] == 1
+
+
+
+def test_removed_feature_does_not_relabel_unchanged_definitions():
+    from drawing2cad_mcp.part_changes import proposed_change
+    original = {"parameters": [], "features": [{"id": name} for name in "ABCD"]}
+    changed = {"parameters": [], "features": [{"id": name} for name in "ACD"]}
+    report = proposed_change(original, changed, 2)
+    assert report["changed_feature_definitions"] == ["B"]
+    assert report["potentially_affected_downstream_features"] == ["C", "D"]
+    assert report["feature_order_changes"] == [
+        {"feature_id": "B", "before_index": 1, "after_index": None},
+        {"feature_id": "C", "before_index": 2, "after_index": 1},
+        {"feature_id": "D", "before_index": 3, "after_index": 2},
+    ]
