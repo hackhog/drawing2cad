@@ -35,8 +35,10 @@ uv sync --reinstall-package drawing2cad-mcp
 |---|---|---|
 | `GET` | `/api/health` | Status and `drawing2cad_mcp_version` |
 | `GET` | `/api/capabilities` | Available functions; `runs` is true only with an active model profile; `agent_profile` and `agent_model` name it |
-| `GET` | `/api/agent/profiles` | Configured model profiles (`name`, `model`, `api`) and the `active` profile; no endpoints or keys |
-| `PUT` | `/api/agent/profiles/active` | Select the profile for new runs: `name`, or `null` for no agent (422 `UNKNOWN_PROFILE`) |
+| `GET` | `/api/agent/profiles` | Model profiles (`name`, `provider`, `origin`, `base_url`, `model`, `api`, `reasoning_effort`, `key_set`) and the `active` profile; never a key ([ADR 0020](../../docs/adr/0020-agent-model-profiles-selected-in-the-web-ui.md)) |
+| `PUT` | `/api/agent/active` | Select the profile for new runs: `name`, or `null` for no agent (422 `UNKNOWN_PROFILE`) |
+| `PUT`/`DELETE` | `/api/agent/profiles/{name}` | Create, change, or delete a UI profile: `provider` (`openrouter`, `azure`, `openai`), `endpoint`, `model`, `api`, `api_key` (empty keeps the stored key), `reasoning_effort`. Environment profiles are read-only (409 `PROFILE_READ_ONLY`) |
+| `POST` | `/api/agent/profiles/{name}/check` | Send one short request without tools to the endpoint; returns `ok`, `message`, `latency_ms` |
 | `POST` | `/api/sources` | Upload a PDF (multipart field `file`) to the domain service; returns the source record |
 | `GET` | `/api/sources`, `/api/sources/{id}` | Source records: opaque ID, filename, size, SHA-256 |
 | `GET` | `/api/sources/{id}/analysis` | Drawing data, `page_png`, `page_px_per_mm`, review flags, and provenance |

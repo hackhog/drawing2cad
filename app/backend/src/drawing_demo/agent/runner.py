@@ -24,6 +24,7 @@ from ..jobs import JobStore, now
 from ..service import DomainBackend, ServiceError
 from .mapping import phase_for
 from .model import ModelSettings, make_model_call
+from .profiles import ProfileStore
 
 log = logging.getLogger(__name__)
 
@@ -55,16 +56,14 @@ class ProgressTrace(Trace):
 class AgentRunner:
     """Execute runs one at a time in a background thread. Further runs wait as `queued`.
 
-    The runner keeps the configured model profiles and the active one. A new run uses the active profile;
-    a later selection does not change queued or running runs.
+    A new run uses the active profile of the store; a later selection does not change queued or running runs.
     """
 
-    def __init__(self, backend: DomainBackend, jobs: JobStore, profiles: dict[str, ModelSettings], skill_path: Path,
+    def __init__(self, backend: DomainBackend, jobs: JobStore, profiles: ProfileStore, skill_path: Path,
                  mcp_url: str, token: str | None = None):
         self.backend = backend
         self.jobs = jobs
         self.profiles = profiles
-        self.active: str | None = next(iter(profiles), None)
         self.skill_path = skill_path
         self.mcp_url = mcp_url
         self.token = token
@@ -73,18 +72,11 @@ class AgentRunner:
     @property
     def settings(self) -> ModelSettings | None:
         """The endpoint of the active profile, or None when no profile is active."""
-        return self.profiles.get(self.active) if self.active is not None else None
+        return self.profiles.get(self.profiles.active)
 
     @property
     def available(self) -> bool:
         return self.settings is not None and self.skill_path.is_file()
-
-    def select(self, name: str | None) -> None:
-        """Make a configured profile active. None disables new agent runs."""
-        if name is not None and name not in self.profiles:
-            raise ServiceError(422, "UNKNOWN_PROFILE", f"Unbekanntes Modellprofil: {name}", field="name",
-                               recovery="Ein Profil aus der Liste der Einstellungen wählen.")
-        self.active = name
 
     def submit(self, run_id: str, settings: ModelSettings) -> None:
         self.executor.submit(self._execute, run_id, settings)

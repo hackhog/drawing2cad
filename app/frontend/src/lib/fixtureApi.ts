@@ -1,7 +1,7 @@
 // Simulated service for UI work before the shared services exist. Every run is marked `simulated`.
 // It imitates the contract behavior that the UI must handle: job phases, revisions, stale artifacts,
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
-import type { AgentProfiles, Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";
+import type { AgentProfileInput, AgentProfiles, Artifact, ArtifactRole, Capabilities, Part, Run, RunFiles, RunNote, RunPhase, Source } from "./contract";
 import { CONTRACT_VERSION } from "./contract";
 import type { ExtractResult, FlagChange, FlagDecision, FlagsPage } from "./drawing";
 import { ApiFailure, notFound, unavailable } from "./errors";
@@ -75,6 +75,21 @@ export class FixtureApi implements WebApi {
     await this.latency();
     if (name !== null) throw unavailable("Das Modellprofil");
     return { active: null, profiles: [] };
+  }
+
+  async saveAgentProfile(_name: string, _profile: AgentProfileInput): Promise<AgentProfiles> {
+    await this.latency();
+    throw unavailable("Das Modellprofil");
+  }
+
+  async deleteAgentProfile(name: string): Promise<AgentProfiles> {
+    await this.latency();
+    throw notFound("Modellprofil", name);
+  }
+
+  async checkAgentProfile(name: string): Promise<never> {
+    await this.latency();
+    throw notFound("Modellprofil", name);
   }
 
   async listSources(): Promise<Source[]> {

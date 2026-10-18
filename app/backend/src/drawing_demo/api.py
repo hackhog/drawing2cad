@@ -29,7 +29,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .agent.mapping import artifact_view, part_view, review_view
-from .agent.model import profiles_from_env
+from .agent.model import check_connection
+from .agent.profiles import ProfileStore, Provider
 from .agent.runner import AgentRunner
 from .jobs import JobStore
 from .service import DomainBackend, ServiceError, checked_id, not_found, settings_from_env
@@ -64,9 +65,10 @@ class Services:
     def __init__(self) -> None:
         settings = settings_from_env()
         self.backend = DomainBackend(settings)
-        self.jobs = JobStore(Path(os.environ.get("DRAWING2CAD_DATA_DIR", ".data")) / "web-runs")
+        data_dir = Path(os.environ.get("DRAWING2CAD_DATA_DIR", ".data"))
+        self.jobs = JobStore(data_dir / "web-runs")
         mcp_url = os.environ.get("DRAWING2CAD_MCP_URL", f"http://127.0.0.1:{os.environ.get('PORT', '8000')}/mcp")
-        self.runner = AgentRunner(self.backend, self.jobs, profiles_from_env(), _skill_path(), mcp_url,
+        self.runner = AgentRunner(self.backend, self.jobs, ProfileStore(data_dir / "agent-profiles.json"), _skill_path(), mcp_url,
                                   os.environ.get(settings.http.token_env))
         self._analyses: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._results: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -211,7 +213,7 @@ def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
         "notes": True, "flag_decisions": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
         "max_pdf_bytes": s.backend.max_source_bytes,
         "agent_model": s.runner.settings.model if s.runner.available and s.runner.settings else None,
-        "agent_profile": s.runner.active if s.runner.available else None,
+        "agent_profile": s.runner.profiles.active if s.runner.available else None,
     }
 
 
@@ -220,24 +222,51 @@ class ProfileSelection(BaseModel):
     name: str | None
 
 
-def agent_profiles_view(s: Services) -> dict[str, Any]:
-    """The configured model profiles without endpoints or keys, and the active profile."""
-    return {
-        "active": s.runner.active,
-        "profiles": [{"name": name, "model": settings.model, "api": settings.api} for name, settings in s.runner.profiles.items()],
-    }
+class ProfileInput(BaseModel):
+    provider: Provider
+    # Azure AI Foundry: any URL of the resource. OpenAI-compatible: the base URL. OpenRouter: not used.
+    endpoint: str = ""
+    model: str
+    api: Literal["chat", "responses"] = "chat"
+    # None or empty keeps the stored key of a changed profile. No response contains a key.
+    api_key: str | None = None
+    reasoning_effort: str | None = None
 
 
 @router.get("/agent/profiles")
 def list_agent_profiles(s: Services = Depends(services)) -> dict[str, Any]:
-    return agent_profiles_view(s)
+    """Model profiles and the active one. Keys stay on the server; `key_set` tells if a key is stored."""
+    return s.runner.profiles.view()
 
 
-@router.put("/agent/profiles/active")
+@router.put("/agent/active")
 def select_agent_profile(selection: ProfileSelection, s: Services = Depends(services)) -> dict[str, Any]:
     """Select the profile for new agent runs. Queued and running runs keep their profile."""
-    s.runner.select(selection.name)
-    return agent_profiles_view(s)
+    s.runner.profiles.select(selection.name)
+    return s.runner.profiles.view()
+
+
+@router.put("/agent/profiles/{name}")
+def save_agent_profile(name: str, profile: ProfileInput, s: Services = Depends(services)) -> dict[str, Any]:
+    """Create or change a profile of the web UI. Profiles from the server environment are read-only."""
+    s.runner.profiles.save(name, profile.provider, profile.endpoint, profile.model, profile.api, profile.api_key,
+                           profile.reasoning_effort or None)
+    return s.runner.profiles.view()
+
+
+@router.delete("/agent/profiles/{name}")
+def delete_agent_profile(name: str, s: Services = Depends(services)) -> dict[str, Any]:
+    s.runner.profiles.delete(name)
+    return s.runner.profiles.view()
+
+
+@router.post("/agent/profiles/{name}/check")
+def check_agent_profile(name: str, s: Services = Depends(services)) -> dict[str, Any]:
+    """Send one short request without tools to the endpoint of the profile. It uses a few tokens of its budget."""
+    settings = s.runner.profiles.get(name)
+    if settings is None:
+        raise not_found(name)
+    return check_connection(settings)
 
 
 @router.post("/sources")
@@ -343,8 +372,8 @@ def list_runs(source_id: str, s: Services = Depends(services)) -> list[dict[str,
 def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
     """Queue one agent run with the active model profile. The agent builds the model only through the MCP endpoint (ADR 0018)."""
     # Read the active profile once, so that a selection during this request cannot mix two profiles.
-    profile = s.runner.active
-    settings = s.runner.profiles.get(profile) if profile is not None else None
+    profile = s.runner.profiles.active
+    settings = s.runner.profiles.get(profile)
     if settings is None or not s.runner.available:
         raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "Kein Modellprofil aktiv (DRAWING2CAD_AGENT_*).",
                            recovery="In den Einstellungen ein Modellprofil wählen oder einen Endpunkt in .env eintragen "

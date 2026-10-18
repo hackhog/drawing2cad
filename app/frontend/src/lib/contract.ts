@@ -174,11 +174,39 @@ export interface Capabilities {
   agent_profile?: string | null;
 }
 
-/** A model profile of the server. The server keeps its endpoint and key; the browser gets only these fields. */
+export type AgentProvider = "openrouter" | "azure" | "openai";
+export type AgentApi = "chat" | "responses";
+
+/** A model profile of the server. The server keeps the key; `key_set` tells if one is stored. */
 export interface AgentProfile {
   name: string;
+  provider: AgentProvider;
+  /** "env" profiles come from the server configuration and are read-only. */
+  origin: "env" | "ui";
+  base_url: string;
   model: string;
-  api: "chat" | "responses";
+  api: AgentApi;
+  reasoning_effort: string | null;
+  key_set: boolean;
+}
+
+/** A profile as the web UI saves it. The server derives the base URL and the key header from the provider. */
+export interface AgentProfileInput {
+  provider: AgentProvider;
+  /** Azure AI Foundry: any URL of the resource. OpenAI-compatible: the base URL. OpenRouter: not used. */
+  endpoint: string;
+  model: string;
+  api: AgentApi;
+  /** Empty keeps the stored key of a changed profile. */
+  api_key: string;
+  reasoning_effort: string | null;
+}
+
+/** Result of one short request without tools to the endpoint of a profile. */
+export interface ConnectionCheck {
+  ok: boolean;
+  message: string;
+  latency_ms?: number;
 }
 
 /** The configured model profiles. `active` is null when new runs use no agent. */

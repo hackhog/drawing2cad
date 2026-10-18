@@ -46,6 +46,7 @@ OMITTED_IMAGE_NOTE = "[Earlier image evidence omitted to limit tokens. Request t
 KEPT_TOOL_RESULTS = 6
 SHORTENED_TOOL_CHARS = 2000
 COMPLETE_TOOL_RESULTS = {"part_schema", "drawing_schema"}
+CHECK_PROMPT = "Answer only with OK."
 SHORTENED_TOOL_NOTE = "[Earlier tool result shortened to limit tokens. Call the tool again if you need the complete result.]"
 
 
@@ -260,6 +261,36 @@ def _retry_after(error: HTTPError) -> float:
         return max(RETRY_DELAY_SECONDS, float(error.headers.get("Retry-After", "")))
     except (TypeError, ValueError):
         return 10.0
+
+
+def check_connection(settings: ModelSettings, timeout: float = 60.0) -> dict[str, Any]:
+    """Send one short request without tools to the endpoint and report the answer or the error.
+
+    It checks the endpoint, the key, the model or deployment name, and the selected API with a few tokens.
+    """
+    if settings.api == "responses":
+        path = "/responses"
+        body: dict[str, Any] = {"model": settings.model, "input": CHECK_PROMPT, "store": False}
+        if settings.reasoning_effort:
+            body["reasoning"] = {"effort": settings.reasoning_effort}
+    else:
+        path = "/chat/completions"
+        body = {"model": settings.model, "messages": [{"role": "user", "content": CHECK_PROMPT}]}
+        if settings.reasoning_effort:
+            body["reasoning_effort"] = settings.reasoning_effort
+    started = time.monotonic()
+    try:
+        with urlopen(Request(settings.base_url + path, json.dumps(body).encode("utf-8"), settings.headers()),
+                     timeout=timeout) as response:
+            answer = json.loads(response.read(MAX_RESPONSE_BYTES))
+        parsed = from_responses(answer) if settings.api == "responses" else from_openai(answer)
+    except HTTPError as error:
+        detail = error.read(2000).decode("utf-8", errors="replace")
+        return {"ok": False, "message": f"HTTP {error.code}: {detail}"}
+    except (TimeoutError, URLError, ValueError) as error:
+        return {"ok": False, "message": f"{type(error).__name__}: {error}"}
+    return {"ok": True, "message": parsed["message"]["content"][:200],
+            "latency_ms": round((time.monotonic() - started) * 1000)}
 
 
 def make_model_call(settings: ModelSettings):
