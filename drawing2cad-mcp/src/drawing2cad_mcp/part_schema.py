@@ -425,7 +425,7 @@ class DimensionChain(ClosedModel):
 
 
 class MeasuredSize(ClosedModel):
-    value: Annotated[float, Field(gt=0, allow_inf_nan=False)] = Field(
+    value: Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False, strict=True)] = Field(
         description="Measured size in part units at the calibrated scale of the view.")
     method: Literal["vector_geometry", "pdf_measure_distance", "pdf_measure_circle"]
 
@@ -434,7 +434,7 @@ class PrintedDimension(ClosedModel):
     """A printed dimension for cross-checks. It does not change the construction."""
     id: Identifier
     printed_text: Annotated[str, Field(min_length=1, max_length=120)] = Field(description="The printed text, unchanged.")
-    nominal: Annotated[float, Field(allow_inf_nan=False)]
+    nominal: Number
     unit: Literal["mm", "deg"] = "mm"
     evidence_ids: EvidenceIds
     dim_id: Identifier | None = Field(None, description="The same physical dimension in several views has the same dim_id.")
@@ -714,7 +714,11 @@ def _dimension_checks(dimensions: list[PrintedDimension], defect) -> dict[str, A
             defect("dimension_unit", pointer, f"Dimension chain {chain_id} mixes units.")
             chain_results.append({"chain": chain_id, "check": "fail", "reason": "mixed_units"})
             continue
-        if len(totals) != 1 or not parts:
+        if len(totals) > 1:
+            defect("dimension_chain", pointer, f"Dimension chain {chain_id} has {len(totals)} totals. A chain has one total.")
+            chain_results.append({"chain": chain_id, "check": "fail", "reason": "several_totals"})
+            continue
+        if not totals or not parts:
             chain_results.append({"chain": chain_id, "check": "not_tested", "reason": "A chain needs one total and at least one part."})
             continue
         total, summed = totals[0].nominal, sum(item.nominal for item in parts)
@@ -751,7 +755,8 @@ def _dimension_checks(dimensions: list[PrintedDimension], defect) -> dict[str, A
         difference = item.measured.value - item.nominal
         record = {"id": item.id, "nominal": item.nominal, "measured": item.measured.value,
                   "difference": round(difference, 9), "allowed": allowed, "unit": item.unit}
-        if abs(difference) > allowed:
+        # The margin accepts a difference exactly at the limit despite binary rounding, for example 0.9 - 0.7.
+        if abs(difference) > allowed + 1e-9 * max(1.0, abs(item.nominal)):
             defect("dimension_measured", f"/dimensions/{position[item.id]}/measured",
                    f"Dimension {item.id}: measured {item.measured.value:.6g} {item.unit}, printed {item.nominal:.6g} {item.unit}, "
                    f"allowed difference {allowed:.6g}. Check the reading and the calibration, or mark the dimension as not to scale.")

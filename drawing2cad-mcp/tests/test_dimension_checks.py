@@ -2,7 +2,9 @@
 
 import json
 
-from drawing2cad_mcp.part_schema import description_schema, part_validate
+import pytest
+
+from drawing2cad_mcp.part_schema import PartDescription, description_schema, part_validate
 from test_part_schema import sample_description
 
 PRIVATE = "/srv/private-customer/secret-drawing.pdf"
@@ -101,3 +103,40 @@ def test_descriptions_without_dimensions_are_unchanged():
     assert "dimension_checks" not in result
     schema = description_schema()
     assert "PrintedDimension" in json.dumps(schema)
+
+
+def test_chain_with_several_totals_fails():
+    result = part_validate(described(
+        dim("a", 10, chain={"id": "c", "role": "part"}),
+        dim("t1", 10, chain={"id": "c", "role": "total"}), dim("t2", 10, chain={"id": "c", "role": "total"})))
+    assert codes(result) == {"dimension_chain"}
+    assert result["dimension_checks"]["chains"][0]["reason"] == "several_totals"
+
+
+@pytest.mark.parametrize(("nominal", "measured", "unit", "check"), [
+    (0.7, 0.9, "mm", "pass"),      # exactly the absolute limit, despite binary rounding
+    (30, 30.3, "mm", "pass"),      # exactly the relative limit
+    (30, 30.31, "mm", "fail"),
+    (45, 45.5, "deg", "pass"),
+    (45, 45.6, "deg", "fail"),
+])
+def test_measured_limits(nominal, measured, unit, check):
+    result = part_validate(described(dim("d", nominal, unit=unit, measured={"value": measured, "method": "vector_geometry"})))
+    assert result["dimension_checks"]["measured"][0]["check"] == check
+
+
+def test_values_outside_the_schema_bounds_are_rejected():
+    assert part_validate(described(dim("big", 1e308)))["status"] == "fail"
+    result = part_validate(described(dim("d", 10, measured={"value": 1e308, "method": "vector_geometry"})))
+    assert result["status"] == "fail"
+    assert "dimension_checks" not in result
+
+
+def test_tolerances_stay_valid_with_schema_1_4_and_older_descriptions_keep_their_form():
+    description = described(dim("len", 20, dim_id="length"))
+    description["tolerances"] = [{"id": "len_tol", "kind": "deviation", "raw_text": "+0,1/-0,1", "evidence_ids": ["drawing"],
+                                  "confidence": 1.0, "resolution": "resolved", "scope": "parameter", "parameter_name": "length",
+                                  "unit": "mm", "lower_deviation": -0.1, "upper_deviation": 0.1}]
+    assert part_validate(description)["status"] == "pass"
+    older = sample_description()
+    assert "dimensions" not in PartDescription.model_validate(older).model_dump(mode="json")
