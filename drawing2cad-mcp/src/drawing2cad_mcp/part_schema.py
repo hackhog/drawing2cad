@@ -7,7 +7,7 @@ import math
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-PART_SCHEMA_VERSION = "1.3"
+PART_SCHEMA_VERSION = "1.4"
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")]
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-100000, le=100000, strict=True)]
 Positive = Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False, strict=True)]
@@ -419,8 +419,32 @@ class UnclearTolerance(ToleranceBase):
 ToleranceType = Annotated[DeviationTolerance | LimitsTolerance | FitTolerance | GeneralTolerance | UnclearTolerance, Field(discriminator="kind")]
 
 
+class DimensionChain(ClosedModel):
+    id: Identifier
+    role: Literal["part", "total"] = Field(description="The parts of a chain must add up to its total.")
+
+
+class MeasuredSize(ClosedModel):
+    value: Annotated[float, Field(gt=0, allow_inf_nan=False)] = Field(
+        description="Measured size in part units at the calibrated scale of the view.")
+    method: Literal["vector_geometry", "pdf_measure_distance", "pdf_measure_circle"]
+
+
+class PrintedDimension(ClosedModel):
+    """A printed dimension for cross-checks. It does not change the construction."""
+    id: Identifier
+    printed_text: Annotated[str, Field(min_length=1, max_length=120)] = Field(description="The printed text, unchanged.")
+    nominal: Annotated[float, Field(allow_inf_nan=False)]
+    unit: Literal["mm", "deg"] = "mm"
+    evidence_ids: EvidenceIds
+    dim_id: Identifier | None = Field(None, description="The same physical dimension in several views has the same dim_id.")
+    chain: DimensionChain | None = None
+    measured: MeasuredSize | None = None
+    not_to_scale: bool = Field(False, description="True for a dimension marked as not to scale. Its measurement is not compared.")
+
+
 class PartDescription(ClosedModel):
-    schema_version: Literal["1.0", "1.1", "1.2", "1.3"]
+    schema_version: Literal["1.0", "1.1", "1.2", "1.3", "1.4"]
     name: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$")]
     units: Literal["mm"]
     coordinate_system: Literal["right_handed_xyz"]
@@ -430,6 +454,8 @@ class PartDescription(ClosedModel):
     measurements: Annotated[list[Measurement], Field(max_length=1000)] = Field(default_factory=list)
     tolerances: Annotated[list[ToleranceType], Field(max_length=1000)] = Field(default_factory=list, exclude_if=lambda value: not value)
     review_flags: Annotated[list[ReviewFlag], Field(max_length=2000)] = Field(default_factory=list)
+    dimensions: Annotated[list[PrintedDimension], Field(max_length=2000)] = Field(
+        default_factory=list, exclude_if=lambda value: not value)
     expected_solids: Literal[1] = 1
 
 
@@ -525,7 +551,7 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
             seen.add(key)
     evidence = {item.id: item for item in part.evidence}
     parameters = {item.name: item for item in part.parameters}
-    for collection in ("parameters", "features", "measurements", "tolerances", "review_flags"):
+    for collection in ("parameters", "features", "measurements", "tolerances", "review_flags", "dimensions"):
         for index, item in enumerate(getattr(part, collection)):
             for ref in item.evidence_ids:
                 if ref not in evidence:
@@ -547,7 +573,7 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
     for index, feature in enumerate(part.features):
         if isinstance(feature, HoleFeature) and feature.thread is not None and feature.thread.length is not None:
             pointer = f"/features/{index}/thread/length"
-            if part.schema_version not in {"1.2", "1.3"}:
+            if part.schema_version not in {"1.2", "1.3", "1.4"}:
                 defect("schema_version", pointer, "Explicit thread length requires schema_version 1.2 or later.")
             try:
                 length = resolve(feature.thread.length, part)
@@ -616,8 +642,8 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
                     if number <= 0:
                         defect("invalid_dimension", f"/features/{index}/profile/{field}", "Profile dimensions must be positive.")
     targets = set(parameters) | {item.id for item in part.features} | {item.id for item in part.tolerances} | set(evidence)
-    if part.tolerances and part.schema_version != "1.3":
-        defect("schema_version", "/tolerances", "Tolerances require schema_version 1.3.")
+    if part.tolerances and part.schema_version not in {"1.3", "1.4"}:
+        defect("schema_version", "/tolerances", "Tolerances require schema_version 1.3 or later.")
     open_flags = {flag.target_id for flag in part.review_flags if flag.status == "open"}
     for index, tolerance in enumerate(part.tolerances):
         pointer = f"/tolerances/{index}"
@@ -643,9 +669,99 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
             defect("unknown_target", f"/review_flags/{index}/target_id", "The review target does not exist.")
         if flag.status == "rejected":
             defect("rejected_review", f"/review_flags/{index}", "Resolve a rejected review item before construction.")
+    if part.dimensions and part.schema_version != "1.4":
+        defect("schema_version", "/dimensions", "Printed dimensions require schema_version 1.4.")
+    seen_dimensions: set[str] = set()
+    for index, item in enumerate(part.dimensions):
+        if item.id in seen_dimensions:
+            defect("duplicate_id", f"/dimensions/{index}", f"Duplicate identifier: {item.id}.")
+        seen_dimensions.add(item.id)
+    dimension_checks = _dimension_checks(part.dimensions, defect)
     review_items = [item.model_dump() for item in part.evidence if item.status != "explicit" or item.review_status == "rejected"]
     review_items += [item.model_dump() for item in part.review_flags]
-    return {"status": "fail" if defects else "pass", "defects": defects[:100], "review_items": review_items}
+    result = {"status": "fail" if defects else "pass", "defects": defects[:100], "review_items": review_items}
+    if part.dimensions:
+        result["dimension_checks"] = dimension_checks
+    return result
+
+
+# Printed against measured: the larger of an absolute and a relative limit.
+DIMENSION_ABS_TOLERANCE = {"mm": 0.2, "deg": 0.5}
+DIMENSION_REL_TOLERANCE = 0.01
+_SUM_TOLERANCE = 1e-6
+
+
+def _dimension_checks(dimensions: list[PrintedDimension], defect) -> dict[str, Any]:
+    """Cross-check printed dimensions: chain sums, the same dimension in several views, and printed against measured.
+    A check without the necessary data is not_tested. Messages give identifiers and numbers, never the printed text."""
+    position = {}
+    for n, item in enumerate(dimensions):
+        position.setdefault(item.id, n)
+    chains: dict[str, list[PrintedDimension]] = {}
+    groups: dict[str, list[PrintedDimension]] = {}
+    for item in dimensions:
+        if item.chain is not None:
+            chains.setdefault(item.chain.id, []).append(item)
+        if item.dim_id is not None:
+            groups.setdefault(item.dim_id, []).append(item)
+
+    chain_results = []
+    for chain_id, items in sorted(chains.items()):
+        totals = [item for item in items if item.chain.role == "total"]
+        parts = [item for item in items if item.chain.role == "part"]
+        pointer = f"/dimensions/{position[items[0].id]}/chain"
+        if len({item.unit for item in items}) > 1:
+            defect("dimension_unit", pointer, f"Dimension chain {chain_id} mixes units.")
+            chain_results.append({"chain": chain_id, "check": "fail", "reason": "mixed_units"})
+            continue
+        if len(totals) != 1 or not parts:
+            chain_results.append({"chain": chain_id, "check": "not_tested", "reason": "A chain needs one total and at least one part."})
+            continue
+        total, summed = totals[0].nominal, sum(item.nominal for item in parts)
+        record = {"chain": chain_id, "total_id": totals[0].id, "part_ids": [item.id for item in parts],
+                  "total": total, "sum_of_parts": round(summed, 9)}
+        if abs(total - summed) > _SUM_TOLERANCE * max(1.0, abs(total)):
+            defect("dimension_chain", pointer, f"Dimension chain {chain_id}: the parts add up to {summed:.6g}, the total is {total:.6g}.")
+            chain_results.append({**record, "check": "fail"})
+        else:
+            chain_results.append({**record, "check": "pass"})
+
+    view_results = []
+    for dim_id, items in sorted(groups.items()):
+        pointer = f"/dimensions/{position[items[0].id]}/dim_id"
+        if len(items) < 2:
+            view_results.append({"dim_id": dim_id, "ids": [items[0].id], "check": "not_tested", "reason": "Only one occurrence."})
+            continue
+        values = sorted({(item.nominal, item.unit) for item in items})
+        record = {"dim_id": dim_id, "ids": [item.id for item in items], "values": [value for value, _ in values]}
+        if len(values) > 1:
+            defect("dimension_views", pointer, f"Dimension {dim_id} has different values: "
+                   + ", ".join(f"{value:.6g} {unit}" for value, unit in values) + ".")
+            view_results.append({**record, "check": "fail"})
+        else:
+            view_results.append({**record, "check": "pass"})
+
+    measured_results = []
+    for item in dimensions:
+        if item.measured is None or item.not_to_scale:
+            reason = "Marked as not to scale." if item.not_to_scale else "No measurement."
+            measured_results.append({"id": item.id, "check": "not_tested", "reason": reason})
+            continue
+        allowed = max(DIMENSION_ABS_TOLERANCE[item.unit], DIMENSION_REL_TOLERANCE * abs(item.nominal))
+        difference = item.measured.value - item.nominal
+        record = {"id": item.id, "nominal": item.nominal, "measured": item.measured.value,
+                  "difference": round(difference, 9), "allowed": allowed, "unit": item.unit}
+        if abs(difference) > allowed:
+            defect("dimension_measured", f"/dimensions/{position[item.id]}/measured",
+                   f"Dimension {item.id}: measured {item.measured.value:.6g} {item.unit}, printed {item.nominal:.6g} {item.unit}, "
+                   f"allowed difference {allowed:.6g}. Check the reading and the calibration, or mark the dimension as not to scale.")
+            measured_results.append({**record, "check": "fail"})
+        else:
+            measured_results.append({**record, "check": "pass"})
+
+    every = chain_results + view_results + measured_results
+    summary = {state: sum(1 for item in every if item["check"] == state) for state in ("pass", "fail", "not_tested")}
+    return {"chains": chain_results, "cross_view": view_results, "measured": measured_results, "summary": summary}
 
 
 def parse_description(description: dict[str, Any]) -> PartDescription:

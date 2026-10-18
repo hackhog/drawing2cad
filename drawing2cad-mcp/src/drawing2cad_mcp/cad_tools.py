@@ -54,7 +54,7 @@ for _name in ("create_base_body", "add_hole", "add_pocket", "add_cut", "add_cham
 CAD_DESCRIPTIONS = {
     "pmi_schema": "Read the supported semantic PMI dimensions and geometric association contract. Target-CAD display and full EXPRESS conformance require separate tests.",
     "part_schema": "Read the closed, versioned JSON part contract and feature scope. Schema 1.3 includes source-bound manufacturing tolerances, separate from geometry-test tolerances. This does not execute CAD.",
-    "part_validate": "Validate part structure, named values, evidence references, and unresolved inputs. No CAD geometry is created.",
+    "part_validate": "Validate part structure, named values, evidence references, and unresolved inputs. With schema 1.4 dimensions, cross-check chain sums, the same dimension in several views, and printed against measured values. No CAD geometry is created.",
     "part_create": "Create an M1 server-side part run from authorized PDF paths and exact hashes. Read part_schema for the complete description contract. source_id defaults to sha256. Verification sources cannot supply construction values.",
     "part_read": "Read current part, revision, build state, budget, and events. This call is recorded. Audit reads and report export remain available after the execution budget is reached.",
     "part_update": "Replace the editable JSON part description with an optimistic revision check. Return changed parameters, direct references, and potentially affected later features. Invalidate prior builds and releases. Rebuild to measure effects against the retained validated baseline. Printed expectations are not changed automatically.",
