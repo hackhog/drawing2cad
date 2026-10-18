@@ -1,8 +1,9 @@
 // The revisioned note of a run. The agent writes its report there; users can add review information.
-// A save replaces the note against the revision that the user edited.
+// The note reads as rendered Markdown; Edit opens the source. A save replaces the note against the revision that the user edited.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/ErrorState";
+import { Markdown } from "@/components/Markdown";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,8 @@ function NoteEditor({ run, note }: { run: Run; note: RunNote }) {
   const queryClient = useQueryClient();
   const [text, setText] = useState(note.text);
   const active = isActive(run);
+  // An empty note opens in the editor, because there is nothing to read.
+  const [editing, setEditing] = useState(!note.text && !active);
   const save = useMutation({
     mutationFn: () => api.saveNote(run.run_id, note.revision, text),
     onSuccess: (saved) => queryClient.setQueryData(keys.note(run.run_id), saved),
@@ -50,8 +53,14 @@ function NoteEditor({ run, note }: { run: Run; note: RunNote }) {
         <Label htmlFor="note">Run note</Label>
         <span className="text-[11px] text-muted-foreground">{note.revision ? `Revision ${note.revision}` : "No note yet"}</span>
       </div>
-      <Textarea id="note" value={text} onChange={(e) => setText(e.target.value)} rows={12} disabled={active}
-        placeholder="Review note, question for design, decision …" />
+      {editing ? (
+        <Textarea id="note" value={text} onChange={(e) => setText(e.target.value)} rows={12} disabled={active}
+          placeholder="Review note, question for design, decision … (Markdown)" />
+      ) : text ? (
+        <Markdown text={text} className="rounded-md border border-input px-4 py-3" />
+      ) : (
+        <p className="text-muted-foreground">No note yet.</p>
+      )}
       {save.error && (
         <Alert variant="destructive">
           <AlertDescription>
@@ -69,9 +78,15 @@ function NoteEditor({ run, note }: { run: Run; note: RunNote }) {
         <p className="text-xs text-muted-foreground">
           {active ? "While the run is active, the agent writes its report into the note." : "The agent report stays in the Review tab."}
         </p>
-        <Button type="submit" size="sm" className="rounded-full" disabled={active || text === note.text || save.isPending}>
-          Save note
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" className="rounded-full" disabled={active}
+            onClick={() => setEditing(!editing)}>
+            {editing ? "Preview" : "Edit"}
+          </Button>
+          <Button type="submit" size="sm" className="rounded-full" disabled={active || text === note.text || save.isPending}>
+            Save note
+          </Button>
+        </div>
       </div>
     </form>
   );
