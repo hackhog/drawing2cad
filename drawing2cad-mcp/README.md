@@ -93,6 +93,7 @@ Use the live catalog for exact schemas and limits.
 | `pmi_schema` | Read the closed nominal PMI contract for the optional AP242 profile. |
 | `step_reconstruct` | Rebuild an existing STEP artifact in fresh workers. Return separate diagnostic artifacts; do not approve or change the source run. |
 | `part_render_pmi` | Inspect the current AP242 build before release. Return stored-PMI PDF/PNG views bound to its revision and hash. |
+| `model_projection_check` | Domain profile. Project the current validated build into drawing views and compare its edges with the contour strokes of a construction source. Return per-view deviations and an overlay PNG. Does not gate the release. |
 | `step_render_pmi` | Inspect an authorized generated STEP artifact by ID and exact hash. Return PDF/PNG views; no model approval. |
 | `build_code` | Optional in-memory execution, requiring configuration and a verified sandbox. The tool list omits it when `allow_build_code` is false. |
 | `export_step` | Release a candidate after trusted re-import, dimension checks, and source-review coverage. |

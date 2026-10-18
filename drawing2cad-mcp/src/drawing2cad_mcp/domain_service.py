@@ -265,7 +265,8 @@ class DomainService:
                 with self._cad_slots:
                     return cad.call(name, args)
             return cad.call(name, args)
-        if name in {"build_from_description", "build_code", "drawing_render", "export_step", "part_render_pmi"}:
+        if name in {"build_from_description", "build_code", "drawing_render", "export_step", "part_render_pmi",
+                    "model_projection_check"}:
             with self._cad_slots:
                 return self._run_call(ctx, name, args)
         return self._run_call(ctx, name, args)
@@ -525,6 +526,40 @@ class DomainService:
                             {"candidate_sha256": built["candidate_sha256"],
                              "description_sha256": state["description_sha256"], "released": False})
 
+    def _projection_check(self, ctx, cad, directory, state, args):
+        """Compare the validated build candidate with the views of one construction source."""
+        if not self.settings.cad.enabled:
+            raise DomainError("CAD_DISABLED", "Enable the restricted worker before the projection check.")
+        built = state.get("build") or {}
+        if (built.get("status") != "pass" or built.get("description_revision") != state["revision"]
+                or built.get("description_sha256") != state["description_sha256"]):
+            raise DomainError("VALIDATED_BUILD_REQUIRED", "Build and validate the current part before the projection check.")
+        for view in args["views"]:
+            if view["toward_viewer"][1] == view["up"][1]:
+                raise DomainError("INVALID_VIEW", f"View {view['view_id']}: the up axis must be perpendicular to the viewing axis.")
+        sources = [item for item in state["sources"] if item["source_id"] == args["source_id"]]
+        if not sources or sources[0]["role"] != "construction":
+            raise DomainError("SOURCE_NOT_IN_RUN", "Use a construction source of this run.")
+        source = self.store.source_path(ctx, args["source_id"])
+        if hashlib.sha256(source.read_bytes()).hexdigest() != sources[0]["sha256"]:
+            raise DomainError("SOURCE_HASH_MISMATCH", "The source differs from its hash in the run.")
+        candidate = cad._candidate(built["build"])
+        if str(candidate) != built.get("candidate_path") or hashlib.sha256(candidate.read_bytes()).hexdigest() != built["candidate_sha256"]:
+            raise DomainError("CANDIDATE_CHANGED", "The current build candidate differs from its record.")
+        result = cad.runner.run("projection_check", input_step=candidate, input_pdf=source, page=args["page"], views=args["views"])
+        report = {"status": result.get("status", "fail"), "run_id": state["run_id"], "revision": state["revision"],
+                  "candidate_sha256": built["candidate_sha256"], "source_sha256": sources[0]["sha256"], "page": args["page"],
+                  "claim": "drawing_model_consistency", "views": self._public(result.get("views", [])), "artifacts": []}
+        if "views" not in result:
+            report.update(status="fail", error=self._public(result.get("error", {"code": "PROJECTION_FAILED"})))
+            return report
+        files = self._drawing_worker_files(cad, result, (("projection-overlay.png", "image/png", "projection_overlay"),))
+        for path, media, role in files:
+            report["artifacts"].append(self.store.artifact_register(ctx, path, role, state["run_id"], state["revision"], media, path.name))
+        report["artifacts"].append(self._register_json(ctx, directory, {key: value for key, value in report.items() if key != "artifacts"},
+                                                       "projection-check.json", "projection_report", state["run_id"], state["revision"]))
+        return report
+
     def _visual(self, ctx, cad, source, source_hash, run_id, revision, binding):
         """Publish only fixed, hash-checked outputs from the restricted reader."""
         if not self.settings.cad.enabled:
@@ -739,6 +774,8 @@ class DomainService:
             return self._render(ctx, cad, directory, state, args["drawing_spec"])
         if name == "part_render_pmi":
             return self._part_visual(ctx, cad, state)
+        if name == "model_projection_check":
+            return self._projection_check(ctx, cad, directory, state, args)
         if name == "drawing_review":
             return self._review(ctx, cad, directory, state, args)
         if name == "part_export_review":

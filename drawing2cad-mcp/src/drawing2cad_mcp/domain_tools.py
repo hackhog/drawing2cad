@@ -35,7 +35,26 @@ DOMAIN_DESCRIPTIONS["part_create"] = "Create a part from uploaded source IDs and
 DOMAIN_DESCRIPTIONS["part_export_review"] = "Export path-free JSON part, run manifest, drawing review, and recorded run trace as immutable artifacts."
 DOMAIN_DESCRIPTIONS["export_step"] = "Release validated STEP of the current model build. The drawing does not gate the release: release.drawing records its status (accepted, unreviewed, rejected, failed, or missing) with the drawing files or the reason. Call again after a drawing change to record the new status. AP242 and semantic PMI remain separate M3 requirements."
 
+PROJECTION_VIEW = _object({
+    "view_id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},
+    "region": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 2000}, "minItems": 4, "maxItems": 4,
+               "description": "View bounds on the sheet in mm [left, top, right, bottom], from the top-left corner, as in drawing_extract."},
+    "toward_viewer": {"enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"],
+                      "description": "Model axis from the part to the viewer, for example -Y for a front view that looks along +Y."},
+    "up": {"enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"], "description": "Model axis that points up in the view."},
+    "mm_per_sheet_mm": {"type": "number", "exclusiveMinimum": 0, "maximum": 1000,
+                        "description": "Part mm per sheet mm from pdf_calibrate in sheet_mm: 1:2 gives 2.0."},
+    "hidden_lines": {"enum": ["ignore", "compare"], "description": "compare also checks hidden model edges against hidden strokes."},
+}, ["view_id", "region", "toward_viewer", "up", "mm_per_sheet_mm"])
+
 _EXTRA = {
+    "model_projection_check": (_object({**REVISION, "source_id": ID, "page": PAGE,
+                                        "views": {"type": "array", "items": PROJECTION_VIEW, "minItems": 1, "maxItems": 8}}),
+        "Project the current validated build into orthographic drawing views in the restricted worker and compare the edges "
+        "with the contour strokes of the construction source in each view region. A translation aligns each view; the scale "
+        "and the axes come from the arguments. Fixed limits: p95 at most 0.3 mm, maximum at most 1.0 mm (part mm), coverage "
+        "at least 0.85. Return per-view deviations, worst points, uncovered drawing points, a mirror candidate, and an overlay "
+        "PNG artifact. Tangent edges count only for coverage. Sections are not compared. The result does not gate the release."),
     "step_render_pmi": (_object({"artifact_id": ID, "expected_sha256": HASH}),
         "Render imported AP242 model edges and stored PMI graphics from an authorized STEP artifact in a restricted worker. Return hash-bound inspection PDF and PNG artifacts. This does not establish visual approval, target-CAD support, or full conformance."),
     "part_render_pmi": (_object(REVISION),

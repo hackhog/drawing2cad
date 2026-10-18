@@ -39,7 +39,8 @@ class WorkerRunner:
             code: str | None = None, drawing_spec: dict | None = None, revision: int | None = None,
             timeout: float | None = None, memory_mb: int | None = None,
             export_profile: str = "ap214", pmi: dict | None = None,
-            parameter_changes: dict | None = None) -> dict:
+            parameter_changes: dict | None = None, input_pdf: Path | None = None,
+            page: int | None = None, views: list | None = None) -> dict:
         capability = available()
         if not capability["available"]:
             return {"status": "fail", "error": {"code": "SANDBOX_UNAVAILABLE", "message": capability["reason"]}}
@@ -53,13 +54,18 @@ class WorkerRunner:
             if len(data) > 32 * 1024 * 1024:
                 return {"status": "fail", "error": {"code": "STEP_TOO_LARGE", "message": "Candidate exceeds 32 MiB."}}
             (directory / "input.step").write_bytes(data)
+        if input_pdf is not None:
+            data = input_pdf.read_bytes()
+            if len(data) > 64 * 1024 * 1024:
+                return {"status": "fail", "error": {"code": "PDF_TOO_LARGE", "message": "The source PDF exceeds 64 MiB."}}
+            (directory / "input.pdf").write_bytes(data)
         deadline_seconds = timeout if timeout is not None else self.limits.timeout_seconds
         request = {"operation": operation, "work_dir": str(directory), "description": description,
                    "memory_mb": memory_mb if memory_mb is not None else self.limits.memory_mb,
                    "cpu_seconds": max(1, math.ceil(deadline_seconds + 1)), "code": code,
                    "drawing_spec": drawing_spec, "revision": revision,
                    "export_profile": export_profile, "pmi": pmi,
-                   "parameter_changes": parameter_changes}
+                   "parameter_changes": parameter_changes, "page": page, "views": views}
         if operation == "probe":
             forbidden = self.storage / (directory.name + "-outside.txt")
             forbidden.write_text("unchanged", encoding="utf-8")

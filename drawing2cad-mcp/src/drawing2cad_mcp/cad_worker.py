@@ -74,6 +74,9 @@ def execute(request: dict) -> dict:
     elif operation == "validate":
         from .cad_validation import validate_step
         result = validate_step(directory / "input.step", request["description"])
+    elif operation == "projection_check":
+        from .projection import check
+        result = check(directory / "input.step", directory / "input.pdf", request["page"], request["views"], directory)
     elif operation == "build_code":
         import build123d
         from .cad_kernel import export_shape

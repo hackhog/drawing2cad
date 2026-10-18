@@ -36,6 +36,29 @@ If geometry is incorrect, revise the responsible parameters or features and rebu
 Keep source expectations unchanged unless an authorized design change replaces them.
 Read the resulting revision and description hash before updating the drawing binding.
 
+## Compare the model with the source drawing
+
+Domain profile: after a passed build, call `model_projection_check` for the views of the construction source.
+For each view, supply:
+
+- `region`: the view bounds on the sheet in mm from the top-left corner, as in `drawing_extract`. Include the complete part outline and exclude other views.
+- `toward_viewer` and `up`: the model axes of the view from the axis assignment. A front view that looks along +Y has `toward_viewer` -Y and `up` +Z.
+- `mm_per_sheet_mm`: part millimeters per sheet millimeter from `pdf_calibrate` with `coordinate_space="sheet_mm"`.
+- `hidden_lines`: `compare` only when the drawing view shows hidden edges completely.
+
+The tool aligns each view by a translation. The pass limits are fixed: p95 at most 0.3 mm, maximum at most 1.0 mm (part mm), and drawing coverage at least 0.85.
+Inspect the overlay PNG: grey is the drawing, blue is the aligned model, and red circles are the worst model points.
+
+| Result | Likely cause | Action |
+|---|---|---|
+| Worst points on one circle or feature | A feature position or size is wrong. | Check its evidence and parameters. Correct the description and rebuild. |
+| High p95 in the whole view | Wrong axes, wrong scale, or wrong view region. | Check `toward_viewer`, `up`, the calibration, and the region. |
+| `mirror_candidate` is not empty | The view axes are mirrored, or the projection method is wrong. | Check the axis assignment and the first-angle or third-angle decision. |
+| Low coverage with small deviations | A feature is missing in the model, or annotation strokes are classified as contours. | Look at the uncovered points. Add the missing feature, or record the classification error. |
+
+A failed or `not_tested` result is not a pass. Record it with the overlay. The check does not compare sections, depths that only a section shows, or symmetric parts that can be mirrored without a visible difference.
+The result does not gate the STEP release. Correct the model when the cause is a model error.
+
 ## Inspect drawing diagnostics
 
 This section applies to domain drawing delivery. It does not add drawing requirements to the local-path metric.

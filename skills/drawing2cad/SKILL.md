@@ -22,6 +22,7 @@ metadata:
 7. Call `part_create` with a distinct `run_id`, description, authorized sources, and a suitable `step_budget`; retain the returned revision.
 8. Call `build_from_description` with `run_id`, `expected_revision`, and `export_profile="ap214"`.
 9. Inspect every measurement, solid check, fresh-worker import, and agreement result. Compare the features with the source inventory.
+   Domain only: call `model_projection_check` for the source views; see [verification-loop.md](references/verification-loop.md).
 10. If correction is necessary, call `part_read` → `part_validate` → `part_update` → `build_from_description`. Use the new revision and repeat step 9.
 11. Domain only: call `drawing_schema` → `drawing_validate` → `drawing_render` → `artifact_preview` for a revision-bound DXF/PDF drawing.
 12. Domain only: correct failures and repeat step 11. Compare source, model, and drawing. Record an accepted `drawing_review` only after review passes.
