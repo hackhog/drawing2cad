@@ -25,6 +25,19 @@ def test_invalid_description_has_no_computed_values():
     assert "computed_expected" not in result
 
 
+def test_source_dimensions_remain_separate_from_calculated_references():
+    description = sample_description()
+    description["schema_version"] = "1.4"
+    description["dimensions"] = [{"id": "source_length", "printed_text": "20", "nominal": 20,
+                                  "evidence_ids": ["drawing"]}]
+    original = deepcopy(description)
+    result = CadService.part_validate(None, description)
+    assert result["status"] == "pass"
+    assert "dimension_checks" in result
+    assert result["computed_expected"]["final"]["bbox"]["size"] == pytest.approx([20, 10, 5])
+    assert description == original
+
+
 def test_worker_and_fresh_import_report_calculated_checks(tmp_path):
     pytest.importorskip("build123d")
     from drawing2cad_mcp.cad_kernel import build

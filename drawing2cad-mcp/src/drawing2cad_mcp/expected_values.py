@@ -111,18 +111,19 @@ def _circle(center, radius):
                  for i in range(4))
 
 
-def _polygon(points):
+def _polygon(points, budget):
     if len(points) < 3 or any(_dist(points[i], points[(i + 1) % len(points)]) <= EPS
                                for i in range(len(points))):
         raise _Unavailable("The profile contains a zero-length edge.")
     edges = tuple(_Edge("line", points[i], points[(i + 1) % len(points)])
                   for i in range(len(points)))
+    _validate_contour(edges, budget)
     if abs(sum(edge.integral(0, 1) for edge in edges)) <= EPS:
         raise _Unavailable("The profile area is ambiguous.")
     return edges
 
 
-def _profile(segments, point):
+def _profile(segments, point, budget):
     edges = []
     for segment in segments:
         start, end = point(segment.start), point(segment.end)
@@ -135,6 +136,7 @@ def _profile(segments, point):
     if any(_dist(edges[i].end, edges[(i + 1) % len(edges)].start) > EPS
            for i in range(len(edges))):
         raise _Unavailable("The profile is not closed.")
+    _validate_contour(edges, budget)
     if abs(sum(edge.integral(0, 1) for edge in edges)) <= EPS:
         raise _Unavailable("The profile area is ambiguous.")
     return tuple(edges)
@@ -148,7 +150,7 @@ class _Prism:
     edges: tuple[_Edge, ...]
 
 
-def _make_prisms(feature, part, axis_index, current_bounds):
+def _make_prisms(feature, part, axis_index, current_bounds, budget):
     kind = feature.type
     if kind in {"chamfer", "fillet"}:
         raise _Unavailable(f"{kind} has no independent expected geometry rule.")
@@ -183,7 +185,7 @@ def _make_prisms(feature, part, axis_index, current_bounds):
                       origin[transverse[1]] + lengths[transverse[1]]),
                      (origin[transverse[0]], origin[transverse[1]] + lengths[transverse[1]])]
         return [_Prism(True, origin[axis_index], origin[axis_index] + lengths[axis_index],
-                       _polygon(rectangle))]
+                       _polygon(rectangle, budget))]
     else:
         origin = feature.origin
         direction = getattr(feature, "axis", "Z")
@@ -216,16 +218,16 @@ def _make_prisms(feature, part, axis_index, current_bounds):
         if shape == "box":
             length, width = resolve(datum.length, part), resolve(datum.width, part)
             edges = _polygon([point(p) for p in ((0, 0), (length, 0),
-                                                  (length, width), (0, width))])
+                                                  (length, width), (0, width))], budget)
         elif shape == "cylinder":
             radius = resolve(datum, part) / 2
             if radius <= EPS:
                 raise _Unavailable("The circle radius is invalid.")
             edges = _circle(point((0, 0)), radius)
         elif shape in {"extrusion", "polygon"}:
-            edges = _polygon([point(tuple(resolve(x, part) for x in p)) for p in datum.points])
+            edges = _polygon([point(tuple(resolve(x, part) for x in p)) for p in datum.points], budget)
         elif shape in {"profile_extrusion", "profile"}:
-            edges = _profile(datum.segments, lambda p: point(tuple(resolve(x, part) for x in p)))
+            edges = _profile(datum.segments, lambda p: point(tuple(resolve(x, part) for x in p)), budget)
         else:
             raise _Unavailable(f"Unsupported profile: {shape}.")
         start = o[axis_index]
@@ -275,6 +277,25 @@ def _intersections(a, b):
     return [p for p in ((base[0] - h * uy, base[1] + h * ux),
                         (base[0] + h * uy, base[1] - h * ux))
             if -EPS <= a.parameter(p) <= 1 + EPS and -EPS <= b.parameter(p) <= 1 + EPS]
+
+
+def _validate_contour(edges, budget):
+    """Reject contour crossings before signed area can be used as solid area."""
+    count = len(edges)
+    pairs = count * (count - 1) // 2
+    budget[0] += pairs
+    if budget[0] > MAX_TOTAL_WORK:
+        raise _Unavailable("The cumulative contour validation limit was exceeded.")
+    for i, first in enumerate(edges):
+        for j in range(i + 1, count):
+            second = edges[j]
+            adjacent = j == i + 1 or (i == 0 and j == count - 1)
+            shared = ([first.end] if j == i + 1 else [])
+            if i == 0 and j == count - 1:
+                shared.append(second.end)
+            for point in _intersections(first, second):
+                if not adjacent or all(_dist(point, node) > 1e-7 for node in shared):
+                    raise _Unavailable("The profile contour intersects itself.")
 
 
 def _contains(edges, p):
@@ -433,10 +454,10 @@ def _envelope(a, b):
             [max(a[1][i], b[1][i]) for i in range(3)])
 
 
-def _tool_measure(feature, part, current_bounds):
+def _tool_measure(feature, part, current_bounds, budget):
     direction = feature.axis if hasattr(feature, "axis") else "Z"
     index = "XYZ".index(direction[-1])
-    tools = _make_prisms(feature, part, index, current_bounds)
+    tools = _make_prisms(feature, part, index, current_bounds, budget)
     positive = [_Prism(True, p.low, p.high, p.edges) for p in tools]
     if len(positive) == 1:
         prism = positive[0]
@@ -463,8 +484,8 @@ def _tool_measure(feature, part, current_bounds):
     return _exact(positive, index)
 
 
-def _bound_step(feature, part, volume_interval, bounds, reason):
-    tool_volume, tool_bounds = _tool_measure(feature, part, bounds)
+def _bound_step(feature, part, volume_interval, bounds, reason, budget):
+    tool_volume, tool_bounds = _tool_measure(feature, part, bounds, budget)
     lower, upper = volume_interval
     if feature.type in {"box", "cylinder", "extrusion", "profile_extrusion"}:
         lower = max(lower, tool_volume)
@@ -497,6 +518,7 @@ def compute_expected(part: PartDescription) -> dict:
     bound_reason = None
     volume_interval = None
     total_work = 0
+    contour_budget = [0]
     for feature in part.features:
         if unavailable is None:
             try:
@@ -513,9 +535,11 @@ def compute_expected(part: PartDescription) -> dict:
                                        rows[-1]["volume"]["value"])
                 if bound_reason is not None:
                     volume_interval, prior_bounds, values = _bound_step(
-                        feature, part, volume_interval, prior_bounds, bound_reason)
+                        feature, part, volume_interval, prior_bounds, bound_reason,
+                        contour_budget)
                 else:
-                    additions = _make_prisms(feature, part, axis_index, prior_bounds)
+                    additions = _make_prisms(feature, part, axis_index, prior_bounds,
+                                             contour_budget)
                     candidate = prisms + additions
                     edge_count = sum(len(p.edges) for p in candidate)
                     station_count = len({v for p in candidate for v in (p.low, p.high)})
@@ -528,7 +552,8 @@ def compute_expected(part: PartDescription) -> dict:
                         volume_interval = (rows[-1]["volume"]["value"],
                                            rows[-1]["volume"]["value"])
                         volume_interval, prior_bounds, values = _bound_step(
-                            feature, part, volume_interval, prior_bounds, bound_reason)
+                            feature, part, volume_interval, prior_bounds, bound_reason,
+                            contour_budget)
                     else:
                         volume, bounds = _exact(candidate, axis_index)
                         prisms = candidate

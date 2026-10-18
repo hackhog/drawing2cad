@@ -243,6 +243,14 @@ def test_near_coincident_boundaries_do_not_claim_exact():
     assert "reason" in row["volume"] and "value" not in row["volume"]
 
 
+def test_self_intersecting_profile_with_nonzero_signed_area_is_unavailable():
+    body = _feature("body", "extrusion", operation="base", height=2,
+                    points=[[0, 0], [5, 5], [0, 5], [4, 0]])
+    row = _expected([body])["final"]
+    assert "intersects itself" in row["volume"]["reason"]
+    assert "value" not in row["volume"]
+
+
 def test_cumulative_work_limit_returns_bound():
     base = _feature("base", "box", operation="base", length=20, width=20, height=5)
     holes = [_feature(f"h{i}", "hole", position=[10, 10, 5], diameter=2)
