@@ -23,6 +23,7 @@ from PIL import Image
 
 from . import __version__
 from .config import Settings
+from .schema_errors import describe as describe_schema_error
 from .cad_service import CadError, CadService
 from .cad_tools import CAD_DESCRIPTIONS, CAD_SCHEMAS
 from .measurements_tools import MEASUREMENT_DESCRIPTIONS, MEASUREMENT_METHODS, MEASUREMENT_SCHEMAS
@@ -31,6 +32,7 @@ from .step_tools import STEP_DESCRIPTIONS, STEP_SCHEMAS
 from .workflow import WorkflowError, WorkflowService
 from .workflow_tools import WORKFLOW_DESCRIPTIONS, WORKFLOW_SCHEMAS
 from .pdf import PdfError, PdfService
+from .tolerances import TOLERANCE_OBSERVATIONS_SCHEMA
 from .vector.export import SCHEMA_VERSION
 from .vector.model import Kind
 
@@ -60,9 +62,10 @@ LOCAL_TOOLS = [
     _tool("cad_capabilities", "Read configured CAD services, runtime availability, and unimplemented delivery requirements. Availability does not prove a completed validation run.", _schema({})),
     _tool("pdf_info", "Inspect one authorized PDF: source SHA-256, page count, metadata, displayed CropBox dimensions and rotation. No OCR.",
           _schema({"path": PATH}, ["path"])),
-    _tool("pdf_read_text", "Extract native text from selected pages of one PDF. Reports native_text_missing on image-only pages; does not perform OCR or infer dimensions.",
+    _tool("pdf_read_text", "Extract native PDF text and bounded, source-linked tolerance candidates. Optional client observations transcribe outlined glyphs with page, displayed region, source hash, and explicit provenance. Candidates require source review and feature association; no OCR or dimension inference.",
           _schema({"path": PATH, "pages": {"type": ["array", "null"], "items": PAGE, "minItems": 1, "uniqueItems": True},
-                   "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000, "default": 50000}}, ["path"])),
+                   "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000, "default": 50000},
+                   "tolerance_observations": TOLERANCE_OBSERVATIONS_SCHEMA}, ["path"])),
     _tool("pdf_render_page", "Render one PDF page using Poppler. Returns a full-resolution PNG artifact, provenance and optional inline preview. Page numbers are one-based.",
           _schema({"path": PATH, "page": {**PAGE, "default": 1}, "dpi": {**DPI, "default": 150},
                    "include_image": INCLUDE_IMAGE}, ["path"]), False),
@@ -70,11 +73,13 @@ LOCAL_TOOLS = [
           _schema({"path": PATH, "page": PAGE,
                    "bbox": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 4, "maxItems": 4},
                    "dpi": {**DPI, "default": 300}, "include_image": INCLUDE_IMAGE}, ["path", "page", "bbox"]), False),
-    _tool("drawing_extract", "Analyze a selected page with the BCT/NX A3 vector profile: views, text, circle candidates, dimension candidates, and optional classified strokes. Verify dimensions visually; glyph recognition can be incorrect. Coordinates use displayed sheet mm, origin top-left, y down; no part scale is applied. Right-angle page rotation is supported. Cropped pages and non-unit UserUnit remain unsupported. Circle candidates do not prove holes.",
+    _tool("drawing_extract", "Analyze a selected page with the detected template profile (BCT A3, CAx A3, or A4 portrait): views, text, circle candidates, dimension candidates, and optional classified strokes. Strokes come in pages; use strokes_page.next_offset. Verify dimensions visually; glyph recognition can be incorrect. Coordinates use displayed sheet mm, origin top-left, y down; no part scale is applied. Right-angle page rotation is supported. Cropped pages and non-unit UserUnit remain unsupported. Circle candidates do not prove holes.",
           {**_schema({"path": PATH, "page": {**PAGE, "default": 1},
                       "include_strokes": {"type": "boolean", "default": False, "description": "Also return the strokes and the stroke_ids of each view. The stroke list is large. Without strokes, each view has a stroke_count."},
                       "stroke_kinds": {"type": "array", "items": {"enum": STROKE_KINDS}, "minItems": 1, "uniqueItems": True,
-                                       "description": "Return only strokes of these kinds. Requires include_strokes=true."}}, ["path"]),
+                                       "description": "Return only strokes of these kinds. Requires include_strokes=true."},
+                      "stroke_offset": {"type": "integer", "minimum": 0, "default": 0, "description": "First matching stroke of the page. Use strokes_page.next_offset."},
+                      "stroke_limit": {"type": "integer", "minimum": 1, "maximum": 50000, "default": 500, "description": "Number of strokes in one page. Keep the default unless the complete list is necessary."}}, ["path"]),
            "dependentSchemas": {"stroke_kinds": {"properties": {"include_strokes": {"const": True}}, "required": ["include_strokes"]}}}),
 ]
 LOCAL_TOOLS.extend(_tool(name, STEP_DESCRIPTIONS[name], schema,
@@ -182,7 +187,7 @@ class Application:
                     "ocr_supported": False, "coordinate_system": "normalized_displayed_cropbox_top_left",
                     "page_numbering": "one_based"},
             "drawing_analysis": {"available": True, "engine": "drawing2cad_mcp.vector",
-                                 "schema_version": SCHEMA_VERSION, "profile": "bct_nx_a3",
+                                 "schema_version": SCHEMA_VERSION, "profiles": ["bct_a3", "cax_a3", "a4_portrait"], "profile_selection": "detected_per_page",
                                  "page": "selected_one_based", "execution": "isolated_process",
                                  "timeout_seconds": self.settings.pdf.timeout_seconds},
         }
@@ -349,7 +354,8 @@ class Application:
                 return await asyncio.shield(task)
             return error_result("UNKNOWN_TOOL", f"Unknown tool: {name}")
         except ValidationError as error:
-            return error_result("INVALID_ARGUMENTS", error.message)
+            target, message = describe_schema_error(error)
+            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": target, "message": message}}, is_error=True)
         except PdfError as error:
             return error_result("PDF_PREPARATION_FAILED", str(error))
         except (StepError, WorkflowError, CadError) as error:
@@ -384,10 +390,11 @@ class Application:
                 images.append(ImageContent(type="image", data=preview.pop("data_base64"), mime_type="image/png"))
             return json_result(data, images=images, is_error=bool(data.get("error")) or data.get("status") == "fail")
         except ValidationError as error:
-            # The JSON Pointer and the schema message tell the agent which field to correct.
-            pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
-            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": pointer,
-                                          "message": "Arguments do not match the published tool schema: " + error.message[:300]}},
+            # The JSON Pointer and the failed schema rule tell the agent which field to correct.
+            # The message never repeats the input value, because it can be private.
+            target, message = describe_schema_error(error)
+            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": target,
+                                          "message": "Arguments do not match the published tool schema. " + message}},
                                is_error=True)
         except DomainError as error:
             return json_result({"error": error.to_dict()}, is_error=True)

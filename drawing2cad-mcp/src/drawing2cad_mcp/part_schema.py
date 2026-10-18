@@ -7,7 +7,7 @@ import math
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-PART_SCHEMA_VERSION = "1.1"
+PART_SCHEMA_VERSION = "1.3"
 Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")]
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-100000, le=100000, strict=True)]
 Positive = Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False, strict=True)]
@@ -170,6 +170,8 @@ class ThreadData(ClosedModel):
     pitch: Positive
     hand: Literal["right", "left"] = "right"
     representation: Literal["tap_drill"] = "tap_drill"
+    length: Scalar | None = Field(default=None, exclude_if=lambda value: value is None,
+        description="Explicit thread length in mm from the hole entry along its signed axis. The drill tip is excluded. Only plain blind holes support this field. Omission leaves thread length unspecified.")
 
 
 class HoleFeature(Feature):
@@ -206,6 +208,8 @@ class HoleFeature(Feature):
             raise ValueError("A counterbore must not specify angle.")
         if self.style == "countersink" and self.counter_depth is not None:
             raise ValueError("A countersink depth is derived from diameter and angle.")
+        if self.thread is not None and self.thread.length is not None and (self.extent != "blind" or self.style != "plain"):
+            raise ValueError("Explicit thread length requires a plain blind hole.")
         return self
 
 
@@ -287,17 +291,30 @@ class Measurement(ClosedModel):
     evidence_ids: EvidenceIds
     basis: Literal["printed_dimension", "independent_measurement"]
     tolerance: Positive = 0.01
-    expected: Annotated[list[Annotated[float, Field(gt=0, le=1e15, allow_inf_nan=False, strict=True)]], Field(min_length=1, max_length=3)]
+    expected: Annotated[list[Annotated[float, Field(gt=0, le=1e15, allow_inf_nan=False, strict=True)]], Field(
+        min_length=1, max_length=3,
+        description="Positive measured values in mm, except volume in mm3 and angles in degrees. bbox uses X, Y, Z order and requires three values; every other kind requires one.",
+    )]
     position: tuple[Number, Number, Number] | None = Field(
-        default=None, description="Source measurement anchor. For hole, this identifies the cylinder axis, not an entry surface. For outer_diameter, this identifies both the cylinder axis and the axial station. At a shoulder with different outer diameters, select a station within one cylindrical face.")
+        default=None,
+        description="Global source anchor. For hole, use a point on the cylinder axis, not the entry surface. For arc_radius, use the circle center, not a point on the arc. For outer_diameter, use the axis at a station within one cylindrical face. For cone_angle and cone_width, use the cone axis at a station within the conical face. For surface_radius, line_angle, plane_angle, draft_angle, and fillet_radius, use the bounded target face or edge.",
+    )
     axis: AxisName | None = Field(
-        default=None, description="Measurement axis. For a hole with entry_position, this must point from the opening into the part.")
+        default=None,
+        description="Signed global axis name. For a hole with entry_position, point from the opening into the part. Use direction only for the kinds listed in its field description.",
+    )
     axial_length: Positive | None = None
     entry_position: tuple[Number, Number, Number] | None = Field(
         default=None, description="Optional source-derived center of the planar circular opening where the hole cavity meets the part surface. A stepped bore is one connected cavity: each of its bores uses the outer opening as entry, never an internal shoulder. The check traverses connected full cylinders, cones, and planar shoulders to that opening. If omitted, entry_side is not_tested.")
-    second_position: tuple[Number, Number, Number] | None = None
+    second_position: tuple[Number, Number, Number] | None = Field(
+        default=None,
+        description="Second global anchor for axis_distance, plane_distance, and section_distance. For axis_distance, anchors identify distinct axes. For section_distance, anchors lie on the same measurement line.",
+    )
     component: Literal["distance", "X", "Y", "Z"] = "distance"
-    direction: tuple[Number, Number, Number] | None = None
+    direction: tuple[Number, Number, Number] | None = Field(
+        default=None,
+        description="Optional nonzero global vector. It replaces axis only for plane_distance, section_distance, surface_radius, line_angle, plane_angle, draft_angle, and fillet_radius.",
+    )
     spatial_tolerance: Positive | None = Field(default=None, description="Surface anchor tolerance in mm for draft_angle and fillet_radius; default 0.01 mm. Their numerical tolerance is separately given by tolerance (degrees or mm).")
     fillet_section_normal: tuple[Number, Number, Number] | None = Field(default=None, description="Optional global normal of the circular fillet section. Required for bounded principal-curvature measurement of a non-analytic fillet. Does not change analytic cylinder or torus axis matching.")
 
@@ -348,8 +365,62 @@ class ReviewFlag(ClosedModel):
     evidence_ids: EvidenceIds
 
 
+class ToleranceBase(ClosedModel):
+    id: Identifier
+    raw_text: Annotated[str, Field(min_length=1, max_length=500)]
+    evidence_ids: EvidenceIds
+    confidence: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False, strict=True)]
+    resolution: Literal["resolved", "review_required"]
+    scope: Literal["parameter", "part", "unassigned"]
+    parameter_name: Identifier | None = None
+    unit: Literal["mm", "deg", "dimensionless"] | None = None
+    printed_nominal: Number | None = None
+
+
+class DeviationTolerance(ToleranceBase):
+    kind: Literal["deviation"]
+    lower_deviation: Number
+    upper_deviation: Number
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.lower_deviation > self.upper_deviation:
+            raise ValueError("Deviation bounds must be ordered.")
+        return self
+
+
+class LimitsTolerance(ToleranceBase):
+    kind: Literal["limits"]
+    lower_limit: Number
+    upper_limit: Number
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.lower_limit > self.upper_limit:
+            raise ValueError("Limit bounds must be ordered.")
+        return self
+
+
+class FitTolerance(ToleranceBase):
+    kind: Literal["fit"]
+    designation: Annotated[str, Field(min_length=1, max_length=80)]
+
+
+class GeneralTolerance(ToleranceBase):
+    kind: Literal["general"]
+    designation: Annotated[str, Field(min_length=1, max_length=160)]
+
+
+class UnclearTolerance(ToleranceBase):
+    kind: Literal["unclear"]
+    reason: Annotated[str, Field(min_length=1, max_length=500)]
+
+
+ToleranceType = Annotated[DeviationTolerance | LimitsTolerance | FitTolerance | GeneralTolerance | UnclearTolerance, Field(discriminator="kind")]
+
+
 class PartDescription(ClosedModel):
-    schema_version: Literal["1.0", "1.1"]
+    schema_version: Literal["1.0", "1.1", "1.2", "1.3"]
     name: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.-]{0,79}$")]
     units: Literal["mm"]
     coordinate_system: Literal["right_handed_xyz"]
@@ -357,6 +428,7 @@ class PartDescription(ClosedModel):
     parameters: Annotated[list[Parameter], Field(max_length=1000)] = Field(default_factory=list)
     features: Annotated[list[FeatureType], Field(min_length=1, max_length=500)]
     measurements: Annotated[list[Measurement], Field(max_length=1000)] = Field(default_factory=list)
+    tolerances: Annotated[list[ToleranceType], Field(max_length=1000)] = Field(default_factory=list, exclude_if=lambda value: not value)
     review_flags: Annotated[list[ReviewFlag], Field(max_length=2000)] = Field(default_factory=list)
     expected_solids: Literal[1] = 1
 
@@ -370,13 +442,42 @@ def description_schema() -> dict[str, Any]:
         "extrusion": "Profile points have local z=0. Positive height or cut depth extends along local_z.",
         "basis": deepcopy(FEATURE_COORDINATE_FRAMES),
     }
+    schema["x-measurement-guidance"] = {
+        "value_counts": "bbox requires three positive values in X, Y, Z order. Every other kind requires one positive value.",
+        "anchors": "Located kinds require position and axis or an allowed direction. direction is a nonzero global vector. It replaces axis only for plane_distance, section_distance, surface_radius, line_angle, plane_angle, draft_angle, and fillet_radius. plane_distance anchors lie on material faces, not bores or axes. section_distance anchors lie on one measurement line. axis_distance uses two distinct axes, not axial length.",
+        "cylinders": "hole.position identifies the cylinder axis. axis points into the part when entry_position is supplied. arc_radius.position is the circle center, not a point on the arc. outer_diameter.position identifies the cylinder axis and a station within one cylindrical face. arc_radius measures a circular arc; outer_diameter measures a cylindrical outer face.",
+        "examples": deepcopy(_MEASUREMENT_EXAMPLES),
+    }
     return schema
+
+
+_MEASUREMENT_EXAMPLES = {
+    "bbox": {"kind": "bbox", "expected": [40.0, 20.0, 5.0]},
+    "volume": {"kind": "volume", "expected": [4000.0]},
+    "hole": {"kind": "hole", "expected": [6.0], "position": [10.0, 10.0, 5.0], "axis": "-Z"},
+    "arc_radius": {"kind": "arc_radius", "expected": [8.0], "position": [20.0, 10.0, 0.0], "axis": "Z"},
+    "outer_diameter": {"kind": "outer_diameter", "expected": [24.0], "position": [20.0, 10.0, 0.0], "axis": "Z"},
+    "axis_distance": {"kind": "axis_distance", "expected": [12.0], "position": [0.0, 0.0, 0.0], "axis": "Z", "second_position": [12.0, 0.0, 0.0]},
+    "plane_distance": {"kind": "plane_distance", "expected": [5.0], "position": [0.0, 0.0, 0.0], "direction": [0.0, 0.0, 1.0], "second_position": [0.0, 0.0, 5.0]},
+    "section_distance": {"kind": "section_distance", "expected": [5.0], "position": [0.0, 0.0, 0.0], "axis": "Z", "second_position": [0.0, 0.0, 5.0]},
+    "surface_radius": {"kind": "surface_radius", "expected": [10.0], "position": [20.0, 10.0, 0.0], "axis": "Z"},
+    "cone_angle": {"kind": "cone_angle", "expected": [30.0], "position": [20.0, 10.0, 0.0], "axis": "Z"},
+    "cone_width": {"kind": "cone_width", "expected": [4.0], "position": [20.0, 10.0, 0.0], "axis": "Z"},
+    "line_angle": {"kind": "line_angle", "expected": [45.0], "position": [10.0, 0.0, 0.0], "direction": [1.0, 1.0, 0.0]},
+    "plane_angle": {"kind": "plane_angle", "expected": [90.0], "position": [10.0, 0.0, 0.0], "direction": [0.0, 1.0, 0.0]},
+    "draft_angle": {"kind": "draft_angle", "expected": [2.0], "position": [20.0, 10.0, 2.5], "axis": "Z"},
+    "fillet_radius": {"kind": "fillet_radius", "expected": [2.0], "position": [20.0, 10.0, 2.5], "axis": "Z"},
+}
+_MEASUREMENT_EXAMPLES = {
+    kind: {"id": "example", "evidence_ids": ["drawing"], "basis": "independent_measurement", **example}
+    for kind, example in _MEASUREMENT_EXAMPLES.items()
+}
 
 
 def _pointer(parts: tuple | list, description: Any) -> str:
     # Pydantic adds union branch names. They are not keys in the input JSON.
     current, tokens = description, []
-    branches = {"box", "cylinder", "extrusion", "profile_extrusion", "profile", "line", "three_point_arc", "hole", "pocket", "cut", "chamfer", "fillet", "polygon", "float", "constrained-float", "ValueRef"}
+    branches = {"box", "cylinder", "extrusion", "profile_extrusion", "profile", "line", "three_point_arc", "hole", "pocket", "cut", "chamfer", "fillet", "polygon", "float", "constrained-float", "ValueRef", "deviation", "limits", "fit", "general", "unclear"}
     for item in parts:
         if isinstance(current, dict) and item not in current and item in branches:
             continue
@@ -415,7 +516,7 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
     def defect(code, pointer, message):
         defects.append({"code": code, "pointer": pointer, "message": message})
 
-    for collection in ("evidence", "parameters", "features", "measurements", "review_flags"):
+    for collection in ("evidence", "parameters", "features", "measurements", "tolerances", "review_flags"):
         seen = set()
         for index, item in enumerate(getattr(part, collection)):
             key = item.name if collection == "parameters" else item.id
@@ -424,7 +525,7 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
             seen.add(key)
     evidence = {item.id: item for item in part.evidence}
     parameters = {item.name: item for item in part.parameters}
-    for collection in ("parameters", "features", "measurements", "review_flags"):
+    for collection in ("parameters", "features", "measurements", "tolerances", "review_flags"):
         for index, item in enumerate(getattr(part, collection)):
             for ref in item.evidence_ids:
                 if ref not in evidence:
@@ -444,6 +545,17 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
             if parameters[name].unit != unit:
                 defect("parameter_unit", pointer, f"This feature value requires {unit}.")
     for index, feature in enumerate(part.features):
+        if isinstance(feature, HoleFeature) and feature.thread is not None and feature.thread.length is not None:
+            pointer = f"/features/{index}/thread/length"
+            if part.schema_version not in {"1.2", "1.3"}:
+                defect("schema_version", pointer, "Explicit thread length requires schema_version 1.2 or later.")
+            try:
+                length = resolve(feature.thread.length, part)
+                depth = resolve(feature.depth, part)
+                if length <= 0 or length > depth:
+                    defect("invalid_dimension", pointer, "Thread length must be positive and no greater than the cylindrical bore depth.")
+            except (ValueError, StopIteration, TypeError):
+                pass
         if part.schema_version == "1.0" and (
             isinstance(feature, CutFeature) and (isinstance(feature.profile, ProfileCut) or feature.taper_angle != 0.0)
             or isinstance(feature, CylinderFeature) and feature.taper_angle != 0.0
@@ -503,7 +615,26 @@ def part_validate(description: dict[str, Any]) -> dict[str, Any]:
                         continue
                     if number <= 0:
                         defect("invalid_dimension", f"/features/{index}/profile/{field}", "Profile dimensions must be positive.")
-    targets = set(parameters) | {item.id for item in part.features} | set(evidence)
+    targets = set(parameters) | {item.id for item in part.features} | {item.id for item in part.tolerances} | set(evidence)
+    if part.tolerances and part.schema_version != "1.3":
+        defect("schema_version", "/tolerances", "Tolerances require schema_version 1.3.")
+    open_flags = {flag.target_id for flag in part.review_flags if flag.status == "open"}
+    for index, tolerance in enumerate(part.tolerances):
+        pointer = f"/tolerances/{index}"
+        if tolerance.scope == "parameter":
+            parameter = parameters.get(tolerance.parameter_name)
+            if parameter is None:
+                defect("unknown_parameter", pointer + "/parameter_name", "A parameter tolerance requires an existing parameter_name.")
+            elif tolerance.unit != parameter.unit:
+                defect("parameter_unit", pointer + "/unit", "Tolerance and parameter units must agree.")
+        elif tolerance.parameter_name is not None:
+            defect("invalid_scope", pointer + "/parameter_name", "Only parameter scope uses parameter_name.")
+        if isinstance(tolerance, (DeviationTolerance, LimitsTolerance)) and tolerance.unit is None:
+            defect("missing_unit", pointer + "/unit", "Numeric tolerance bounds require a unit.")
+        if (tolerance.scope == "unassigned" or isinstance(tolerance, UnclearTolerance) or tolerance.resolution == "review_required") and tolerance.id not in open_flags:
+            defect("missing_review_flag", pointer, "An unresolved tolerance requires an open review flag.")
+        if isinstance(tolerance, UnclearTolerance) and tolerance.resolution != "review_required":
+            defect("invalid_resolution", pointer + "/resolution", "An unclear tolerance requires review.")
     for index, measurement in enumerate(part.measurements):
         if part.schema_version == "1.0" and measurement.kind in {"draft_angle", "fillet_radius"}:
             defect("schema_version", f"/measurements/{index}", "This measurement requires schema_version 1.1.")

@@ -105,7 +105,10 @@ class Services:
 def analyze(backend: DomainBackend, source: dict[str, Any]) -> dict[str, Any]:
     """Drawing data, a page image, and review flags of the first page, from the shared domain service.
     The flags have no decisions here: decisions change, the cached analysis does not."""
-    data = backend.call("drawing_extract", source_id=source["source_id"], include_strokes=True)
+    # The sheet viewer needs every stroke. One large page avoids a second vector analysis.
+    data = backend.call("drawing_extract", source_id=source["source_id"], include_strokes=True, stroke_limit=50_000)
+    if data["strokes_page"]["next_offset"] is not None:
+        raise ServiceError(422, "DRAWING_TOO_LARGE", "Die Zeichnung hat mehr Striche, als die Ansicht laden kann.")
     rendered = backend.call("pdf_render_page", source_id=source["source_id"], page=1, dpi=PAGE_DPI, include_image=False)
     if data["source"]["sha256"] != rendered["source"]["sha256"]:
         raise ServiceError(422, "SOURCE_HASH_MISMATCH", "Analyse und Seitenbild stammen aus verschiedenen Dateien.")

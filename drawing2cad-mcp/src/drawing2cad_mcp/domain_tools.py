@@ -7,6 +7,7 @@ from .measurements_tools import MEASUREMENT_DESCRIPTIONS, MEASUREMENT_SCHEMAS
 from .source_flags import ACTIONS, STROKE_CLASSES
 from .step_tools import STEP_DESCRIPTIONS, STEP_SCHEMAS
 from .vector.model import Kind
+from .tolerances import TOLERANCE_OBSERVATIONS_SCHEMA
 
 
 def _object(properties, required=None):
@@ -84,16 +85,19 @@ _EXTRA = {
     "job_cancel": (_object({"job_id": ID}), "Request cancellation. Queued jobs do not start. Active operations may finish; cancellation does not undo their effects."),
     "pdf_info": (_object({"source_id": ID}), "Inspect an uploaded PDF and its exact source SHA-256. No OCR."),
     "pdf_read_text": (_object({"source_id": ID, "pages": {"type": ["array", "null"], "items": PAGE, "minItems": 1, "uniqueItems": True},
-                               "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000}}, ["source_id"]),
-                      "Read native PDF text by source ID. No OCR or dimension inference."),
+                               "max_chars": {"type": "integer", "minimum": 1, "maximum": 1000000},
+                               "tolerance_observations": TOLERANCE_OBSERVATIONS_SCHEMA}, ["source_id"]),
+                      "Read native PDF text and source-linked tolerance candidates by source ID. Optional bounded client transcriptions use displayed regions and the current source hash. Candidates need source review and feature association. No OCR."),
     "pdf_render_page": (_object({"source_id": ID, "page": PAGE, "dpi": DPI, "include_image": {"type": "boolean"}}, ["source_id"]),
                         "Render an uploaded PDF page. Return an immutable PNG artifact and an optional bounded inline preview."),
     "pdf_crop_region": (_object({"source_id": ID, "page": PAGE, "dpi": DPI, "include_image": {"type": "boolean"},
                                  "bbox": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 4, "maxItems": 4}}, ["source_id", "page", "bbox"]),
                         "Render a detail crop. Normalized coordinates refer to the displayed page, from its top-left corner."),
     "drawing_extract": (_object({"source_id": ID, "page": PAGE, "include_strokes": {"type": "boolean"},
-                                 "stroke_kinds": {"type": "array", "items": {"enum": [k.value for k in Kind]}, "minItems": 1, "uniqueItems": True}}, ["source_id"]),
-                        "Analyze native drawing vectors with the limited BCT/NX A3 profile. Verify detected text and dimensions against source images."),
+                                 "stroke_kinds": {"type": "array", "items": {"enum": [k.value for k in Kind]}, "minItems": 1, "uniqueItems": True},
+                                 "stroke_offset": {"type": "integer", "minimum": 0},
+                                 "stroke_limit": {"type": "integer", "minimum": 1, "maximum": 50000}}, ["source_id"]),
+                        "Analyze native drawing vectors with the detected template profile (BCT A3, CAx A3, or A4 portrait). With include_strokes, strokes come in pages of stroke_limit (default 500); use strokes_page.next_offset. Verify detected text and dimensions against source images."),
     "source_flags_read": (_object({"source_id": ID, "page": PAGE}, ["source_id"]),
         "Read the review flags of a source page: unclear strokes, unreadable text, or missing views of drawing_extract, with stable flag IDs. Each flag includes the user decision, if one exists. Apply a decision as user input: ignore the flagged strokes, use the assigned stroke class, or use the corrected text instead of the extracted text. Record a decision that a construction value uses as a user decision, not as a source dimension. Decisions without a current flag are listed separately."),
     "source_flags_decide": (_object({"source_id": ID, "page": PAGE, "flag_id": {"type": "string", "pattern": "^(views|strokes-[0-9]+|text-[0-9]+)$"},

@@ -196,3 +196,15 @@ def test_parallel_requests_use_independent_snapshots(service, tmp_path):
 def test_service_rejects_invalid_filter_arguments(service, tmp_path, options):
     with pytest.raises(PdfError):
         service.extract_drawing(tmp_path / "unused.pdf", **options)
+
+
+def test_strokes_come_in_bounded_pages(service, tmp_path):
+    source = make_vector_pdf(tmp_path / "vector.pdf")
+    first = service.extract_drawing(source, include_strokes=True, stroke_limit=3)
+    assert first["strokes_page"] == {"offset": 0, "limit": 3, "returned": 3, "total_matching": 4, "next_offset": 3}
+    rest = service.extract_drawing(source, include_strokes=True, stroke_offset=3, stroke_limit=3)
+    assert rest["strokes_page"]["returned"] == 1 and rest["strokes_page"]["next_offset"] is None
+    assert {s["id"] for s in first["strokes"]} | {s["id"] for s in rest["strokes"]} == set(range(4))
+    assert first["provenance"]["profile"] == first["drawing_template"] == "bct_a3"
+    with pytest.raises(PdfError):
+        service.extract_drawing(source, include_strokes=True, stroke_limit=0)

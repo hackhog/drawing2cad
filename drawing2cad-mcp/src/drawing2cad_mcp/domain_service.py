@@ -32,9 +32,10 @@ from .domain_store import AccessContext, DomainError, DomainStore
 from .domain_tools import DOMAIN_SCHEMAS
 from .drawing_contract import drawing_schema, drawing_validate
 from .measurements_tools import MEASUREMENT_METHODS
-from .pdf import PdfError, PdfService
-from .source_flags import check_decision, review_flags
+from .pdf import MAX_STROKE_LIMIT, PdfError, PdfService
 from .part_schema import EdgeSelectionDiagnostic
+from .schema_errors import describe as describe_schema_error
+from .source_flags import check_decision, review_flags
 from .step import StepError, StepService
 
 
@@ -186,7 +187,7 @@ class DomainService:
         return value
 
     @staticmethod
-    def _validate(name, arguments):
+    def _validate(name, arguments, prefix=""):
         if name not in DOMAIN_SCHEMAS:
             raise DomainError("UNKNOWN_TOOL", "The domain operation is not supported.")
         try:
@@ -195,10 +196,11 @@ class DomainService:
             if len(encoded) > 8 * 1024 * 1024:
                 raise DomainError("LIMIT_EXCEEDED", "The request exceeds the domain size limit.")
         except ValidationError as error:
-            # The JSON Pointer and the schema message tell the agent which field to correct.
-            pointer = "/" + "/".join(str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
-            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract: " + error.message[:300],
-                              target=pointer, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
+            # The JSON Pointer and the failed schema rule tell the agent which field to correct.
+            # The message never repeats the input value, because it can be private.
+            target, message = describe_schema_error(error, prefix)
+            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + message,
+                              target=target, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
         except (ValueError, TypeError, RecursionError):
             raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract.") from None
 
@@ -234,7 +236,8 @@ class DomainService:
             return {"items": self.jobs.list(ctx, **args)}
         if name == "job_submit":
             operation, operation_args = args["operation"], args["arguments"]
-            self._validate(operation, operation_args)
+            # The nested arguments are a separate request; the pointer still names the field of job_submit.
+            self._validate(operation, operation_args, "/arguments")
             with self._run_lock(ctx, operation_args["run_id"]) as (cad, directory):
                 self._state(cad, directory, operation_args["expected_revision"])
                 return self.jobs.submit(ctx, operation, operation_args, args["idempotency_key"])
@@ -310,6 +313,10 @@ class DomainService:
         if result.get("source", {}).get("sha256", source["sha256"]) != source["sha256"]:
             raise DomainError("SOURCE_HASH_MISMATCH", "The PDF preparation used different source bytes.")
         result["source"] = source
+        if name == "pdf_read_text":
+            for found in result["tolerance_candidates"]:
+                found["source"]["source_id"] = source_id
+                found["source"]["source_sha256"] = source["sha256"]
         if "artifact" in result:
             internal = result["artifact"]
             result["artifact"] = self.store.artifact_register(ctx, internal["path"], "source_preview", source_id,
@@ -326,8 +333,12 @@ class DomainService:
             cached = self._flags.get(key)
         if cached is None:
             with self._pdf_slots:
-                drawing = self._pdf_call(ctx, "drawing_extract", {"source_id": source_id, "page": page, "include_strokes": True})
-            cached = (review_flags(drawing), {s["id"]: s for s in drawing["strokes"] if s["kind"] == "unclear"})
+                # Flags need only the unclear strokes, so one page of strokes holds all of them.
+                drawing = self._pdf_call(ctx, "drawing_extract", {"source_id": source_id, "page": page, "include_strokes": True,
+                                                                  "stroke_kinds": ["unclear"], "stroke_limit": MAX_STROKE_LIMIT})
+            if drawing["strokes_page"]["next_offset"] is not None:
+                raise DomainError("LIMIT_EXCEEDED", f"The page has more than {MAX_STROKE_LIMIT} unclear strokes.")
+            cached = (review_flags(drawing), {s["id"]: s for s in drawing["strokes"]})
             with self._services_lock:
                 self._flags[key] = cached
                 while len(self._flags) > FLAG_CACHE_SIZE:

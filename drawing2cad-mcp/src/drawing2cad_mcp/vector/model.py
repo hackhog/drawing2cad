@@ -146,3 +146,4 @@ class Drawing:
     views: list[View]
     raster_bbox: tuple[float, float, float, float] | None  # Embedded shaded image
     rotation_degrees: int = 0
+    template: str = "bct_a3"  # Drawing-area profile: bct_a3, cax_a3, or a4_portrait

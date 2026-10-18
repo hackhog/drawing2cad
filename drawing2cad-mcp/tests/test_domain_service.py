@@ -113,6 +113,36 @@ def test_domain_build_preserves_closed_edge_diagnostics(domain, monkeypatch):
     result = call(service, "build_from_description")
     assert result["build"]["error"]["details"] == details
     assert result["build"]["error"]["feature_id"] == "blend"
+    assert result["error"]["code"] == "EDGE_SELECTION"
+    assert result["feature_id"] == "blend"
+    assert result["checks"] == []
+
+
+def test_domain_build_failure_reports_only_executed_checks(domain, monkeypatch):
+    service, _, _, _, runner = domain
+    monkeypatch.setattr(runner, "run", lambda *_args, **_kwargs: {
+        "status": "fail", "error": {"code": "NO_MATERIAL_REMOVED", "message": "No cut.",
+                                   "feature_id": "end_relief"},
+        "checks": [{"check": "feature_execution", "feature_id": "base", "status": "pass"},
+                   {"check": "feature_execution", "feature_id": "end_relief", "status": "fail"},
+                   {"check": "step_reimport", "status": "not_tested"}]})
+    result = call(service, "build_from_description")
+    assert result["status"] == "fail"
+    assert result["error"] == {"code": "NO_MATERIAL_REMOVED", "message": "No cut.",
+                               "feature_id": "end_relief"}
+    assert result["checks"] == [{"check": "feature_execution", "feature_id": "base", "status": "pass", "phase": "build"},
+                                {"check": "feature_execution", "feature_id": "end_relief", "status": "fail", "phase": "build"}]
+
+
+def test_domain_build_timeout_has_no_invented_feature_or_checks(domain, monkeypatch):
+    service, _, _, _, runner = domain
+    monkeypatch.setattr(runner, "run", lambda *_args, **_kwargs: {
+        "status": "fail", "error": {"code": "WORKER_TIMEOUT", "message": "The worker exceeded its configured limit."}})
+    result = call(service, "build_from_description")
+    assert result["error"]["code"] == "WORKER_TIMEOUT"
+    assert result["feature_id"] is None
+    assert result["checks"] == []
+    assert result["validation"]["status"] == "not_tested"
 
 
 @pytest.mark.parametrize("mutation", [
@@ -417,6 +447,12 @@ def test_domain_schema_errors_do_not_echo_private_input(domain):
     with pytest.raises(DomainError) as error:
         service.call(CTX, "part_read", {"run_id": str(service.store.root)})
     assert str(service.store.root) not in error.value.message
+    assert service.store.root.as_posix() not in error.value.message
+    # A value with forward slashes gives the same check on each platform.
+    with pytest.raises(DomainError) as error:
+        service.call(CTX, "part_read", {"run_id": "/srv/private-customer/secret"})
+    assert "secret" not in error.value.message
+    assert error.value.target == "/run_id" and "pattern" in error.value.message
 
 
 def test_worker_error_details_cannot_expose_external_server_paths(domain):
@@ -505,7 +541,7 @@ def test_errors_keep_feature_and_field_without_host_paths(domain):
     with pytest.raises(DomainError) as invalid:
         service.call(CTX, "part_read", {"run_id": 5})
     assert invalid.value.code == "INVALID_ARGUMENT"
-    assert invalid.value.target == "/run_id" and "is not of type" in invalid.value.message
+    assert invalid.value.target == "/run_id" and "'type'" in invalid.value.message and '"string"' in invalid.value.message
 
 
 def test_failed_job_keeps_its_public_report(domain):
@@ -535,3 +571,12 @@ def test_reads_during_active_operation_return_a_snapshot(domain):
     assert part["read_mode"] == drawing["read_mode"] == "snapshot_during_active_operation"
     assert part["part"]["revision"] == 1 and part["run_id"] == "plate"
     assert "read_mode" not in service.call(CTX, "part_read", {"run_id": "plate"})
+
+
+def test_job_submit_schema_error_points_to_the_nested_argument(domain):
+    service, *_ = domain
+    with pytest.raises(DomainError) as error:
+        service.call(CTX, "job_submit", {"operation": "build_from_description", "idempotency_key": "nested-error",
+                                         "arguments": {"run_id": "/srv/private/secret", "expected_revision": 1}})
+    assert error.value.target == "/arguments/run_id"
+    assert "secret" not in error.value.message

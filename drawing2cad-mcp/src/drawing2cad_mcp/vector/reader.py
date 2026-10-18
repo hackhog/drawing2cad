@@ -9,7 +9,7 @@ import pymupdf
 
 from .geometry import circle_through, fit_arcs_into_circles
 from .model import Arc, Glyph, Line, Point, Stroke
-from .template import PT_TO_MM, in_drawing_area
+from .template import PT_TO_MM, Area, drawing_area, in_drawing_area
 
 # Maximum radial error for a fitted circular arc, in millimeters.
 _ARC_TOL = 0.02
@@ -78,19 +78,23 @@ def _contours(items: list) -> list[list[Point]]:
     return contours
 
 
-def read_pdf(path: Path, page: int = 1) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None]:
+def read_pdf(path: Path, page: int = 1, *, with_area: bool = False):
     """Return strokes, glyphs, sheet size, and the embedded image bounding box.
-    Read a one-based page with the calibrated drawing-area profile."""
+    Read a one-based page with the drawing-area profile of its template.
+    With with_area=True, also return the applied frame and title blocks."""
     with pymupdf.open(path) as doc:
         if isinstance(page, bool) or not isinstance(page, int) or not 1 <= page <= len(doc):
             raise ValueError("Page is outside the document.")
-        return _read_page(doc[page - 1])
+        result = _read_page(doc[page - 1])
+    return result if with_area else result[:4]
 
 
-def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None]:
+def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[float, float], tuple | None, Area]:
     # PyMuPDF returns drawing paths in unrotated page coordinates. Apply the
     # template there. The complete result is rotated after classification.
     sheet = (page.cropbox.width * PT_TO_MM, page.cropbox.height * PT_TO_MM)
+    drawings = page.get_drawings()
+    area = drawing_area(sheet, drawings)
 
     raster = None
     for img in page.get_images():
@@ -100,11 +104,11 @@ def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[flo
     geoms: list[tuple[Line | Arc, float, int]] = []
     glyphs: list[Glyph] = []
     seen: set[tuple] = set()
-    for path_id, d in enumerate(page.get_drawings()):
+    for path_id, d in enumerate(drawings):
         if d["type"] == "f":
             r = d["rect"]
             box = (r.x0 * PT_TO_MM, r.y0 * PT_TO_MM, r.x1 * PT_TO_MM, r.y1 * PT_TO_MM)
-            if in_drawing_area(box):
+            if in_drawing_area(box, area):
                 contours = _contours(d["items"])
                 if not contours:
                     raise ValueError("The filled path contains unsupported glyph geometry.")
@@ -139,8 +143,8 @@ def _read_page(page: pymupdf.Page) -> tuple[list[Stroke], list[Glyph], tuple[flo
                 if key in seen:  # NX can export duplicate segments.
                     continue
                 seen.add(key)
-                if in_drawing_area(g.bbox()):
+                if in_drawing_area(g.bbox(), area):
                     geoms.append((g, width, path_id))
 
     strokes = [Stroke(i, g, w, pid) for i, (g, w, pid) in enumerate(fit_arcs_into_circles(geoms))]
-    return strokes, glyphs, sheet, raster
+    return strokes, glyphs, sheet, raster, area

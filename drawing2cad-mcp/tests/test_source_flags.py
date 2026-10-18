@@ -60,7 +60,8 @@ def flags(tmp_path, monkeypatch):
 
     def extract(path, **kwargs):
         calls.append(kwargs)
-        return {**ANALYSIS, "source": {}}
+        strokes = [s for s in ANALYSIS["strokes"] if s["kind"] in kwargs["stroke_kinds"]]
+        return {**ANALYSIS, "strokes": strokes, "strokes_page": {"next_offset": None}, "source": {}}
 
     monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", extract)
     yield service, source["source_id"], calls
