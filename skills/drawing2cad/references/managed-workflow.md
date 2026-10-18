@@ -17,6 +17,7 @@ Call `part_schema` to read the closed versioned schema.
 Call `part_validate` with `description`.
 The description contains units, coordinates, stable parameters and features, source evidence, review records, and independent measurements.
 Schema 1.3 also stores manufacturing tolerances. Use [tolerances-and-changes.md](tolerances-and-changes.md) for capture and parameter-change reports.
+Schema 1.4 also stores printed dimensions for cross-checks. See "Printed dimension cross-checks" below.
 Use only operations and parameter references accepted by the schema.
 Unknown fields, unsupported operations, invalid references, and nonfinite values require correction.
 
@@ -201,3 +202,20 @@ A metadata append is not CAD export or semantic-PMI authoring.
 
 Historical FreeCAD inline adapters are unavailable through the current MCP.
 Do not load them for the current tool sequence.
+
+## Printed dimension cross-checks
+
+Schema 1.4 has an optional `dimensions` list. Each item records one printed dimension: `id`, the unchanged `printed_text`, the `nominal` value, the `unit` (`mm` or `deg`), and `evidence_ids` for its view and region.
+The list does not change the construction. Parameters and features keep their own values and evidence.
+Add these optional fields to make the cross-checks possible:
+
+| Field | Use | Check in `part_validate` |
+|---|---|---|
+| `chain` | `{"id": ..., "role": "part"}` for each element of a dimension chain, `{"id": ..., "role": "total"}` for the overall dimension of the chain. | The parts must add up to the total. |
+| `dim_id` | The same value for each occurrence of one physical dimension in different views. | All occurrences must have the same nominal value. |
+| `measured` | `{"value": ..., "method": ...}` with the size measured at the calibrated scale of the view. | The difference from the nominal value must not exceed the larger of 0.2 mm (0.5 deg) and 1 % of the nominal value. |
+| `not_to_scale` | `true` for a dimension marked as not to scale. | The measured value is not compared. |
+
+A failed check is a defect (`dimension_chain`, `dimension_views`, `dimension_measured`, or `dimension_unit`) with a pointer, the identifiers, and the numbers.
+Correct the reading, the calibration, or the chain assignment. If the drawing itself is inconsistent, record the conflict as a review flag and remove the incorrect link.
+`dimension_checks` in the result lists each check as `pass`, `fail`, or `not_tested`. A check without the necessary data is `not_tested`. Do not report it as passed.
