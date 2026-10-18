@@ -25,7 +25,7 @@ interface ProviderText {
 const PROVIDERS: Record<AgentProvider, ProviderText> = {
   openrouter: {
     label: "OpenRouter",
-    model: { label: "Modell", placeholder: "anthropic/claude-sonnet-5.5" },
+    model: { label: "Modell", placeholder: "openai/gpt-6.1-sol" },
     key: "API-Key von openrouter.ai/keys. Das Modell muss Tool-Aufrufe und Bilder unterstützen.",
   },
   azure: {
@@ -140,7 +140,7 @@ function ProfileRow({ profile, checked, editing, onSelect, onEdit, onDelete }: {
         </span>
         <span className="flex gap-1">
           <Button type="button" size="xs" variant="ghost" disabled={check.isPending} onClick={() => check.mutate()}
-            title="Eine kurze Anfrage ohne Werkzeuge an den Endpunkt senden (wenige Tokens)">
+            title="Eine kurze Anfrage mit einem Werkzeug an den Endpunkt senden (wenige Tokens)">
             <Plug />{check.isPending ? "Prüfe …" : "Testen"}
           </Button>
           {profile.origin === "ui" && (
@@ -239,21 +239,21 @@ function ProfileForm({ profile, taken, onDone }: {
               placeholder={profile?.key_set ? "Gespeichert – leer lassen, um ihn zu behalten" : ""} className="font-mono"
               onChange={(e) => set({ api_key: e.target.value })} />
           </Field>
-          {form.provider !== "openrouter" && (
-            <div className="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
+          <div className="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
+            {form.provider !== "openrouter" && (
               <Field id="profile-api" label="Schnittstelle" hint="Manche Modelle (zum Beispiel gpt-6.1-sol) nutzen Werkzeuge nur über die Responses API.">
                 <select id="profile-api" className={SELECT} value={form.api} onChange={(e) => set({ api: e.target.value as AgentApi })}>
                   {(Object.keys(API_LABEL) as AgentApi[]).map((value) => <option key={value} value={value}>{API_LABEL[value]}</option>)}
                 </select>
               </Field>
-              <Field id="profile-effort" label="Reasoning-Aufwand" hint="Optional. Leer sendet keinen Wert.">
-                <select id="profile-effort" className={SELECT} value={form.reasoning_effort ?? ""}
-                  onChange={(e) => set({ reasoning_effort: e.target.value || null })}>
-                  {EFFORTS.map((value) => <option key={value} value={value}>{value || "—"}</option>)}
-                </select>
-              </Field>
-            </div>
-          )}
+            )}
+            <Field id="profile-effort" label="Reasoning-Aufwand" hint="Optional. Leer sendet keinen Wert. „Testen“ prüft ihn zusammen mit einem Werkzeug.">
+              <select id="profile-effort" className={SELECT} value={form.reasoning_effort ?? ""}
+                onChange={(e) => set({ reasoning_effort: e.target.value || null })}>
+                {EFFORTS.map((value) => <option key={value} value={value}>{value || "—"}</option>)}
+              </select>
+            </Field>
+          </div>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={save.isPending || duplicate}>{save.isPending ? "Speichere …" : "Speichern"}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => void onDone(null)}>Abbrechen</Button>

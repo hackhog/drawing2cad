@@ -460,7 +460,7 @@ def test_environment_profiles_are_read_only(environment):
         assert client.delete("/api/agent/profiles/Foundry").status_code == 409
 
 
-def test_the_connection_check_sends_one_request_without_tools(environment):
+def test_the_connection_check_sends_one_request_with_one_tool(environment):
     with_two_profiles(environment)
     sent = []
 
@@ -476,5 +476,6 @@ def test_the_connection_check_sends_one_request_without_tools(environment):
     with TestClient(api.create_app()) as client:
         result = client.post("/api/agent/profiles/OpenRouter/check").json()
         assert result["ok"] is True and result["message"] == "OK"
-        assert sent[0][0] == "https://openrouter.test/v1/responses" and "tools" not in sent[0][1]
+        assert sent[0][0] == "https://openrouter.test/v1/responses"
+        assert [tool["name"] for tool in sent[0][1]["tools"]] == ["noop"]
         assert client.post("/api/agent/profiles/Missing/check").status_code == 404

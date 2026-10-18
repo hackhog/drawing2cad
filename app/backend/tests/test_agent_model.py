@@ -323,3 +323,14 @@ def test_invalid_or_repeated_profile_names_are_rejected(monkeypatch, names):
     monkeypatch.setenv("DRAWING2CAD_AGENT_PROFILES", names)
     with pytest.raises(ValueError):
         profiles_from_env()
+
+
+@pytest.mark.parametrize("base_url, expected", [
+    ("https://openrouter.ai/api/v1", {"reasoning": {"effort": "low"}}),
+    ("https://res.openai.azure.com/openai/v1", {"reasoning_effort": "low"}),
+])
+def test_chat_reasoning_uses_the_parameter_of_the_provider(base_url, expected):
+    settings = ModelSettings(base_url, "m", "k", reasoning_effort="low")
+    path, _, body = model.request_for(settings, {"messages": [{"role": "user", "content": "x"}], "tools": []})
+    assert path == "/chat/completions"
+    assert {k: body[k] for k in ("reasoning", "reasoning_effort") if k in body} == expected
