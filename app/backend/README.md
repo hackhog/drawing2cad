@@ -21,6 +21,10 @@ uv run drawing-demo
 Put `pdftoppm` on `PATH`, or set `DRAWING2CAD_PDFTOPPM` to its executable path.
 The health endpoint is `http://127.0.0.1:8000/api/health`.
 Sample-based tests are skipped when their source drawings are absent.
+`tests/test_browser.py` drives the built UI in Google Chrome (Playwright) against this backend, its domain service, and its mounted MCP endpoint, with a scripted model.
+It covers upload, run start, job state, review, parameter display, the run note with a revision conflict, run file download, and error messages.
+It does not cover a released STEP or drawing download, because the scripted model does not build a model.
+Run `npm run build` in `app/frontend` first. Without the UI build or Google Chrome, these tests are skipped.
 
 The MCP package is a non-editable path dependency.
 After a change in `../../drawing2cad-mcp`, run:
