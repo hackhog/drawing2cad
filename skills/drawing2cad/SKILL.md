@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.21.0"
+  version: "0.22.0"
 ---
 
 # drawing2cad
@@ -24,8 +24,9 @@ metadata:
 9. Inspect every measurement, solid check, fresh-worker import, and agreement result. Compare the features with the source inventory.
    Domain only: call `model_projection_check` for the source views; see [verification-loop.md](references/verification-loop.md).
 10. If correction is necessary, call `part_read` → `part_validate` → `part_update` → `build_from_description`. Use the new revision and repeat step 9.
-11. Domain only: call `drawing_schema` → `drawing_validate` → `drawing_render` → `artifact_preview` for a revision-bound DXF/PDF drawing.
-12. Domain only: correct failures and repeat step 11. Compare source, model, and drawing. Record an accepted `drawing_review` only after review passes.
+11. Domain only: prepare the source-to-output coverage table. Call `drawing_schema` → `drawing_validate` → `drawing_render` → `artifact_preview` for a revision-bound DXF/PDF drawing.
+    A complete-service drawing needs an isometric view, the necessary orthographic views and sections, a border, and a title block; see [drawing-delivery.md](references/drawing-delivery.md). Record each item that the current tools cannot supply as a limit.
+12. Domain only: correct failures and repeat step 11. Compare source, model, and drawing, and update the coverage table. Record an accepted `drawing_review` only after review passes, and name its open rows.
 13. Call `export_step` with the current revision and complete, truthful source-review `coverage`; require a successful release. Read `release.drawing.status` (`accepted`, `unreviewed`, `rejected`, `failed`, or `missing`) and report it with its reason.
 14. Call `part_export_review` with the current revision. Retain STEP, description, review list, hashes, manifest, and actual results.
 15. Repeat for three parts. Require all MCP validations to pass for each final STEP hash.

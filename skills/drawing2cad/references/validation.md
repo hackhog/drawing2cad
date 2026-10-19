@@ -27,6 +27,8 @@ AP242 and semantic PMI are optional M3 capabilities. Complete-service drawing ac
 | STEP conformance | Independent analysis of the file; bounded syntax inspection alone is insufficient. |
 | Target-CAD opening | Actual opening test in the named CAD product and version. |
 | Headless execution | The tested worker runs without a CAD GUI or display dispatcher. |
+| Complete-service drawing | A coverage table without `missing`, `needs_review`, or `not_tested` rows, including the isometric view, the necessary sections, the border, and the title block (see drawing-delivery.md), plus an accepted identified review. |
+| Manufacturing release | A complete specification: each functional requirement is a source requirement or a recorded user decision. An open requirement prevents this claim. |
 
 Use independent expectations from source observations or permitted verification resources.
 Record the role of each resource.

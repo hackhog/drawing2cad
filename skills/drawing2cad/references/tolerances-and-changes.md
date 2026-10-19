@@ -26,6 +26,29 @@ A fit designation such as `H7` does not supply numerical limits by itself.
 Keep the printed designation. Do not invent a tolerance class or use an unverified table.
 Unclear notation, contradictory bounds, and conflicting units need review.
 
+## Missing and incomplete manufacturing requirements
+
+Record each missing functional requirement as a decision, not as a value from picture geometry.
+Do not infer a tolerance class, a datum system, a material, or a surface requirement from the drawing image or from the model.
+An empty general-tolerance field is a missing requirement. Record it, and do not fill it.
+
+For each missing requirement, record one of these decisions with its reason:
+
+- `user_decision`: a value that the user supplied. Keep it separate from source requirements.
+- `open`: an open review item. The construction can proceed with a reasonable nominal geometry.
+- `not_applicable`: the requirement does not apply to the part, with the reason.
+
+An incomplete specification can support a reconstruction. It cannot support an unqualified manufacturing-release claim.
+Report the open requirements in the final report.
+
+## Geometrical tolerances and datums
+
+Record each source geometrical tolerance frame, datum feature symbol, and theoretically exact dimension with its literal text,
+source view, region, and the affected feature (ISO 1101, ISO 5459, ISO 8015).
+The current part and drawing contracts have no structured tolerance frames, datums, or datum systems.
+Keep these requirements as tolerance records or notes with an open review item. Their coverage row has status `needs_review`.
+Do not invent a datum system or a datum order. Do not convert a frame into free text and report it as a supported tolerance.
+
 ## Store the source requirement
 
 Use part schema 1.3 for nonempty `tolerances`.
