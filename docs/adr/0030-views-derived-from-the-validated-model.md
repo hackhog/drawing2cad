@@ -41,11 +41,16 @@ It does not give drawing geometry.
   - visible edges, and hidden edges (default for orthographic views only),
   - center lines of cylinder axes in the view plane, and center marks of axes along the view direction (not in isometric views),
   - lines, circles, arcs, and ellipses from the exact curve type, with `approximation_error` 0 for an ellipse,
-  - other curves as polylines with a chord tolerance of 0.01 mm. The view records the measured maximum error and the affected primitives.
+  - other curves as polylines with an error of at most 0.01 mm: deflection-controlled sampling (0.005 mm) and a simplification (0.005 mm).
+    The worker measures the error at each sample and at 15 points between each pair of samples. Above 0.01 mm, it keeps all samples.
+    The view records the measured maximum error and the affected primitives.
 - A section removes the material between the viewer and the plane. It gives the cut surfaces as `section` primitives,
   one closed hatching boundary for each cut surface, and the visible edges behind the plane without hidden edges.
   The cutting line is the trace of the plane in the source view. It extends 5 mm past the part outline on both sides.
-- A view has at most 3,000 primitives. The tool result omits geometry when it exceeds 60,000 characters. The JSON artifact `derived-views.json` contains all of it.
+- A view has at most 300 primitives, a curve at most 2,000 points, a cut surface at most 100 boundary primitives, and a section at most 20 cut surfaces,
+  as DrawingSpec 2.0 permits. A view that exceeds a limit fails with `VIEW_TOO_COMPLEX`.
+- When the kept material has more than one piece, the section uses all pieces.
+- The tool result omits geometry when it exceeds 60,000 characters. The JSON artifact `derived-views.json` contains all of it.
 
 ### Binding and stale views
 
@@ -54,6 +59,10 @@ It does not give drawing geometry.
 - A DrawingSpec 2.0 view can refer to a derived view with `derivation`: `derivation_sha256`, `view_id`, `feature_ids`, and `evidence_ids`.
   Before `drawing_validate` and `drawing_render`, the service puts the derived geometry, projection, cutting plane, and hatching into the view.
   The agent supplies the frame, the origin, the scale, the label, and the dimensions. The agent's own primitives follow the derived ones.
+- Each derived view can occur once in a drawing. The drawing can give a derived view another id.
+  The source view of a derived section must also be a derived view of the drawing; the service changes `source_view_id` to its drawing id.
+- The service checks each reference and the total number of derived primitives (at most 3,600) before it copies geometry.
+  An invalid reference fails with `derivation_invalid`.
 - A reference to another derivation, or a derivation of another revision or build, fails with `derivation_stale`.
   A view that supplies its own projection, cutting plane, or hatching fails with `derivation_mismatch`.
 - `drawing_read` reports the stored derivation with status `current` or `stale`.

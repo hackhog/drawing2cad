@@ -133,3 +133,51 @@ def test_derived_view_must_not_supply_derived_items(domain):
                                          "matrix": [[1, 0, 0], [0, 1, 0]]}
     report = service.call(CTX, "drawing_validate", {"run_id": "plate", "expected_revision": 1, "drawing_spec": drawing})
     assert report["defects"][0]["code"] == "derivation_mismatch"
+
+
+def expansion_case():
+    from drawing2cad_mcp import derived_views
+
+    state = {"revision": 1, "description_sha256": "a" * 64,
+             "build": {"status": "pass", "description_revision": 1, "description_sha256": "a" * 64, "candidate_sha256": "b" * 64}}
+    line = {"id": "top_v1", "type": "line", "start": [0, 0], "end": [10, 0], "style": "visible"}
+    section_line = {"id": "cut_s1", "type": "line", "start": [0, 0], "end": [10, 0], "style": "section"}
+    record = {"binding": derived_views.binding(state), "derivation_sha256": "c" * 64,
+              "views": [{"id": "top", "kind": "orthographic", "projection": {}, "geometry": [line], "hatching": [], "cutting_plane": None},
+                        {"id": "cut", "kind": "section", "projection": {}, "geometry": [section_line],
+                         "hatching": [{"boundary_primitive_ids": ["cut_s1"]}],
+                         "cutting_plane": {"letter": "A", "origin": [0, 0, 0], "normal": [0, 1, 0], "viewing_side": "positive_normal",
+                                           "source_view_id": "top", "line": [[0, 0], [10, 0]]}}]}
+
+    def reference(view_id, **changes):
+        return {"derivation_sha256": "c" * 64, "view_id": view_id, "feature_ids": ["base"], "evidence_ids": ["drawing"], **changes}
+
+    spec = {"schema_version": "2.0", "views": [{"id": "sheet_top", "kind": "orthographic", "derivation": reference("top")},
+                                               {"id": "section_a", "kind": "section", "derivation": reference("cut")}]}
+    return derived_views, state, record, spec, reference
+
+
+def test_expansion_renames_the_source_view_of_a_derived_section():
+    derived_views, state, record, spec, _ = expansion_case()
+    expanded, failure = derived_views.expand(spec, record, state)
+    assert failure is None
+    assert expanded["views"][1]["cutting_plane"]["source_view_id"] == "sheet_top"
+    assert expanded["views"][1]["cutting_plane"]["evidence_ids"] == ["drawing"]
+    without_source = {**spec, "views": spec["views"][1:]}
+    assert derived_views.expand(without_source, record, state)[1]["defects"][0]["code"] == "derivation_source_missing"
+
+
+@pytest.mark.parametrize("change", [{"view_id": []}, {"view_id": {}}, {"feature_ids": "base"}, {"extra": 1}])
+def test_malformed_references_fail_without_an_exception(change):
+    derived_views, state, record, spec, reference = expansion_case()
+    spec["views"][0]["derivation"] = reference("top", **change) if "extra" in change else {**reference("top"), **change}
+    assert derived_views.expand(spec, record, state)[1]["defects"][0]["code"] == "derivation_invalid"
+
+
+def test_repeated_references_and_large_expansions_fail_before_copying(monkeypatch):
+    derived_views, state, record, spec, reference = expansion_case()
+    repeated = {**spec, "views": [{"id": f"v{i}", "kind": "orthographic", "derivation": reference("top")} for i in range(3)]}
+    assert derived_views.expand(repeated, record, state)[1]["defects"][0]["code"] == "derivation_invalid"
+    monkeypatch.setattr(derived_views, "MAX_EXPANDED_PRIMITIVES", 1)
+    monkeypatch.setattr(derived_views, "deepcopy", lambda value: pytest.fail("The expansion copied before the limit check."))
+    assert derived_views.expand(spec, record, state)[1]["defects"][0]["code"] == "derivation_invalid"

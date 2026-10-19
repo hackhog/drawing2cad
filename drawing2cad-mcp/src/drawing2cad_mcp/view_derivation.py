@@ -17,7 +17,12 @@ from .derived_views import MAX_PRIMITIVES_PER_VIEW
 MIN_EDGE_MM = 1e-6
 # Chord tolerance for curves that are not lines, circles, or ellipses.
 CURVE_TOLERANCE_MM = 0.01
-MAX_CURVE_SAMPLES = 400
+MAX_CURVE_SAMPLES = 2000
+# Points between two polyline points at which the error is measured again.
+VERIFY_STEPS = 16
+# Limits of DrawingSpec 2.0: boundary primitives of one hatching, and hatchings of one view.
+MAX_HATCH_BOUNDARY = 100
+MAX_HATCHINGS = 20
 # Center lines extend past the feature by this length (ISO 128-2 recommends a short extension).
 CENTER_EXTENSION_MM = 2.0
 # The cutting line extends past the part outline by this length.
@@ -138,27 +143,42 @@ class _Converter:
                 return [self.add({"type": "ellipse", "center": _round(center), "major_axis": _round(major), "ratio": round(min(ratio, 1.0), 9),
                                   "start_parameter": round(start_parameter, 6), "end_parameter": round(end_parameter, 6),
                                   "approximation_error": 0.0, "style": style}, prefix)]
-        return self._sampled(value, first, last, style, prefix, adaptor)
+        return self._sampled(value, first, last, style, prefix, adaptor, scale)
 
-    def _sampled(self, value, first, last, style, prefix, adaptor) -> list[dict]:
-        from OCP.GCPnts import GCPnts_AbscissaPoint
+    def _sampled(self, value, first, last, style, prefix, adaptor, scale) -> list[dict]:
+        """Approximate a curve with lines. The chord deflection is at most CURVE_TOLERANCE_MM in view mm.
 
-        length = GCPnts_AbscissaPoint.Length_s(adaptor)
-        count = max(8, min(MAX_CURVE_SAMPLES, math.ceil(length / 0.05)))
-        dense = [value(first + (last - first) * i / count) for i in range(count + 1)]
-        kept = _simplify(dense, CURVE_TOLERANCE_MM)
+        The error is measured again between the points, so the report does not depend on the sampling alone.
+        """
+        from OCP.GCPnts import GCPnts_UniformDeflection
+
+        # Half of the tolerance is for the sampling and half for the simplification. The error is then measured.
+        sampler = GCPnts_UniformDeflection(adaptor, CURVE_TOLERANCE_MM / 2 / max(scale, 1e-9), first, last)
+        if not sampler.IsDone() or sampler.NbPoints() < 2:
+            raise ValueError(f"View {self.view_id}: a curve cannot be approximated.")
+        if sampler.NbPoints() > MAX_CURVE_SAMPLES:
+            raise _TooComplex(self.view_id)
+        parameters = [sampler.Parameter(i) for i in range(1, sampler.NbPoints() + 1)]
+        points = [value(t) for t in parameters]
+        kept = _simplify(points, CURVE_TOLERANCE_MM / 2)
+        checks = points + [value(parameters[i] + (parameters[i + 1] - parameters[i]) * step / VERIFY_STEPS)
+                           for i in range(len(parameters) - 1) for step in range(1, VERIFY_STEPS)]
+        error = max(_polyline_distance(point, kept) for point in checks)
+        if error > CURVE_TOLERANCE_MM:
+            kept = points
+            error = max(_polyline_distance(point, kept) for point in checks)
         items = [item for item in (self.line(kept[i], kept[i + 1], style, prefix) for i in range(len(kept) - 1)) if item]
         if items:
-            error = max(_polyline_distance(point, kept) for point in dense)
             self.approximations.append({"primitive_ids": [item["id"] for item in items], "max_error_mm": round(error, 6),
-                                        "method": "polyline"})
+                                        "tolerance_mm": CURVE_TOLERANCE_MM, "method": "polyline"})
         return items
 
 
 class _TooComplex(Exception):
-    def __init__(self, view_id):
+    def __init__(self, view_id, reason=None):
         super().__init__(view_id)
         self.view_id = view_id
+        self.reason = reason or f"The view exceeds {MAX_PRIMITIVES_PER_VIEW} primitives or {MAX_CURVE_SAMPLES} points of one curve." 
 
 
 def _segment_distance(point, a, b) -> float:
@@ -309,12 +329,15 @@ def _center_lines(shape, projector: _Projector, converter: _Converter) -> None:
 
 def _section(shape, view: dict, projector: _Projector, converter: _Converter) -> tuple[Any, list[dict]]:
     """Remove the material between the viewer and the cutting plane. Return the kept part and the hatching."""
-    from build123d import Keep, Plane
+    from build123d import Compound, Keep, Plane
     from OCP.BRepAdaptor import BRepAdaptor_Curve
 
     plane = view["cutting_plane"]
     origin = [float(c) for c in plane["origin"]]
     kept = shape.split(Plane(origin=tuple(origin), z_dir=tuple(projector.view)), keep=Keep.BOTTOM)
+    if isinstance(kept, (list, tuple)):
+        # The kept half can have more than one piece, for example the two legs of a U-shaped part.
+        kept = Compound(list(kept)) if kept else None
     if kept is None or not kept.faces():
         raise ValueError(f"View {view['id']}: the cutting plane does not cut the part.")
     hatching = []
@@ -331,8 +354,12 @@ def _section(shape, view: dict, projector: _Projector, converter: _Converter) ->
         for edge in face.edges():
             ids += [item["id"] for item in converter.edge(BRepAdaptor_Curve(edge.wrapped), projector.point, projector.factor,
                                                          "section", "s", planar_3d=True)]
+        if len(ids) > MAX_HATCH_BOUNDARY:
+            raise _TooComplex(view["id"], f"A cut surface has more than {MAX_HATCH_BOUNDARY} boundary primitives.")
         if ids:
             hatching.append({"boundary_primitive_ids": ids, "pattern": "iso_lines", "angle": 45.0, "spacing": 3.0})
+    if len(hatching) > MAX_HATCHINGS:
+        raise _TooComplex(view["id"], f"The section has more than {MAX_HATCHINGS} cut surfaces.")
     if not hatching:
         raise ValueError(f"View {view['id']}: the cutting plane gives no cut surface.")
     return kept, hatching
@@ -384,8 +411,7 @@ def derive(step_path: Path, views: list[dict]) -> dict[str, Any]:
                             "counts": {style: sum(1 for item in converter.primitives if item["style"] == style)
                                        for style in ("visible", "hidden", "center", "section")}})
     except _TooComplex as error:
-        return {"status": "fail", "error": {"code": "VIEW_TOO_COMPLEX",
-                                            "message": f"View {error.view_id} exceeds {MAX_PRIMITIVES_PER_VIEW} primitives."}}
+        return {"status": "fail", "error": {"code": "VIEW_TOO_COMPLEX", "message": f"View {error.view_id}: {error.reason}"}}
     except ValueError as error:
         return {"status": "fail", "error": {"code": "INVALID_VIEW", "message": str(error)}}
     return {"status": "pass", "views": results}

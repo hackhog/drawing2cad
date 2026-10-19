@@ -12,14 +12,17 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, ValidationError
 
-from .drawing_contract_v2 import Projection, expected_matrix, projection_defects
+from .drawing_contract_v2 import Derivation, Projection, expected_matrix, projection_defects
 from .part_schema import ClosedModel, Identifier, Number
 
 Vector3 = tuple[Number, Number, Number]
 MAX_VIEWS = 8
-MAX_PRIMITIVES_PER_VIEW = 3000
+# DrawingSpec 2.0 permits 300 primitives in a view.
+MAX_PRIMITIVES_PER_VIEW = 300
 # The tool result keeps the geometry of each view while the result stays below this size. The artifact has all of it.
 MAX_RESULT_GEOMETRY_CHARS = 60000
+# Derived primitives that one drawing can contain after expansion. DrawingSpec 2.0 has at most 12 views.
+MAX_EXPANDED_PRIMITIVES = 3600
 
 
 class SectionRequest(ClosedModel):
@@ -150,8 +153,25 @@ def expand(spec: Any, record: dict | None, state: dict) -> tuple[Any, dict | Non
         return spec, None
     if spec.get("schema_version") != "2.0":
         return spec, _failure(spec, "drawing", "schema_version", "A view with derivation needs schema_version 2.0.")
-    expanded = deepcopy(spec)
     views = {view["id"]: view for view in record["views"]} if record else {}
+    # Check each reference and the expanded size before any geometry is copied.
+    names: dict[str, str] = {}
+    total = 0
+    for view in references:
+        identifier = str(view.get("id"))[:64]
+        try:
+            reference = Derivation.model_validate(view["derivation"])
+        except ValidationError:
+            return spec, _failure(spec, identifier, "derivation_invalid",
+                                  "derivation needs derivation_sha256, view_id, feature_ids, and evidence_ids of the schema.")
+        if reference.view_id in names:
+            return spec, _failure(spec, identifier, "derivation_invalid", "Each derived view can occur only once in a drawing.")
+        names[reference.view_id] = identifier
+        total += len(views.get(reference.view_id, {}).get("geometry", []))
+    if total > MAX_EXPANDED_PRIMITIVES:
+        return spec, _failure(spec, "drawing", "derivation_invalid",
+                              f"The derived views of this drawing exceed {MAX_EXPANDED_PRIMITIVES} primitives.")
+    expanded = deepcopy(spec)
     for view in expanded["views"]:
         reference = view.get("derivation") if isinstance(view, dict) else None
         if not isinstance(reference, dict):
@@ -180,7 +200,12 @@ def expand(spec: Any, record: dict | None, state: dict) -> tuple[Any, dict | Non
         if draft.get("hatching"):
             view["hatching"] = draft["hatching"]
         if draft.get("cutting_plane"):
-            view["cutting_plane"] = {**draft["cutting_plane"], "evidence_ids": evidence}
+            source = names.get(draft["cutting_plane"]["source_view_id"])
+            if source is None:
+                return spec, _failure(spec, identifier, "derivation_source_missing",
+                                      "The source view of this section must also be a derived view of this drawing.")
+            # The drawing can give the derived source view another id.
+            view["cutting_plane"] = {**draft["cutting_plane"], "source_view_id": source, "evidence_ids": evidence}
     return expanded, None
 
 

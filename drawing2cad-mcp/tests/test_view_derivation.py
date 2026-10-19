@@ -205,3 +205,42 @@ def test_derivation_runs_in_the_verified_sandbox(tmp_path):
     assert result["status"] == "pass", result
     assert result["sandbox"]
     assert [view["id"] for view in result["views"]] == ["top", "iso"]
+
+
+def test_curve_polylines_stay_within_their_tolerance(tmp_path):
+    description = flange()
+    # A radial hole through the hub. Its edges on the hub cylinder are not lines, circles, or ellipses.
+    description["features"].append({"id": "radial", "type": "hole", "position": [25, 0, 22], "diameter": 8, "extent": "through",
+                                     "axis": "-X", "evidence_ids": ["drawing"]})
+    view = derive(candidate(description, tmp_path / "model"), normalize_requests([FRONT]))["views"][0]
+    assert view["approximations"]
+    assert all(item["max_error_mm"] <= item["tolerance_mm"] + 1e-6 for item in view["approximations"])
+    ids = {item["id"] for item in view["geometry"]}
+    assert all(set(item["primitive_ids"]) <= ids for item in view["approximations"])
+
+
+def test_section_with_two_kept_pieces(tmp_path):
+    """A U-shaped part cut above its bridge leaves two legs."""
+    description = sample_description()
+    description["parameters"][0]["value"] = 40
+    description["features"][0].update(width=10, height=20)
+    description["features"].append({"id": "slot", "type": "pocket", "profile": {"shape": "box", "length": 20, "width": 12, "depth": 15},
+                                     "origin": [10, 11, 20], "axis": "-Z", "evidence_ids": ["drawing"]})
+    description["measurements"][0]["expected"] = [40, 10, 20]
+    section = {"id": "cut", "kind": "section", "up": [0, 1, 0],
+               "cutting_plane": {"letter": "B", "origin": [0, 0, 12], "normal": [0, 0, -1], "viewing_side": "positive_normal",
+                                 "source_view_id": "front"}}
+    result = derive(candidate(description, tmp_path / "model"), normalize_requests([FRONT, section]))
+    assert result["status"] == "pass", result
+    assert len(result["views"][1]["hatching"]) == 2
+
+
+def test_hatching_limits_of_the_contract(tmp_path, monkeypatch):
+    from drawing2cad_mcp import view_derivation
+
+    monkeypatch.setattr(view_derivation, "MAX_HATCH_BOUNDARY", 2)
+    section = {"id": "section_a", "kind": "section", "up": [0, 0, 1],
+               "cutting_plane": {"letter": "A", "origin": [0, 0, 0], "normal": [0, -1, 0], "viewing_side": "negative_normal",
+                                 "source_view_id": "top"}}
+    result = derive(candidate(flange(), tmp_path / "model"), normalize_requests([TOP, section]))
+    assert result["status"] == "fail" and result["error"]["code"] == "VIEW_TOO_COMPLEX"
