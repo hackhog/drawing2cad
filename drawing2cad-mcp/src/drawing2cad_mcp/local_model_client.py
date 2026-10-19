@@ -32,6 +32,8 @@ ALLOWED_TOOLS = frozenset({
     # The domain profile adds drawing delivery and run notes. The local-path profile does not list these tools.
     "drawing_schema", "drawing_validate", "drawing_render", "drawing_read", "drawing_review", "artifact_preview",
     "notes_read", "notes_update",
+    # The projection check reads the validated build and one source. It registers artifacts but keeps the part and release.
+    "model_projection_check",
     # User decisions on review flags. Only a human reviewer records them, through an adapter.
     "source_flags_read",
 })
@@ -161,7 +163,7 @@ def authorize_call(name, arguments, plan, available):
     if not isinstance(arguments, dict):
         raise ValueError("Tool arguments must be an object.")
     scope = source_scope(plan)
-    if name.startswith("pdf_") or name == "drawing_extract":
+    if name.startswith("pdf_") or name in {"drawing_extract", "model_projection_check"}:
         key = "source_id" if "source_id" in scope else "path"
         if arguments.get(key) != scope[key]:
             raise ValueError("The PDF source differs from the authorized source.")
