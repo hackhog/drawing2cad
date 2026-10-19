@@ -10,10 +10,10 @@ export interface WebApi {
   /** Model profiles of the server, without keys. */
   agentProfiles(): Promise<AgentProfiles>;
   /** Select the profile for new runs; null selects no agent. Queued and running runs keep their profile. */
-  selectAgentProfile(name: string | null): Promise<AgentProfiles>;
+  selectAgentProfile(name: string | null, revision?: number): Promise<AgentProfiles>;
   /** Create or change a profile. The key goes to the server and does not come back. */
   saveAgentProfile(name: string, profile: AgentProfileInput): Promise<AgentProfiles>;
-  deleteAgentProfile(name: string): Promise<AgentProfiles>;
+  deleteAgentProfile(name: string, revision?: number | null): Promise<AgentProfiles>;
   /** Send one short request to the endpoint of a profile. It uses a few tokens. */
   checkAgentProfile(name: string): Promise<ConnectionCheck>;
   listSources(): Promise<Source[]>;

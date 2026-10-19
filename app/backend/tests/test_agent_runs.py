@@ -22,6 +22,7 @@ from drawing_demo.agent import runner as runner_module
 from drawing_demo.agent.mapping import artifact_view, part_view, phase_for, review_view, sheet_region
 
 SHA = "a" * 64
+TEST_MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="  # Base64 of 32 ASCII bytes, for tests only.
 
 
 def description(source_id="drawing", source_sha256=SHA):
@@ -122,6 +123,9 @@ def test_only_delivered_domain_artifacts_are_shown(role, media_type, expected):
 @pytest.fixture
 def environment(tmp_path, monkeypatch):
     monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
+    # A fixed test master key (ADR 0028). It encrypts only test keys in the temporary data directory.
+    monkeypatch.setenv("DRAWING2CAD_SECRET_KEY", TEST_MASTER_KEY)
+    monkeypatch.delenv("DRAWING2CAD_SECRET_KEY_FILE", raising=False)
     skill = tmp_path / "SKILL.md"
     skill.write_text("skill")
     (tmp_path / "references").mkdir()
@@ -166,7 +170,7 @@ def test_a_run_is_queued_with_a_model_endpoint(environment):
         run = res.json()
         assert run["phase"] == "queued" and run["part"] is None and submitted == [run["run_id"]]
         assert run["agent"] == {"model": "m", "profile": "Standard", "reasoning_effort": None, "skill_version": None,
-                                "mcp_version": api.mcp_version}
+                                "mcp_version": api.mcp_version, "limits": runner_module.LIMITS}
         assert [r["run_id"] for r in client.get(f"/api/sources/{source['source_id']}/runs").json()] == [run["run_id"]]
         assert client.get(f"/api/runs/{run['run_id']}").json()["job"]["status"] == "queued"
 
@@ -487,14 +491,18 @@ def test_ui_profiles_are_normalized_keep_their_key_and_persist(environment, tmp_
         profiles = {p["name"]: p for p in res.json()["profiles"]}
         assert res.json()["active"] == "Foundry"
         assert profiles["Foundry"]["base_url"] == "https://res.cognitiveservices.azure.com/openai/v1"
+        assert profiles["OpenRouter"].pop("revision") > profiles["Foundry"]["revision"]
         assert profiles["OpenRouter"] == {"name": "OpenRouter", "provider": "openrouter", "origin": "ui",
                                           "base_url": "https://openrouter.ai/api/v1", "model": "vendor/n", "api": "chat",
-                                          "reasoning_effort": None, "key_set": True}
+                                          "reasoning_effort": None, "key_set": True, "key_locked": False, "limits": {}}
         assert client.put("/api/agent/active", json={"name": "OpenRouter"}).status_code == 200
         assert client.get("/api/capabilities").json()["agent_model"] == "vendor/n"
-    stored = tmp_path / "data" / "agent-profiles.json"
+    stored = tmp_path / "data" / "config.sqlite"
     if os.name == "posix":  # Windows has no POSIX file modes. The backend runs in its Linux container.
         assert stored.stat().st_mode & 0o077 == 0
+    # The database and its write-ahead log contain no key in plain text.
+    for path in stored.parent.glob("config.sqlite*"):
+        assert b"or-secret" not in path.read_bytes() and b"azure-secret" not in path.read_bytes()
     with TestClient(api.create_app()) as client:
         assert client.get("/api/agent/profiles").json()["active"] == "OpenRouter"
         runner = client.app.state.services.runner

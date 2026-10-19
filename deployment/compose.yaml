@@ -11,6 +11,8 @@ services:
     image: ghcr.io/hackhog/drawing2cad-backend:${DRAWING2CAD_VERSION:-latest}
     # Only the frontend can reach this API through the Compose network.
     # Optional model endpoint for agent runs (ADR 0018). Without .env, the stack runs; runs show as unavailable.
+    # The master key for API keys from the web UI (DRAWING2CAD_SECRET_KEY, ADR 0028) also comes from .env.
+    # For a Docker secret, mount the file and set DRAWING2CAD_SECRET_KEY_FILE instead.
     env_file:
       - path: ../.env
         required: false

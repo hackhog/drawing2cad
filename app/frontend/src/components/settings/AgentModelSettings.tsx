@@ -1,7 +1,8 @@
 // Settings section "AI model": select the profile for new runs, and create, change, check, or delete profiles.
-// A key goes to the server only when a profile is saved. The server never sends it back, and the browser does not store it.
+// A key goes to the server only when a profile is saved. The server encrypts it, never sends it back, and the browser
+// does not store it. Each change sends the revision that the browser read, so a stale change fails (ADR 0028).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, CircleCheck, CircleX, Pencil, Plus, Plug, Trash2 } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleX, LockKeyhole, Pencil, Plus, Plug, Trash2 } from "lucide-react";
 import { useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useApi } from "@/lib/apiContext";
-import type { AgentApi, AgentProfile, AgentProfileInput, AgentProfiles, AgentProvider, ConnectionCheck } from "@/lib/contract";
+import type {
+  AgentApi, AgentLimitName, AgentLimits, AgentProfile, AgentProfileInput, AgentProfiles, AgentProvider, ConnectionCheck,
+} from "@/lib/contract";
 import { recoveryFor } from "@/lib/errors";
 import { agentProfilesQuery, capabilitiesQuery, keys } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -45,6 +48,10 @@ const PROVIDERS: Record<AgentProvider, ProviderText> = {
   },
 };
 const API_LABEL: Record<AgentApi, string> = { chat: "Chat Completions", responses: "Responses API" };
+const LIMIT_LABEL: Record<AgentLimitName, string> = {
+  step_budget: "Tool requests", max_turns: "Model turns", model_timeout_seconds: "Model call (s)",
+  call_timeout_seconds: "Tool call (s)", total_timeout_seconds: "Run (s)", max_tool_text_chars: "Tool result (characters)",
+};
 const EFFORTS = ["", "none", "minimal", "low", "medium", "high"];
 const NO_AGENT = "Local, no AI";
 const ROW = "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2.5 has-[:checked]:border-primary has-[:checked]:bg-highlight-bg";
@@ -65,12 +72,12 @@ export function AgentModelSettings() {
     await queryClient.invalidateQueries({ queryKey: keys.capabilities });
   };
   const select = useMutation({
-    mutationFn: (name: string | null) => api.selectAgentProfile(name),
+    mutationFn: (name: string | null) => api.selectAgentProfile(name, profiles.data?.active_revision),
     onSuccess: apply,
     onError: (err) => toast.error("Model profile not selected", { description: `${err.message} ${recoveryFor(err)}` }),
   });
   const remove = useMutation({
-    mutationFn: (name: string) => api.deleteAgentProfile(name),
+    mutationFn: (profile: AgentProfile) => api.deleteAgentProfile(profile.name, profile.revision),
     onSuccess: apply,
     onError: (err) => toast.error("Profile not deleted", { description: `${err.message} ${recoveryFor(err)}` }),
   });
@@ -80,13 +87,16 @@ export function AgentModelSettings() {
   const data = profiles.data;
   const active = select.isPending ? select.variables : data?.active ?? null;
   const edited = editing?.name ? data?.profiles.find((p) => p.name === editing.name) : undefined;
+  // Older servers do not report the master key; they store keys without it.
+  const canStoreKeys = data?.master_key_set !== false;
 
   return (
     <div className="grid max-w-3xl gap-3">
       <Card className="gap-3 rounded-xl px-4 py-3.5 shadow-none">
         <CardHeader className="flex flex-row items-center justify-between px-0">
           <CardTitle className="text-sm font-bold">Profile for new runs</CardTitle>
-          <Button size="sm" variant="outline" className="h-7" disabled={!data || editing !== null} onClick={() => setEditing({ name: null })}>
+          <Button size="sm" variant="outline" className="h-7" disabled={!data || editing !== null || !canStoreKeys}
+            title={canStoreKeys ? undefined : "The server has no master key for API keys"} onClick={() => setEditing({ name: null })}>
             <Plus className="size-3.5" />Add profile
           </Button>
         </CardHeader>
@@ -96,7 +106,7 @@ export function AgentModelSettings() {
             {data?.profiles.map((profile) => (
               <ProfileRow key={profile.name} profile={profile} checked={active === profile.name}
                 onSelect={() => select.mutate(profile.name)} onEdit={() => setEditing({ name: profile.name })}
-                onDelete={() => remove.mutate(profile.name)} editing={editing !== null} />
+                onDelete={() => remove.mutate(profile)} editing={editing !== null} />
             ))}
             <label className={ROW}>
               <input type="radio" name="agent-profile" className="accent-primary" checked={!!data && active === null}
@@ -106,13 +116,20 @@ export function AgentModelSettings() {
             </label>
           </fieldset>
           <p className="mt-2.5 text-xs text-muted-foreground">
-            Queued and running runs keep their profile. Keys stay on the server and are never shown again.
+            Queued and running runs keep their profile. Keys stay encrypted on the server and are never shown again.
           </p>
+          {!canStoreKeys && (
+            <p role="status" className="mt-1.5 text-xs text-flag">
+              The server has no master key, so it cannot store API keys from this page. Profiles from the server
+              configuration still work. Set DRAWING2CAD_SECRET_KEY_FILE or DRAWING2CAD_SECRET_KEY on the server and restart it.
+            </p>
+          )}
         </CardContent>
       </Card>
 
       {editing && (
         <ProfileForm key={editing.name ?? "new"} profile={edited} taken={data?.profiles.map((p) => p.name) ?? []}
+          limits={data?.limits}
           onDone={async (result) => { if (result) await apply(result); setEditing(null); }} />
       )}
     </div>
@@ -134,9 +151,16 @@ function ProfileRow({ profile, checked, editing, onSelect, onEdit, onDelete }: {
             {profile.name}
             <Badge variant="outline" className="text-[10.5px] font-medium">{PROVIDERS[profile.provider].label}</Badge>
             {profile.origin === "env" && <Badge variant="secondary" className="text-[10.5px] font-medium" title="From the server configuration (.env), cannot be changed here">Server</Badge>}
+            {profile.key_locked && (
+              <Badge variant="outline" className="border-flag text-[10.5px] font-medium text-flag"
+                title="The server cannot decrypt the stored key, for example after a change of its master key. Enter the key again.">
+                <LockKeyhole className="size-3" />Key locked
+              </Badge>
+            )}
           </span>
           <small className="block truncate font-mono text-[11px] text-muted-foreground" title={profile.base_url}>
             {profile.model} · {API_LABEL[profile.api]}{profile.reasoning_effort ? ` · reasoning ${profile.reasoning_effort}` : ""}
+            {Object.keys(profile.limits ?? {}).length > 0 ? " · own limits" : ""}
           </small>
         </span>
         <span className="flex gap-1">
@@ -191,14 +215,16 @@ function Select({ className, ...props }: ComponentProps<"select">) {
   );
 }
 
-function ProfileForm({ profile, taken, onDone }: {
-  profile?: AgentProfile; taken: string[]; onDone: (result: AgentProfiles | null) => Promise<void>;
+function ProfileForm({ profile, taken, limits, onDone }: {
+  profile?: AgentProfile; taken: string[]; limits?: AgentProfiles["limits"]; onDone: (result: AgentProfiles | null) => Promise<void>;
 }) {
   const api = useApi();
   const [name, setName] = useState(profile?.name ?? "");
   const [form, setForm] = useState<AgentProfileInput>({
     provider: profile?.provider ?? "openrouter", endpoint: profile?.provider === "openrouter" ? "" : profile?.base_url ?? "",
     model: profile?.model ?? "", api: profile?.api ?? "chat", api_key: "", reasoning_effort: profile?.reasoning_effort ?? null,
+    // A new profile sends revision 0, so a profile with the same name from another tab is a conflict, not overwritten.
+    limits: { ...profile?.limits }, revision: profile ? profile.revision ?? null : 0,
   });
   const save = useMutation({
     mutationFn: () => api.saveAgentProfile(name.trim(), form),
@@ -245,9 +271,9 @@ function ProfileForm({ profile, taken, onDone }: {
                 onChange={(e) => set({ endpoint: e.target.value })} />
             </Field>
           )}
-          <Field id="profile-key" label="API-Key" hint={text.key}>
-            <Input id="profile-key" type="password" value={form.api_key} required={!profile?.key_set} autoComplete="new-password"
-              placeholder={profile?.key_set ? "Saved – leave empty to keep it" : ""}
+          <Field id="profile-key" label="API-Key" hint={profile?.key_locked ? "The stored key is locked. Enter it again." : text.key}>
+            <Input id="profile-key" type="password" value={form.api_key} required={!profile?.key_set || !!profile.key_locked}
+              autoComplete="new-password" placeholder={profile?.key_set && !profile.key_locked ? "Saved – leave empty to keep it" : ""}
               onChange={(e) => set({ api_key: e.target.value })} />
           </Field>
           <div className="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
@@ -265,6 +291,7 @@ function ProfileForm({ profile, taken, onDone }: {
               </Select>
             </Field>
           </div>
+          {limits && <LimitFields limits={limits} value={form.limits ?? {}} onChange={(value) => set({ limits: value })} />}
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={save.isPending || duplicate}>{save.isPending ? "Saving …" : "Save"}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => void onDone(null)}>Cancel</Button>
@@ -272,5 +299,28 @@ function ProfileForm({ profile, taken, onDone }: {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function LimitFields({ limits, value, onChange }: {
+  limits: NonNullable<AgentProfiles["limits"]>; value: AgentLimits; onChange: (value: AgentLimits) => void;
+}) {
+  const names = Object.keys(LIMIT_LABEL) as AgentLimitName[];
+  return (
+    <details className="rounded-lg border px-3 py-2" open={names.some((name) => value[name] != null)}>
+      <summary className="cursor-pointer text-xs font-semibold">Run limits</summary>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">
+        Empty uses the server default. A small local model can need fewer tool requests and longer model calls.
+      </p>
+      <div className="mt-2 grid grid-cols-3 gap-3 max-[700px]:grid-cols-1">
+        {names.map((name) => (
+          <Field key={name} id={`limit-${name}`} label={LIMIT_LABEL[name]} hint={`Default ${limits.defaults[name]}, max. ${limits.maximums[name]}`}>
+            <Input id={`limit-${name}`} type="number" inputMode="numeric" min={1} max={limits.maximums[name]} step={1}
+              value={value[name] ?? ""} placeholder={String(limits.defaults[name])}
+              onChange={(e) => onChange({ ...value, [name]: e.target.value === "" ? null : Number(e.target.value) })} />
+          </Field>
+        ))}
+      </div>
+    </details>
   );
 }

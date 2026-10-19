@@ -4,7 +4,7 @@ Date: 2026-10-19
 
 ## Status
 
-Accepted. Replaces the storage decision of [ADR 0020](0020-agent-model-profiles-selected-in-the-web-ui.md) (`agent-profiles.json`). The other decisions of ADR 0020 stay valid. Not implemented yet.
+Accepted. Replaces the storage decision of [ADR 0020](0020-agent-model-profiles-selected-in-the-web-ui.md) (`agent-profiles.json`). The other decisions of ADR 0020 stay valid. Implemented in the web backend (`app/backend/src/drawing_demo/agent/config_store.py`, `profiles.py`).
 
 ## Context
 
@@ -38,7 +38,9 @@ schema_migrations(version, applied_at)
 
 - The backend uses the Python `sqlite3` module in WAL mode with one writer.
 - Each change states the expected revision of the profile or setting, as the run notes do. A stale revision fails with a conflict error, so two browser tabs cannot overwrite each other.
-- Versioned migrations in the backend create and change the schema at start.
+- The revision of a profile is the ID of its last audit event, so a revision never repeats, also after a profile is deleted and created again. A new profile is created with expected revision 0, so a second tab cannot overwrite it. A stale revision is a conflict also when the profile was deleted.
+- When the first profile becomes active by default, or the active profile is deleted, the backend stores the new selection, so its revision changes. It stores it only if no other selection was stored since it read the selection.
+- Versioned migrations in the backend create and change the schema at start. Each migration reads the applied versions under the write lock, so two starts cannot apply it twice.
 - `config_events` records who changed which profile or setting, and when. It never records a key or another value.
 
 ### Encrypted API keys
@@ -46,16 +48,21 @@ schema_migrations(version, applied_at)
 - The backend encrypts each API key from the web UI with AES-256-GCM (`cryptography`, which the backend lock file already contains) before it writes the key to the database.
 - Each key has a new random 96-bit nonce. The associated data is the profile ID and the field name, so a ciphertext cannot be moved to another profile.
 - The master key is 32 random bytes, Base64-encoded. It comes from `DRAWING2CAD_SECRET_KEY_FILE` (for example a Docker secret under `/run/secrets/`) or from `DRAWING2CAD_SECRET_KEY`. It is never in the database, in the data volume, in the image, or in a log.
-- `key_version` identifies the master key. A rotation command decrypts each key with the old master key and encrypts it with the new one in one transaction.
-- The backend decrypts a key only for the model call of a run or for the connection check. It does not keep decrypted keys in a log, a trace, a run record, or an API response. A response shows `key_set` only, as before.
+- `key_version` identifies the master key. A rotation command decrypts each key with the old master key and encrypts it with the new one in one transaction. It records the new master key version, and a backend that still has the former master key then saves no new key until it restarts.
+- After the loss of a master key, the command `forget-keys` removes all stored keys and adopts a new master key in one transaction. Only a backend with the new master key can then save keys. Users enter the keys again.
+- The backend decrypts a key only for the model call of a run or for the connection check. Lists, the active selection, the capabilities, and the limits decrypt no key; they compare `key_version` with the current master key. It does not keep decrypted keys in a log, a trace, a run record, or an API response. A response shows `key_set` only, as before.
+- A run reads its endpoint and its limits in one read of the store, so a concurrent change cannot mix two states.
 - Without a master key, the web UI cannot save a profile with a key. The API returns an actionable error. Profiles from the environment still work.
-- If the master key does not decrypt a stored key (wrong or lost master key), the profile shows `key_locked`. A run with that profile fails at start with an actionable error. The user enters the key again.
+- If the master key does not decrypt a stored key (wrong or lost master key), the profile shows `key_locked`. A run with that profile fails at start with an actionable error (`PROFILE_KEY_LOCKED`). The user enters the key again.
+- The profile view reports `master_key_set`, so the web UI can tell users that keys cannot be saved.
+- `key_version` is a short SHA-256 value of the master key. It identifies the key and does not disclose it.
 
 ### Run limits for each profile
 
 - A profile can set `step_budget`, `max_turns`, `model_timeout_seconds`, `call_timeout_seconds`, `total_timeout_seconds`, and `max_tool_text_chars`.
 - A value that a profile does not set uses the server default. The defaults are the current values of `runner.py`.
-- The deployment configuration sets the maximum of each limit. The API rejects a value above the maximum or below 1.
+- The deployment configuration sets the maximum of each limit with `DRAWING2CAD_RUN_MAX_<LIMIT>`. The API rejects a value above the maximum or below 1.
+- An environment profile reads its limits from `DRAWING2CAD_AGENT[_<NAME>]_<LIMIT>`, for example `DRAWING2CAD_AGENT_LITELLM_STEP_BUDGET`. An invalid value stops the start.
 - A run records the limits that it used, next to the profile name, the model, and the reasoning effort.
 
 ### No migration

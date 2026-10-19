@@ -11,9 +11,9 @@ const id = encodeURIComponent;
 export class HttpApi implements WebApi {
   capabilities(): Promise<Capabilities> { return request("/api/capabilities"); }
   agentProfiles(): Promise<AgentProfiles> { return request("/api/agent/profiles"); }
-  selectAgentProfile(name: string | null): Promise<AgentProfiles> {
+  selectAgentProfile(name: string | null, revision?: number): Promise<AgentProfiles> {
     return request("/api/agent/active", {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, revision }),
     });
   }
   saveAgentProfile(name: string, profile: AgentProfileInput): Promise<AgentProfiles> {
@@ -21,7 +21,10 @@ export class HttpApi implements WebApi {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profile),
     });
   }
-  deleteAgentProfile(name: string): Promise<AgentProfiles> { return request(`/api/agent/profiles/${id(name)}`, { method: "DELETE" }); }
+  deleteAgentProfile(name: string, revision?: number | null): Promise<AgentProfiles> {
+    const query = revision == null ? "" : `?revision=${revision}`;
+    return request(`/api/agent/profiles/${id(name)}${query}`, { method: "DELETE" });
+  }
   checkAgentProfile(name: string): Promise<ConnectionCheck> { return request(`/api/agent/profiles/${id(name)}/check`, { method: "POST" }); }
   listSources(): Promise<Source[]> { return request("/api/sources"); }
   getSource(sourceId: string): Promise<Source> { return request(`/api/sources/${id(sourceId)}`); }
