@@ -2,7 +2,8 @@
 
 The store holds the model profiles of the web UI, the active profile, and an audit of changes. It encrypts each API key
 with AES-256-GCM and a master key from the deployment configuration. The master key is never in the database.
-Run `python -m drawing_demo.agent.config_store rotate --help` to encrypt all keys with a new master key.
+Run `python -m drawing_demo.agent.config_store rotate --help` to encrypt all keys with a new master key, and
+`forget-keys` to remove all stored keys after the loss of a master key.
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ import uuid
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+# The setting that names the master key of the last rotation. A backend with another master key writes no key.
+MASTER_VERSION_SETTING = "master_key_version"
 SECRET_KEY_ENV = "DRAWING2CAD_SECRET_KEY"
 SECRET_KEY_FILE_ENV = "DRAWING2CAD_SECRET_KEY_FILE"
 NONCE_BYTES = 12
@@ -67,6 +70,10 @@ MIGRATIONS = (
 
 class SecretKeyError(ValueError):
     """The master key is missing, invalid, or does not decrypt a stored key."""
+
+
+class MasterKeyChanged(SecretKeyError):
+    """A rotation changed the master key, and this process still has the former one."""
 
 
 def _now() -> str:
@@ -193,18 +200,22 @@ class ConfigStore:
                 if secret is not None:
                     if master is None:
                         raise SecretKeyError("No master key is configured.")
+                    rotated = self._db.execute("SELECT value_json FROM settings WHERE key = ?", (MASTER_VERSION_SETTING,)).fetchone()
+                    if rotated is not None and json.loads(rotated["value_json"]) != master.version:
+                        raise MasterKeyChanged("A rotation changed the master key. Restart with the new master key.")
                     ciphertext, nonce = master.encrypt(profile_id, secret)
                     values.update(key_ciphertext=ciphertext, key_nonce=nonce, key_version=master.version)
                 now = _now()
+                # The revision is the ID of the audit event, so a revision never repeats, also after delete and create.
+                revision = self._event(actor, "profile_update" if current else "profile_create", name)
                 if current:
                     assignments = ", ".join(f"{column} = ?" for column in values)
-                    self._db.execute(f"UPDATE profiles SET {assignments}, revision = revision + 1, updated_at = ? WHERE id = ?",
-                                     (*values.values(), now, profile_id))
+                    self._db.execute(f"UPDATE profiles SET {assignments}, revision = ?, updated_at = ? WHERE id = ?",
+                                     (*values.values(), revision, now, profile_id))
                 else:
                     columns = ["id", "name", *values, "revision", "created_at", "updated_at"]
                     self._db.execute(f"INSERT INTO profiles ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))})",
-                                     (profile_id, name, *values.values(), 1, now, now))
-                self._event(actor, "profile_update" if current else "profile_create", name)
+                                     (profile_id, name, *values.values(), revision, now, now))
                 self._db.execute("COMMIT")
             except Exception:
                 self._db.execute("ROLLBACK")
@@ -266,9 +277,11 @@ class ConfigStore:
 
     # Audit and rotation
 
-    def _event(self, actor: str, action: str, target: str | None) -> None:
-        self._db.execute("INSERT INTO config_events (at, actor, action, target) VALUES (?, ?, ?, ?)",
-                         (_now(), actor, action, target))
+    def _event(self, actor: str, action: str, target: str | None) -> int:
+        """Record a change and return its event ID. AUTOINCREMENT IDs never repeat, also after a deleted event."""
+        cursor = self._db.execute("INSERT INTO config_events (at, actor, action, target) VALUES (?, ?, ?, ?)",
+                                  (_now(), actor, action, target))
+        return cursor.lastrowid
 
     def events(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -281,15 +294,42 @@ class ConfigStore:
             try:
                 rows = self._db.execute("SELECT id, name, key_ciphertext, key_nonce FROM profiles "
                                         "WHERE key_ciphertext IS NOT NULL").fetchall()
+                revision = self._event(actor, "keys_rotate", None)
                 for row in rows:
                     secret = old.decrypt(row["id"], row["key_ciphertext"], row["key_nonce"])
                     ciphertext, nonce = new.encrypt(row["id"], secret)
                     self._db.execute("UPDATE profiles SET key_ciphertext = ?, key_nonce = ?, key_version = ?, "
-                                     "revision = revision + 1, updated_at = ? WHERE id = ?",
-                                     (ciphertext, nonce, new.version, _now(), row["id"]))
-                self._event(actor, "keys_rotate", None)
+                                     "revision = ?, updated_at = ? WHERE id = ?",
+                                     (ciphertext, nonce, new.version, revision, _now(), row["id"]))
+                # A running backend with the former master key now refuses to write keys until it restarts.
+                self._set_master_version(new.version)
                 self._db.execute("COMMIT")
                 return len(rows)
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+
+    def _set_master_version(self, version: str | None) -> None:
+        if version is None:
+            self._db.execute("DELETE FROM settings WHERE key = ?", (MASTER_VERSION_SETTING,))
+            return
+        self._db.execute("INSERT INTO settings (key, value_json, revision, updated_at) VALUES (?, ?, 1, ?) "
+                         "ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, "
+                         "revision = settings.revision + 1, updated_at = excluded.updated_at",
+                         (MASTER_VERSION_SETTING, json.dumps(version), _now()))
+
+    def forget_keys(self, actor: str = "forget-keys-command") -> int:
+        """Remove all stored keys, for example after the loss of the master key. Users then enter the keys again."""
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                revision = self._event(actor, "keys_forget", None)
+                count = self._db.execute("UPDATE profiles SET key_ciphertext = NULL, key_nonce = NULL, key_version = NULL, "
+                                         "revision = ?, updated_at = ? WHERE key_ciphertext IS NOT NULL",
+                                         (revision, _now())).rowcount
+                self._set_master_version(None)
+                self._db.execute("COMMIT")
+                return count
             except Exception:
                 self._db.execute("ROLLBACK")
                 raise
@@ -303,16 +343,23 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Manage the configuration database of the drawing2cad web backend.")
     commands = parser.add_subparsers(dest="command", required=True)
     rotate = commands.add_parser("rotate", help="Encrypt all stored API keys with a new master key.")
-    rotate.add_argument("--database", type=Path,
-                        default=Path(os.environ.get("DRAWING2CAD_DATA_DIR", ".data")) / "config.sqlite")
     # The keys come from files, so that they do not appear in the process list or the shell history.
     rotate.add_argument("--old-key-file", required=True)
     rotate.add_argument("--new-key-file", required=True)
+    forget = commands.add_parser("forget-keys", help="Remove all stored API keys, for example after the loss of the master key.")
+    for command in (rotate, forget):
+        command.add_argument("--database", type=Path,
+                             default=Path(os.environ.get("DRAWING2CAD_DATA_DIR", ".data")) / "config.sqlite")
+    forget.add_argument("--yes", action="store_true", required=True, help="Confirm the removal of all stored keys.")
     arguments = parser.parse_args(argv)
     if not arguments.database.is_file():
         raise SystemExit(f"No configuration database at {arguments.database}.")
     store = ConfigStore(arguments.database)
     try:
+        if arguments.command == "forget-keys":
+            count = store.forget_keys()
+            print(f"Removed {count} stored API keys. Enter the keys of the UI profiles again.")
+            return
         count = store.rotate(_read_key(arguments.old_key_file), _read_key(arguments.new_key_file))
     except SecretKeyError as error:
         raise SystemExit(f"Rotation failed, no key changed: {error}") from None

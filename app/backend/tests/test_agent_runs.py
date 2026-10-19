@@ -491,10 +491,10 @@ def test_ui_profiles_are_normalized_keep_their_key_and_persist(environment, tmp_
         profiles = {p["name"]: p for p in res.json()["profiles"]}
         assert res.json()["active"] == "Foundry"
         assert profiles["Foundry"]["base_url"] == "https://res.cognitiveservices.azure.com/openai/v1"
+        assert profiles["OpenRouter"].pop("revision") > profiles["Foundry"]["revision"]
         assert profiles["OpenRouter"] == {"name": "OpenRouter", "provider": "openrouter", "origin": "ui",
                                           "base_url": "https://openrouter.ai/api/v1", "model": "vendor/n", "api": "chat",
-                                          "reasoning_effort": None, "key_set": True, "key_locked": False, "limits": {},
-                                          "revision": 2}
+                                          "reasoning_effort": None, "key_set": True, "key_locked": False, "limits": {}}
         assert client.put("/api/agent/active", json={"name": "OpenRouter"}).status_code == 200
         assert client.get("/api/capabilities").json()["agent_model"] == "vendor/n"
     stored = tmp_path / "data" / "config.sqlite"

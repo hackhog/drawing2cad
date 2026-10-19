@@ -17,7 +17,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from ..service import ServiceError
-from .config_store import ConfigStore, MasterKey, RevisionConflict, SecretKeyError
+from .config_store import ConfigStore, MasterKey, MasterKeyChanged, RevisionConflict, SecretKeyError
 from .model import DEFAULT_PROFILE, ENV_PREFIX, ModelSettings, profiles_from_env
 
 Provider = Literal["openrouter", "azure", "openai"]
@@ -162,23 +162,31 @@ class ProfileStore:
         self._env = {name: Profile(s, provider_of(s), "env", s.base_url, s.model, s.api, s.reasoning_effort,
                                    bool(s.api_key), limits=limits.get(name, {})) for name, s in env.items()}
 
-    # Reading
+    # Reading. Metadata reads never decrypt a key; only get(), require(), and run_profile() decrypt one selected key.
 
-    def _ui_profile(self, row: dict[str, Any]) -> Profile:
-        try:
-            key, locked = self.store.secret(row, self.master), False
-        except SecretKeyError:
-            key, locked = None, True
-        settings = None if not key else ModelSettings(row["base_url"], row["model"], key, row["key_header"],
-                                                      row["reasoning_effort"], row["api"])
+    def _ui_profile(self, row: dict[str, Any], decrypt: bool) -> Profile:
+        has_key = row["key_ciphertext"] is not None
+        # Without decryption, a key is locked when no master key or another master key encrypted it.
+        locked = has_key and (self.master is None or row["key_version"] != self.master.version)
+        settings = None
+        if decrypt and has_key and not locked:
+            try:
+                key = self.store.secret(row, self.master)
+                settings = ModelSettings(row["base_url"], row["model"], key, row["key_header"], row["reasoning_effort"],
+                                         row["api"])
+            except SecretKeyError:
+                locked = True  # For example a ciphertext of another profile.
         return Profile(settings, row["provider"], "ui", row["base_url"], row["model"], row["api"], row["reasoning_effort"],
-                       row["key_ciphertext"] is not None, locked, json.loads(row["limits_json"]), row["revision"])
+                       has_key, locked, json.loads(row["limits_json"]), row["revision"])
 
-    def _profiles(self) -> dict[str, Profile]:
-        """Environment profiles first, then UI profiles. A UI profile cannot use the name of an environment profile."""
+    def _profiles(self, decrypt: str | None = None) -> dict[str, Profile]:
+        """Environment profiles first, then UI profiles. A UI profile cannot use the name of an environment profile.
+
+        Only the profile named in `decrypt` gets its decrypted key.
+        """
         profiles = dict(self._env)
         for row in self.store.profiles():
-            profiles.setdefault(row["name"], self._ui_profile(row))
+            profiles.setdefault(row["name"], self._ui_profile(row, row["name"] == decrypt))
         return profiles
 
     def _active(self, profiles: dict[str, Profile]) -> tuple[str | None, int]:
@@ -191,28 +199,40 @@ class ProfileStore:
             return None, revision
         return (name if name in profiles else next(iter(profiles), None)), revision
 
+    def _effective_limits(self, profile: Profile | None) -> dict[str, int]:
+        own = profile.limits if profile else {}
+        return {key: min(own.get(key, default), self.maximums[key]) for key, default in DEFAULT_LIMITS.items()}
+
     @property
     def active(self) -> str | None:
         with self._lock:
             return self._active(self._profiles())[0]
 
-    def get(self, name: str | None) -> ModelSettings | None:
-        """The endpoint of a profile, or None if it does not exist or has no usable key."""
+    def usable(self, name: str | None) -> bool:
+        """True if the profile exists and has a key that the current master key encrypted. It decrypts no key."""
         with self._lock:
             profile = self._profiles().get(name) if name is not None else None
+        return bool(profile and profile.key_set and not profile.key_locked)
+
+    def model(self, name: str | None) -> str | None:
+        with self._lock:
+            profile = self._profiles().get(name) if name is not None else None
+        return profile.model if profile else None
+
+    def get(self, name: str | None) -> ModelSettings | None:
+        """The endpoint of a profile with its decrypted key, or None if it does not exist or has no usable key."""
+        with self._lock:
+            profile = self._profiles(decrypt=name).get(name) if name is not None else None
         return profile.settings if profile else None
 
     def limits(self, name: str | None) -> dict[str, int]:
         """The effective run limits of a profile: its own limits over the defaults, never above the maximums."""
         with self._lock:
             profile = self._profiles().get(name) if name is not None else None
-        own = profile.limits if profile else {}
-        return {key: min(own.get(key, default), self.maximums[key]) for key, default in DEFAULT_LIMITS.items()}
+        return self._effective_limits(profile)
 
-    def require(self, name: str) -> ModelSettings:
-        """The endpoint of a profile for a run. A locked or missing key fails with an actionable error."""
-        with self._lock:
-            profile = self._profiles().get(name)
+    @staticmethod
+    def _checked(name: str, profile: Profile | None) -> ModelSettings:
         if profile is None:
             raise ServiceError(422, "UNKNOWN_PROFILE", f"Unknown model profile: {name}", field="name",
                                recovery="Choose a profile from the list in the settings.")
@@ -224,6 +244,18 @@ class ProfileStore:
             raise ServiceError(409, "PROFILE_KEY_MISSING", f"The profile {name} has no API key.", field="api_key",
                                recovery="Enter the API key of the profile in the settings.")
         return profile.settings
+
+    def require(self, name: str) -> ModelSettings:
+        """The endpoint of a profile with its decrypted key. A locked or missing key fails with an actionable error."""
+        with self._lock:
+            profile = self._profiles(decrypt=name).get(name)
+        return self._checked(name, profile)
+
+    def run_profile(self, name: str) -> tuple[ModelSettings, dict[str, int]]:
+        """The endpoint and the effective limits of a profile, read together, so that a change cannot mix them."""
+        with self._lock:
+            profile = self._profiles(decrypt=name).get(name)
+        return self._checked(name, profile), self._effective_limits(profile)
 
     def view(self) -> dict[str, Any]:
         with self._lock:
@@ -285,6 +317,10 @@ class ProfileStore:
                 self.store.save_profile(name, fields, key, self.master, expected_revision, ACTOR)
             except RevisionConflict as error:
                 raise self._conflict(error) from None
+            except MasterKeyChanged:
+                raise ServiceError(409, "MASTER_KEY_CHANGED", "A rotation changed the master key of the stored API keys.",
+                                   field="api_key", recovery="Restart the backend with the new master key, then save "
+                                   "the profile again.") from None
             stored = self.store.setting(ACTIVE_SETTING)
             if stored is not None and stored[0]["name"] is None and len(self._profiles()) == 1:
                 self.store.set_setting(ACTIVE_SETTING, {"name": name}, None, ACTOR)

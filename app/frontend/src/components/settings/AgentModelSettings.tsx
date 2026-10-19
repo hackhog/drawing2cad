@@ -223,7 +223,8 @@ function ProfileForm({ profile, taken, limits, onDone }: {
   const [form, setForm] = useState<AgentProfileInput>({
     provider: profile?.provider ?? "openrouter", endpoint: profile?.provider === "openrouter" ? "" : profile?.base_url ?? "",
     model: profile?.model ?? "", api: profile?.api ?? "chat", api_key: "", reasoning_effort: profile?.reasoning_effort ?? null,
-    limits: { ...profile?.limits }, revision: profile?.revision ?? null,
+    // A new profile sends revision 0, so a profile with the same name from another tab is a conflict, not overwritten.
+    limits: { ...profile?.limits }, revision: profile ? profile.revision ?? null : 0,
   });
   const save = useMutation({
     mutationFn: () => api.saveAgentProfile(name.trim(), form),

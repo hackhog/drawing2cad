@@ -11,6 +11,7 @@ from drawing_demo import api
 from drawing_demo.agent import config_store
 from drawing_demo.agent import runner as runner_module
 from drawing_demo.agent.config_store import ConfigStore, MasterKey, SecretKeyError
+from drawing_demo.service import ServiceError
 from drawing_demo.agent.profiles import DEFAULT_LIMITS, DEFAULT_MAXIMUMS, ProfileStore
 from test_agent_runs import TEST_MASTER_KEY, environment, upload, with_model_endpoint  # noqa: F401 (fixture)
 
@@ -47,8 +48,11 @@ def test_a_ciphertext_does_not_decrypt_in_another_profile(environment, tmp_path)
         ciphertext, nonce = db.execute("SELECT key_ciphertext, key_nonce FROM profiles WHERE name = 'A'").fetchone()
         db.execute("UPDATE profiles SET key_ciphertext = ?, key_nonce = ? WHERE name = 'B'", (ciphertext, nonce))
     with TestClient(api.create_app()) as client:
-        profiles = {p["name"]: p for p in client.get("/api/agent/profiles").json()["profiles"]}
-        assert profiles["A"]["key_locked"] is False and profiles["B"]["key_locked"] is True
+        store = client.app.state.services.runner.profiles
+        assert store.get("A").api_key == "key-A" and store.get("B") is None
+        with pytest.raises(ServiceError) as raised:
+            store.run_profile("B")
+        assert raised.value.detail["code"] == "PROFILE_KEY_LOCKED"
 
 
 def test_without_a_master_key_keys_cannot_be_saved_and_environment_profiles_still_run(environment):
@@ -195,3 +199,73 @@ def test_the_audit_records_changes_without_values(tmp_path):
         ("web-ui", "profile_create", "P"), ("web-ui", "setting_update", "active_profile"),
         ("web-ui", "profile_delete", "P"), ("web-ui", "setting_update", "active_profile")]
     assert "audit-secret" not in json.dumps(events)
+
+
+def test_metadata_reads_decrypt_no_key(environment, monkeypatch):
+    with TestClient(api.create_app()) as client:
+        for name in ("A", "B"):
+            client.put(f"/api/agent/profiles/{name}", json={**OPENROUTER, "api_key": f"key-{name}"})
+        calls = []
+        original = MasterKey.decrypt
+        monkeypatch.setattr(MasterKey, "decrypt", lambda self, *args: calls.append(args[0]) or original(self, *args))
+        client.get("/api/agent/profiles")
+        client.get("/api/capabilities")
+        client.put("/api/agent/profiles/B", json={**OPENROUTER, "model": "vendor/n"})
+        assert calls == []
+        # A run decrypts only the key of its own profile.
+        submitted = []
+        no_submit(monkeypatch, submitted)
+        source = upload(client)
+        assert client.post(f"/api/sources/{source['source_id']}/runs").status_code == 201
+        assert len(calls) == 1
+
+
+def test_creating_an_existing_profile_with_revision_zero_is_a_conflict(environment):
+    with TestClient(api.create_app()) as client:
+        assert client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k1", "revision": 0}).status_code == 200
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k2", "revision": 0})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "REVISION_CONFLICT"
+        assert client.app.state.services.runner.profiles.get("P").api_key == "k1"
+
+
+def test_a_recreated_profile_has_a_new_revision(environment):
+    with TestClient(api.create_app()) as client:
+        old = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k1"}).json()["profiles"][0]["revision"]
+        assert client.delete("/api/agent/profiles/P", params={"revision": old}).status_code == 200
+        new = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k2", "revision": 0}).json()["profiles"][0]["revision"]
+        assert new != old
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "model": "vendor/x", "revision": old})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "REVISION_CONFLICT"
+        assert client.delete("/api/agent/profiles/P", params={"revision": old}).status_code == 409
+
+
+def test_a_backend_with_the_former_master_key_writes_no_key_after_a_rotation(environment, tmp_path):
+    with TestClient(api.create_app()) as client:
+        client.put("/api/agent/profiles/A", json={**OPENROUTER, "api_key": "key-A"})
+        # The rotation runs while this backend still has the former master key.
+        old, new = tmp_path / "old.key", tmp_path / "new.key"
+        old.write_text(TEST_MASTER_KEY, encoding="ascii")
+        new.write_text(OTHER_MASTER_KEY, encoding="ascii")
+        config_store.main(["rotate", "--database", str(database(tmp_path)), "--old-key-file", str(old),
+                           "--new-key-file", str(new)])
+        res = client.put("/api/agent/profiles/B", json={**OPENROUTER, "api_key": "key-B"})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "MASTER_KEY_CHANGED"
+        assert client.get("/api/agent/profiles").json()["profiles"][0]["key_locked"] is True
+    environment.setenv("DRAWING2CAD_SECRET_KEY", OTHER_MASTER_KEY)
+    with TestClient(api.create_app()) as client:
+        assert client.put("/api/agent/profiles/B", json={**OPENROUTER, "api_key": "key-B"}).status_code == 200
+        assert client.app.state.services.runner.profiles.get("A").api_key == "key-A"
+
+
+def test_forget_keys_removes_all_stored_keys_after_a_lost_master_key(environment, tmp_path, capsys):
+    with TestClient(api.create_app()) as client:
+        client.put("/api/agent/profiles/A", json={**OPENROUTER, "api_key": "key-A"})
+    with pytest.raises(SystemExit):
+        config_store.main(["forget-keys", "--database", str(database(tmp_path))])  # --yes is required.
+    config_store.main(["forget-keys", "--database", str(database(tmp_path)), "--yes"])
+    assert "Removed 1 stored API keys" in capsys.readouterr().out
+    environment.setenv("DRAWING2CAD_SECRET_KEY", OTHER_MASTER_KEY)
+    with TestClient(api.create_app()) as client:
+        profile = client.get("/api/agent/profiles").json()["profiles"][0]
+        assert profile["key_set"] is False and profile["key_locked"] is False
+        assert client.put("/api/agent/profiles/A", json={**OPENROUTER, "api_key": "key-A2"}).status_code == 200

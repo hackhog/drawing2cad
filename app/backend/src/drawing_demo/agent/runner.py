@@ -95,7 +95,8 @@ class AgentRunner:
 
     @property
     def available(self) -> bool:
-        return self.settings is not None and self.skill_path.is_file()
+        """True if the active profile has a usable key and the skill exists. It decrypts no key."""
+        return self.profiles.usable(self.profiles.active) and self.skill_path.is_file()
 
     def submit(self, run_id: str, settings: ModelSettings) -> None:
         self.executor.submit(self._execute, run_id, settings)

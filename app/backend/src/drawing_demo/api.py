@@ -215,7 +215,7 @@ def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
         "contract_version": CONTRACT_VERSION, "simulated": False, "runs": s.runner.available, "parameter_edit": False,
         "notes": True, "flag_decisions": True, "downloads": True, "model_preview": True, "step_preview_upload": True,
         "max_pdf_bytes": s.backend.max_source_bytes,
-        "agent_model": s.runner.settings.model if s.runner.available and s.runner.settings else None,
+        "agent_model": s.runner.profiles.model(s.runner.profiles.active) if s.runner.available else None,
         "agent_profile": s.runner.profiles.active if s.runner.available else None,
     }
 
@@ -394,17 +394,16 @@ def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any
     """Queue one agent run with the active model profile. The agent builds the model only through the MCP endpoint (ADR 0018)."""
     # Read the active profile once, so that a selection during this request cannot mix two profiles.
     profile = s.runner.profiles.active
-    if profile is not None:
-        s.runner.profiles.require(profile)  # A locked or missing key fails with an actionable error.
-    settings = s.runner.profiles.get(profile)
-    if settings is None or not s.runner.available:
+    if profile is None or not s.runner.skill_path.is_file():
         raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "No model profile active (DRAWING2CAD_AGENT_*).",
                            recovery="Choose a model profile in the settings, or enter an endpoint in .env "
                                     "and restart the backend.")
+    # Endpoint and limits come from one read. A locked or missing key fails with an actionable error.
+    settings, limits = s.runner.profiles.run_profile(profile)
     record = s.jobs.add(_source(s, source_id)["source_id"],
                         agent={"model": settings.model, "profile": profile, "reasoning_effort": settings.reasoning_effort,
                                "skill_version": s.runner.skill_version, "mcp_version": mcp_version,
-                               "limits": s.runner.profiles.limits(profile)})
+                               "limits": limits})
     s.runner.submit(record["run_id"], settings)
     return run_view(s, record)
 
