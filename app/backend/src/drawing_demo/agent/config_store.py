@@ -229,6 +229,9 @@ class ConfigStore:
             try:
                 current = self._db.execute("SELECT revision FROM profiles WHERE name = ?", (name,)).fetchone()
                 if current is None:
+                    if expected_revision is not None and expected_revision != 0:
+                        # The client read a profile that another client deleted in the meantime.
+                        raise RevisionConflict(name, None)
                     self._db.execute("ROLLBACK")
                     return False
                 if expected_revision is not None and expected_revision != current["revision"]:

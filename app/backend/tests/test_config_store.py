@@ -310,3 +310,31 @@ def test_two_stores_on_a_new_database_apply_each_migration_once(tmp_path):
         first.close()
         second.close()
 
+
+
+def test_a_stale_delete_of_a_deleted_profile_is_a_conflict(environment):
+    with TestClient(api.create_app()) as client:
+        revision = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k"}).json()["profiles"][0]["revision"]
+        assert client.delete("/api/agent/profiles/P", params={"revision": revision}).status_code == 200
+        res = client.delete("/api/agent/profiles/P", params={"revision": revision})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "REVISION_CONFLICT"
+        assert client.delete("/api/agent/profiles/P").status_code == 404
+
+
+def test_an_automatic_selection_does_not_overwrite_a_selection_of_another_backend(tmp_path):
+    # Two stores on one database stand for two backends. The second one selects "no agent" while the first one
+    # creates the first profile; the automatic selection of the first one must not overwrite that choice.
+    master = MasterKey.from_text(TEST_MASTER_KEY)
+    first = ProfileStore(tmp_path / "config.sqlite", env_profiles={}, master=master)
+    second = ProfileStore(tmp_path / "config.sqlite", env_profiles={}, master=master)
+    try:
+        read = first._selection_revision()
+        second.select(None, 0)
+        first.store.save_profile("P", {"provider": "openrouter", "base_url": "https://openrouter.ai/api/v1", "model": "m",
+                                       "api": "chat", "reasoning_effort": None, "key_header": "Authorization",
+                                       "limits_json": {}}, "k", master, 0, "web-ui")
+        first._adjust_selection("P", read)
+        assert first.active is None and second.active is None
+    finally:
+        first.close()
+        second.close()

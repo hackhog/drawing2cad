@@ -39,7 +39,7 @@ schema_migrations(version, applied_at)
 - The backend uses the Python `sqlite3` module in WAL mode with one writer.
 - Each change states the expected revision of the profile or setting, as the run notes do. A stale revision fails with a conflict error, so two browser tabs cannot overwrite each other.
 - The revision of a profile is the ID of its last audit event, so a revision never repeats, also after a profile is deleted and created again. A new profile is created with expected revision 0, so a second tab cannot overwrite it. A stale revision is a conflict also when the profile was deleted.
-- When the first profile becomes active by default, the backend stores the selection, so its revision changes.
+- When the first profile becomes active by default, or the active profile is deleted, the backend stores the new selection, so its revision changes. It stores it only if no other selection was stored since it read the selection.
 - Versioned migrations in the backend create and change the schema at start. Each migration reads the applied versions under the write lock, so two starts cannot apply it twice.
 - `config_events` records who changed which profile or setting, and when. It never records a key or another value.
 

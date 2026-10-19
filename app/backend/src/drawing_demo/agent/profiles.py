@@ -309,6 +309,7 @@ class ProfileStore:
                 # For example an edit of a profile that another browser deleted.
                 raise self._conflict(RevisionConflict(name, stored_revision))
             before = self._active(self._profiles())[0]
+            selection = self._selection_revision()
             if key is None and (current is None or current["key_ciphertext"] is None):
                 raise ServiceError(422, "INVALID_PROFILE", "The API key is missing.", field="api_key")
             if key is not None and self.master is None:
@@ -328,10 +329,10 @@ class ProfileStore:
                                    "the profile again.") from None
             stored = self.store.setting(ACTIVE_SETTING)
             if stored is not None and stored[0]["name"] is None and len(self._profiles()) == 1:
-                self.store.set_setting(ACTIVE_SETTING, {"name": name}, None, ACTOR)
+                self._adjust_selection(name, selection)
             elif stored is None and self._active(self._profiles())[0] != before:
                 # The first profile became active by default. Store the selection, so that its revision changes.
-                self.store.set_setting(ACTIVE_SETTING, {"name": name}, None, ACTOR)
+                self._adjust_selection(name, selection)
 
     def delete(self, name: str, expected_revision: int | None = None) -> None:
         with self._lock:
@@ -339,6 +340,7 @@ class ProfileStore:
                 raise ServiceError(409, "PROFILE_READ_ONLY", f"The profile {name} comes from the server configuration.",
                                    recovery="Remove the profile from the server .env.")
             active, _ = self._active(self._profiles())
+            selection = self._selection_revision()
             try:
                 deleted = self.store.delete_profile(name, expected_revision, ACTOR)
             except RevisionConflict as error:
@@ -346,7 +348,18 @@ class ProfileStore:
             if not deleted:
                 raise ServiceError(404, "NOT_FOUND", f"Unknown model profile: {name}")
             if active == name:
-                self.store.set_setting(ACTIVE_SETTING, {"name": next(iter(self._profiles()), None)}, None, ACTOR)
+                self._adjust_selection(next(iter(self._profiles()), None), selection)
+
+    def _selection_revision(self) -> int:
+        stored = self.store.setting(ACTIVE_SETTING)
+        return stored[1] if stored else 0
+
+    def _adjust_selection(self, name: str | None, read_revision: int) -> None:
+        """Store an automatic change of the active profile, only if no other selection was stored since it was read."""
+        try:
+            self.store.set_setting(ACTIVE_SETTING, {"name": name}, read_revision, ACTOR)
+        except RevisionConflict:
+            pass  # Another client selected a profile in the meantime; its selection stays.
 
     def close(self) -> None:
         self.store.close()
