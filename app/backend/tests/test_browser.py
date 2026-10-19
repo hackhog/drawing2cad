@@ -91,6 +91,9 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
     page.get_by_role("cell", name="Plate", exact=True).click()
 
     page.get_by_role("button", name="Start run").click()
+    # The button opens the run start dialog. Its own button starts the run.
+    dialog = page.get_by_role("dialog", name="Start a CAD run")
+    dialog.get_by_role("button", name="Start run").click()
     expect(page).to_have_url(re.compile(r"/runs/run_[0-9a-f]{32}"))
     run_id = page.url.split("/runs/")[1].split("?")[0]
     # The scripted model creates a part without a build; the run ends as failed in the modeling phase.
