@@ -1,5 +1,5 @@
 # Demo frontend (ADR 0010, 0012). Use this directory as the build context.
-#   docker compose build   or   docker build app/frontend
+#   docker compose -f deployment/compose.local.yaml build frontend   or   docker build app/frontend
 
 # Stage 1 builds the static UI. The runtime image does not need Node.js.
 FROM node:24.21.0-slim AS build

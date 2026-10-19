@@ -14,10 +14,12 @@ Use [ADR 0016](../docs/adr/0016-shared-domain-service-and-drawing-delivery.md) f
 From the repository root:
 
 ```bash
-docker compose -f compose.mcp.yaml build
-docker compose -f compose.mcp.yaml run --rm -T mcp
+docker compose -f deployment/compose.yaml run --rm -T mcp
 ```
 
+`deployment/compose.yaml` uses the published image `ghcr.io/hackhog/drawing2cad-mcp` of the version in `DRAWING2CAD_VERSION`, or `latest`
+([ADR 0027](../docs/adr/0027-container-images-on-ghcr-for-version-tags.md)).
+To build the current source, use `deployment/compose.local.yaml` instead. Run `build mcp` before `run`.
 This starts MCP over stdio. Attach a client to stdin/stdout.
 The service has no network and publishes no HTTP port.
 It retains sources, revisions, jobs, notes, and artifacts in the `cad-data` volume at `/data`.
@@ -27,7 +29,7 @@ Send PDF bytes through the upload tools. No source directory mount is required.
 For HTTP, set `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism and run:
 
 ```bash
-docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up --build -d
+docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 ```
 
 The endpoint is `http://127.0.0.1:8765/mcp`. Use the same bearer token in the client.
@@ -483,7 +485,7 @@ Set `LITELLM_ENABLE_MCP_STDIO=true` in the LiteLLM process environment before st
 Select **Standard Input/Output (stdio)** and paste the adjusted JSON into its configuration field.
 See the [stdio registration instructions](https://docs.litellm.ai/docs/mcp/#add-stdio-mcp-server).
 
-Registration does not install server dependencies. The Docker image supplies the worker. The base Compose profile uses stdio and no network; the HTTP override publishes the authenticated endpoint.
+Registration does not install server dependencies. The Docker image supplies the worker. The `mcp` Compose service uses stdio and no network; the `mcp-http` service publishes the authenticated endpoint.
 
 Load the complete [drawing2cad skill folder](../skills/drawing2cad/SKILL.md) in the agent that uses these tools.
 Include its `references/` files. MCP registration does not install the skill or load its workflow instructions.

@@ -8,6 +8,7 @@ Proposed. Amends ADR 0008 (tab 4 "3D model" is now active). Replaces the rule "f
 ADR 0006 (one container) stays valid.
 Amended by [ADR 0012](0012-demo-app-as-frontend-and-backend-container.md): the UI is now in `app/frontend/` and has its own container.
 [ADR 0014](0014-headless-build123d-metric-prototype.md) replaces the historical FreeCAD backend with the headless build123d worker.
+[ADR 0027](0027-container-images-on-ghcr-for-version-tags.md) replaces the rule that `docker compose up --build` is the only command to build and start.
 The FreeCAD proxy described below is no longer available.
 
 ## Context
