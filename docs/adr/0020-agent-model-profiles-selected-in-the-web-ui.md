@@ -37,7 +37,8 @@ A key in the browser storage or in a response of the server can leak.
   Without a stored selection, the first profile is active.
 - **Connection check:** `POST /api/agent/profiles/{name}/check` sends one short request without tools to the
   selected API. It checks the endpoint, the key, the model or deployment name, and the API with a few tokens.
-- **Runs:** a new run gets the active profile when it is queued. The run record contains the profile name and the model.
+- **Runs:** a new run gets the profile that the user selects at its start, else the active profile, when it is queued.
+  The run start does not change the active profile. The run record contains the profile name and the model.
   A later selection or change does not change queued or running runs.
 - **UI:** the sidebar footer opens the settings. While the settings are open, the sidebar lists the settings sections
   in place of the drawings. The first section is `KI-Modell`; later settings add sections.

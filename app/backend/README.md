@@ -55,7 +55,7 @@ Commit the changed `poetry.lock`. The backend CI job stops if the lock is out of
 | Method | Path | Response |
 |---|---|---|
 | `GET` | `/api/health` | Status and `drawing2cad_mcp_version` |
-| `GET` | `/api/capabilities` | Available functions; `runs` is true only with an active model profile; `agent_profile` and `agent_model` name it |
+| `GET` | `/api/capabilities` | Available functions; `runs` is true only with an active model profile; `agent_profile` and `agent_model` name it; `agent_ready` is true if runs can start with a usable profile |
 | `GET` | `/api/agent/profiles` | Model profiles (`name`, `provider`, `origin`, `base_url`, `model`, `api`, `reasoning_effort`, `key_set`, `key_locked`, `limits`, `revision`), the `active` profile with `active_revision`, `master_key_set`, and the default and maximum run limits; never a key ([ADR 0020](../../docs/adr/0020-agent-model-profiles-selected-in-the-web-ui.md), [ADR 0028](../../docs/adr/0028-configuration-store-with-encrypted-keys.md)) |
 | `PUT` | `/api/agent/active` | Select the profile for new runs: `name`, or `null` for no agent, and optional `revision` (422 `UNKNOWN_PROFILE`, 409 `REVISION_CONFLICT`) |
 | `PUT`/`DELETE` | `/api/agent/profiles/{name}` | Create, change, or delete a UI profile: `provider` (`openrouter`, `azure`, `openai`), `endpoint`, `model`, `api`, `api_key` (empty keeps the stored key), `reasoning_effort`, `limits`, and optional `revision` (body for `PUT`, query parameter for `DELETE`). Environment profiles are read-only (409 `PROFILE_READ_ONLY`). Without a master key, a key cannot be saved (503 `SECRET_KEY_MISSING`) |
@@ -68,7 +68,7 @@ Commit the changed `poetry.lock`. The backend CI job stops if the lock is out of
 | `GET` | `/api/feedback` | All flag decisions as a JSON download for the developers of the analysis |
 | `GET` | `/api/measurements` | Review measurements of all sources, oldest first: review time, optional manual-effort estimate, and estimator |
 | `POST` | `/api/sources/{id}/measurements` | Record one review: `review_seconds`, optional `manual_hours` and `estimator` (`drafter`, `guest`, `team`) |
-| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run with the active profile and its run limits (503 without active profile, 409 `PROFILE_KEY_LOCKED` when the stored key cannot be decrypted) |
+| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run with the profile in the optional body `{"profile": "<name>"}`, else with the active profile, and its run limits. The run does not change the active profile (503 without profile, 422 `UNKNOWN_PROFILE`, 409 `PROFILE_KEY_LOCKED` or `PROFILE_KEY_MISSING`) |
 | `DELETE` | `/api/sources/{id}` | Delete a source with its web run records and measurements (409 `RUN_ACTIVE` while a run is active) |
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
 | `GET`/`PUT` | `/api/runs/{id}/note` | Read / replace the run note; `PUT` takes `expected_revision` and `text` (409 on a stale revision or an active run) |

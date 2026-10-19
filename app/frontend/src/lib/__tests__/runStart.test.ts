@@ -1,0 +1,49 @@
+// Which profile the next run uses and when it can start (CAD runs card).
+import { describe, expect, it } from "vitest";
+import type { AgentProfile, AgentProfiles, Capabilities } from "../contract";
+import { profileLabel, runStartState } from "../runStart";
+
+const caps = (change: Partial<Capabilities> = {}) => ({ simulated: false, runs: true, agent_ready: true, ...change }) as Capabilities;
+const profile = (name: string, change: Partial<AgentProfile> = {}): AgentProfile => ({
+  name, provider: "openrouter", origin: "ui", base_url: "https://openrouter.ai/api/v1", model: `vendor/${name.toLowerCase()}`,
+  api: "chat", reasoning_effort: null, key_set: true, key_locked: false, ...change,
+});
+const agent = (active: string | null, ...profiles: AgentProfile[]): AgentProfiles => ({ active, profiles });
+
+describe("runStartState", () => {
+  it("preselects the active profile and sends it", () => {
+    const state = runStartState(caps(), agent("A", profile("A"), profile("B")), null);
+    expect([state.selected, state.canStart, state.send]).toEqual(["A", true, "A"]);
+  });
+
+  it("uses the profile that the user chose", () => {
+    const state = runStartState(caps({ runs: false }), agent("A", profile("A", { key_locked: true }), profile("B")), "B");
+    expect([state.selected, state.canStart, state.send]).toEqual(["B", true, "B"]);
+  });
+
+  it("cannot start with a locked or key-less profile, or without a selection", () => {
+    const profiles = agent(null, profile("A", { key_locked: true }), profile("B", { key_set: false }));
+    expect(runStartState(caps(), profiles, "A").canStart).toBe(false);
+    expect(runStartState(caps(), profiles, "B").canStart).toBe(false);
+    expect(runStartState(caps(), profiles, null)).toMatchObject({ selected: null, canStart: false });
+  });
+
+  it("cannot start when the service is not ready for agent runs", () => {
+    expect(runStartState(caps({ agent_ready: false }), agent("A", profile("A")), null).canStart).toBe(false);
+    // Older servers do not report agent_ready.
+    expect(runStartState(caps({ agent_ready: undefined }), agent("A", profile("A")), null).canStart).toBe(true);
+  });
+
+  it("follows the capabilities without profiles, for example in the simulated service", () => {
+    expect(runStartState(caps({ simulated: true, runs: true }), undefined, null)).toMatchObject({ canStart: true, send: null });
+    expect(runStartState(caps({ runs: false }), agent(null), null).canStart).toBe(false);
+  });
+});
+
+describe("profileLabel", () => {
+  it("shows name, model, default mark, and key state", () => {
+    expect(profileLabel(profile("A"), "A")).toBe("A · vendor/a (default)");
+    expect(profileLabel(profile("B", { key_locked: true }), "A")).toBe("B · vendor/b – key locked");
+    expect(profileLabel(profile("C", { key_set: false }), null)).toBe("C · vendor/c – no key");
+  });
+});

@@ -185,6 +185,8 @@ export interface Capabilities {
   model_preview: boolean;
   step_preview_upload: boolean;
   max_pdf_bytes: number;
+  /** True if runs can start with a usable profile, also when the active profile cannot. Older servers omit it. */
+  agent_ready?: boolean;
   /** The model of the active agent profile, if the service starts agent runs. */
   agent_model?: string | null;
   /** The name of the active agent profile, if the service starts agent runs. */
