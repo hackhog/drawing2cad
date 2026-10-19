@@ -18,11 +18,12 @@ The backend uses the MCP package as a Python dependency.
 
 ## Build and run
 
+Copy `.env.example` in the repository root to `.env`, then set the required values.
 From the repository root, run:
 
 ```bash
-docker compose -f deployment/compose.yaml up -d                  # published images
-docker compose -f deployment/compose.local.yaml up --build -d    # local build from the current source
+docker compose --env-file .env -f deployment/compose.yaml up -d                  # published images
+docker compose --env-file .env -f deployment/compose.local.yaml up --build -d    # local build from the current source
 ```
 
 Open `http://localhost:8000`.
@@ -106,7 +107,9 @@ The browser uploads PDFs to `/api/sources`. The backend transfers each source to
 "Lauf starten" queues an agent run ([ADR 0018](../docs/adr/0018-agent-runner-in-the-web-backend.md)):
 the agent builds the model only through the MCP endpoint of the same service, and step 4 shows the released model.
 Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values; without `.env`, runs show as unavailable.
-Docker Compose also takes `DRAWING2CAD_AGENT_API_KEY` from the shell, so the key can stay in a password manager instead of `.env`.
+Use `--env-file .env` so Compose reads the root file for interpolation.
+A shell `DRAWING2CAD_AGENT_API_KEY` overrides the file value, so the key can stay in a password manager.
+If no `.env` exists, omit `--env-file .env`. The service `env_file` is optional.
 To add profiles with keys in the web UI, set a master key (`DRAWING2CAD_SECRET_KEY`); the backend stores these keys only encrypted.
 See [backend/README.md](backend/README.md#configuration-store-and-master-key).
 
@@ -123,5 +126,5 @@ Run `poetry run pytest` in `backend/` for API and review tests.
 Sample-based tests are skipped when their inputs are absent.
 Synthetic tests verify the shared service boundary, path-free records, and one agent run through the mounted MCP endpoint.
 Run `npm test` and `npm run build` in `frontend/` for the unit tests, the type check, and the build.
-Run `docker compose -f deployment/compose.local.yaml build backend frontend` at the repository root for both container builds.
+Run `docker compose --env-file .env -f deployment/compose.local.yaml build backend frontend` at the repository root for both container builds.
 These commands describe the test procedure. They do not assert a completed test run.

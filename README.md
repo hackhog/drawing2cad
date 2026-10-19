@@ -17,11 +17,15 @@ Set `DRAWING2CAD_VERSION` to a version tag, for example `v1.3`, to use the image
 Run `pull` with the same file to get a newer `latest` image.
 To build from the current source, use `deployment/compose.local.yaml` in the commands below and add `--build` to `up`.
 Run all commands from the repository root.
+Copy `.env.example` to `.env` before these commands, then set the required values.
+The `--env-file .env` option supplies root-file values for Compose interpolation, including image versions and tokens.
+The service `env_file` alone does not supply interpolation values. Shell values have priority.
+If no `.env` exists, omit `--env-file .env`. The web app can start without an agent endpoint.
 
 ### MCP
 
 ```bash
-docker compose -f deployment/compose.yaml run --rm -T mcp
+docker compose --env-file .env -f deployment/compose.yaml run --rm -T mcp
 ```
 
 This command starts an MCP stdio process.
@@ -34,7 +38,7 @@ The named `cad-data` volume preserves uploaded sources, revisions, jobs, notes, 
 For Streamable HTTP, supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism, then run:
 
 ```bash
-docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
+docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 ```
 
 Connect to `http://127.0.0.1:8765/mcp` with the same bearer token.
@@ -48,18 +52,20 @@ See the [MCP guide](drawing2cad-mcp/README.md) for tools, configuration, and tes
 ## Web app with agent runs
 
 ```bash
-docker compose -f deployment/compose.yaml up -d                  # published images
-docker compose -f deployment/compose.local.yaml up --build -d    # local build
+docker compose --env-file .env -f deployment/compose.yaml up -d                  # published images
+docker compose --env-file .env -f deployment/compose.local.yaml up --build -d    # local build
 ```
 
 Open `http://localhost:8000`.
 Upload drawing PDFs, review the analysis, and start a run.
 A run lets an agent build the model only through the `drawing2cad-mcp` endpoint of the backend; step 4 shows the released STEP in 3D
 ([ADR 0018](docs/adr/0018-agent-runner-in-the-web-backend.md)).
-Runs need an OpenAI-compatible model endpoint: copy `.env.example` to `.env`, fill in the values, and run `docker compose -f deployment/compose.yaml up -d`.
-Without `.env`, the app starts and shows runs as unavailable. See the [app guide](app/README.md).
+Runs need an OpenAI-compatible model endpoint.
+Copy `.env.example` to `.env` and set the required values.
+Run `docker compose --env-file .env -f deployment/compose.yaml up -d`.
+Without `.env`, omit `--env-file .env`; the app starts and shows runs as unavailable. See the [app guide](app/README.md).
 To keep the key out of `.env`, leave `DRAWING2CAD_AGENT_API_KEY` empty there and pass it from the shell, for example from the macOS Keychain:
-`DRAWING2CAD_AGENT_API_KEY=$(security find-generic-password -a <account> -s <service> -w) docker compose -f deployment/compose.yaml up -d`.
+`DRAWING2CAD_AGENT_API_KEY=$(security find-generic-password -a <account> -s <service> -w) docker compose --env-file .env -f deployment/compose.yaml up -d`.
 
 ## Delivery milestones
 

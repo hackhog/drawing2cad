@@ -11,10 +11,14 @@ Use [ADR 0016](../docs/adr/0016-shared-domain-service-and-drawing-delivery.md) f
 
 ## Docker runtime
 
+Copy `.env.example` in the repository root to `.env` and set the required values.
+Use `--env-file .env` to load this file for Compose interpolation. Shell values have priority.
+If no `.env` exists, omit `--env-file .env` and supply required values through the shell.
+
 From the repository root:
 
 ```bash
-docker compose -f deployment/compose.yaml run --rm -T mcp
+docker compose --env-file .env -f deployment/compose.yaml run --rm -T mcp
 ```
 
 `deployment/compose.yaml` uses the published image `ghcr.io/hackhog/drawing2cad-mcp` of the version in `DRAWING2CAD_VERSION`, or `latest`
@@ -29,7 +33,7 @@ Send PDF bytes through the upload tools. No source directory mount is required.
 For HTTP, set `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism and run:
 
 ```bash
-docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
+docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 ```
 
 The endpoint is `http://127.0.0.1:8765/mcp`. Use the same bearer token in the client.

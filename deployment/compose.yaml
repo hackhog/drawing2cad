@@ -1,9 +1,11 @@
 # drawing2cad from the published images of one version (ADR 0027). Run the commands from the repository root.
-#   Web app:         docker compose -f deployment/compose.yaml up -d            then open http://localhost:8000
-#   MCP over stdio:  docker compose -f deployment/compose.yaml run --rm -T mcp
-#   MCP over HTTP:   docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
+#   Web app:         docker compose --env-file .env -f deployment/compose.yaml up -d            then open http://localhost:8000
+#   MCP over stdio:  docker compose --env-file .env -f deployment/compose.yaml run --rm -T mcp
+#   MCP over HTTP:   docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 # DRAWING2CAD_VERSION selects the version tag for all services, for example v1.3. Without it, Compose uses latest.
 # deployment/compose.local.yaml builds the same services from the current source.
+# Use --env-file .env to load the root file for interpolation. Shell values have priority.
+# If no .env exists, omit --env-file .env. The service env_file remains optional.
 name: drawing2cad               # Keeps the project name and the volume names of earlier installations.
 
 services:
@@ -17,7 +19,7 @@ services:
       - path: ../.env
         required: false
     environment:
-      # The key can come from the shell instead of .env, for example from a password manager; the shell value wins.
+      # --env-file .env supplies the default. A shell value has priority, including an explicitly empty value.
       DRAWING2CAD_AGENT_API_KEY: ${DRAWING2CAD_AGENT_API_KEY:-}
     read_only: true
     cap_drop: [ALL]
@@ -57,7 +59,7 @@ services:
       - cad-data:/data          # Uploaded sources, revisions, jobs, notes, and artifacts.
 
   # Standalone MCP over Streamable HTTP. Only the host loopback interface exposes it.
-  # Supply DRAWING2CAD_HTTP_TOKEN through your secret mechanism. Without a token, the server does not start.
+  # Supply DRAWING2CAD_HTTP_TOKEN through the shell or --env-file .env. Without a token, the server does not start.
   mcp-http:
     extends:
       service: mcp
