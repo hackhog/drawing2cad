@@ -1,0 +1,10 @@
+# Local build of the MCP image for unreleased changes. Apply after compose.mcp.yaml:
+#   docker compose -f compose.mcp.yaml -f compose.mcp.build.yaml build
+# The local tag keeps a local build apart from the published image.
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: drawing2cad-mcp/Dockerfile
+      target: production
+    image: drawing2cad-mcp:local

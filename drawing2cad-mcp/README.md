@@ -14,10 +14,13 @@ Use [ADR 0016](../docs/adr/0016-shared-domain-service-and-drawing-delivery.md) f
 From the repository root:
 
 ```bash
-docker compose -f compose.mcp.yaml build
+docker compose -f compose.mcp.yaml pull
 docker compose -f compose.mcp.yaml run --rm -T mcp
 ```
 
+Compose uses the published image `ghcr.io/hackhog/drawing2cad-mcp` of the version in `DRAWING2CAD_VERSION`, or `latest`
+([ADR 0027](../docs/adr/0027-container-images-on-ghcr-for-version-tags.md)).
+To build the current source, run `docker compose -f compose.mcp.yaml -f compose.mcp.build.yaml build`, and use the same files for `run`.
 This starts MCP over stdio. Attach a client to stdin/stdout.
 The service has no network and publishes no HTTP port.
 It retains sources, revisions, jobs, notes, and artifacts in the `cad-data` volume at `/data`.
@@ -27,7 +30,7 @@ Send PDF bytes through the upload tools. No source directory mount is required.
 For HTTP, set `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism and run:
 
 ```bash
-docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up --build -d
+docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up -d
 ```
 
 The endpoint is `http://127.0.0.1:8765/mcp`. Use the same bearer token in the client.

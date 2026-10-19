@@ -1,11 +1,9 @@
 # Remote clients upload PDF bytes through MCP. Persistent data stays in a volume.
+# The service uses the published image of one version (ADR 0027). DRAWING2CAD_VERSION selects the version tag.
+# To build unreleased changes locally, add compose.mcp.build.yaml after this file.
 services:
   mcp:
-    build:
-      context: .
-      dockerfile: drawing2cad-mcp/Dockerfile
-      target: production
-    image: drawing2cad-mcp:m2
+    image: ghcr.io/hackhog/drawing2cad-mcp:${DRAWING2CAD_VERSION:-latest}
     stdin_open: true
     network_mode: none
     read_only: true

@@ -28,8 +28,10 @@ Supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism. Do not commit its
 From the repository root, run:
 
 ```bash
-docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up --build -d
+docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up -d
 ```
+
+This uses the published image. To build the current source, add `-f compose.mcp.build.yaml` and `--build`.
 
 Connect to `http://127.0.0.1:8765/mcp` with the same bearer token.
 The override listens on container port 8000 and publishes only the host loopback interface.

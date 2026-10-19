@@ -9,10 +9,13 @@ The skill uses domain tools and remains independent of the CAD backend.
 From the repository root:
 
 ```bash
-docker compose -f compose.mcp.yaml build
+docker compose -f compose.mcp.yaml pull
 docker compose -f compose.mcp.yaml run --rm -T mcp
 ```
 
+Each version tag publishes the images to `ghcr.io/hackhog` ([ADR 0027](docs/adr/0027-container-images-on-ghcr-for-version-tags.md)).
+Set `DRAWING2CAD_VERSION` to a version tag, for example `v1.3`, to use the images of that version. Without it, Compose uses `latest`.
+Run `docker compose ... pull` to get a newer `latest` image.
 The second command starts an MCP stdio process.
 Connect an MCP client to its stdin/stdout; it is not a browser endpoint.
 The container has no network.
@@ -23,7 +26,7 @@ The named `cad-data` volume preserves uploaded sources, revisions, jobs, notes, 
 For Streamable HTTP, supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism, then run:
 
 ```bash
-docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up --build -d
+docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up -d
 ```
 
 Connect to `http://127.0.0.1:8765/mcp` with the same bearer token.
@@ -39,8 +42,12 @@ See the [MCP guide](drawing2cad-mcp/README.md) for tools, configuration, and tes
 From the repository root:
 
 ```bash
-docker compose up --build        # builds without credentials; open http://localhost:8000
+docker compose up                # pulls the published images; open http://localhost:8000
 ```
+
+To build unreleased changes, add the build override files:
+`docker compose -f compose.yaml -f compose.build.yaml up --build` for the web app, and
+`docker compose -f compose.mcp.yaml -f compose.mcp.build.yaml build` for the MCP.
 
 Upload drawing PDFs, review the analysis, and start a run.
 A run lets an agent build the model only through the `drawing2cad-mcp` endpoint of the backend; step 4 shows the released STEP in 3D

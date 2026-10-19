@@ -26,5 +26,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0023](0023-markdown-reader-for-run-notes.md) | Markdown reader for run notes |
 | [0024](0024-embedded-drawing-references-and-required-drawing.md) | Embedded drawing references and a required drawing in agent runs |
 | [0025](0025-poetry-for-the-python-projects.md) | Poetry for the Python projects |
+| [0027](0027-container-images-on-ghcr-for-version-tags.md) | Container images on ghcr.io for version tags |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

@@ -8,6 +8,7 @@ Proposed. Supersedes ADR 0006 in the part "one container". Amends ADR 0010 (the 
 The other parts of ADR 0006 stay valid: local start with Docker Compose, no Kubernetes, Azure optional and never necessary.
 
 [ADR 0013](0013-vector-analysis-in-mcp.md) replaces the standalone extractor dependency with the MCP package's PDF service.
+[ADR 0027](0027-container-images-on-ghcr-for-version-tags.md) replaces the rule that `docker compose up --build` is the only command to build and start.
 The separate frontend and backend containers remain unchanged.
 The original dependency description below remains historical evidence.
 
