@@ -364,6 +364,29 @@ def test_an_exhausted_deadline_without_a_part_is_a_time_budget_result(environmen
         assert ("during model inference" in error["message"] and "did not answer" in error["message"]) == bool(phase)
 
 
+@pytest.mark.parametrize(("part", "expected"), [
+    ({"build": {"status": "pass"}, "release": None}, "AGENT_TIME_BUDGET"),
+    ({"build": {"status": "pass"}, "release": {"sha256": "a" * 64}}, None),
+])
+def test_an_exhausted_deadline_before_a_release_fails_the_run(environment, part, expected):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
+        original = services.backend.call
+        environment.setattr(services.backend, "call", lambda operation, **arguments:
+                            {"part": part} if operation == "part_read" else original(operation, **arguments))
+        services.runner.finish(run["run_id"], {"status": "time_budget_reached",
+                                               "time_budget": {"phase": "model_inference", "message": "timed out"}})
+        result = services.jobs.get(run["run_id"])
+        assert (result["error"] or {}).get("code") == expected
+        if expected:
+            assert "before the agent released the STEP model" in result["error"]["message"]
+        else:
+            assert result["job"]["status"] == "succeeded"
+
+
 def test_the_run_note_is_revisioned_and_keeps_the_agent_report(environment):
     with TestClient(api.create_app()) as client:
         services = client.app.state.services

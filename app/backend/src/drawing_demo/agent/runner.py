@@ -187,11 +187,13 @@ class AgentRunner:
                        "Check the drawing and start the run again.")
             return
         part = self.backend.call("part_read", run_id=part_run)["part"]
-        if part.get("release") or (part.get("build") or {}).get("status") == "pass":
+        built = (part.get("build") or {}).get("status") == "pass"
+        if part.get("release") or (built and not out_of_time):
             # A built model without release is a finished run; its review shows why the release is blocked.
             self.jobs.update(run_id, phase="done", error=None, job={"status": "succeeded", "progress": 1, "finished_at": now()})
         elif out_of_time:
-            self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary),
+            # The time ended before a release. A model built before stays readable, but the run is not a finished result.
+            self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary, built),
                        "Start the run again, or use a faster model endpoint.")
         else:
             # The complete report is the run note; the error names only the result.
@@ -199,11 +201,12 @@ class AgentRunner:
                        "Look at the report and open review items in the Review tab; clarify the drawing and start the run again.")
 
     @staticmethod
-    def _time_budget_message(summary: dict[str, Any]) -> str:
+    def _time_budget_message(summary: dict[str, Any], built: bool = False) -> str:
         detail = summary.get("time_budget") or {}
         phase = {"model_inference": " during model inference", "tool_call": " during a tool call"}.get(detail.get("phase"), "")
         limit = LIMITS["total_timeout_seconds"]
-        text = f"The run used its time budget of {limit} seconds{phase} before the agent built a valid model."
+        result = "released the STEP model; the built model stays readable" if built else "built a valid model"
+        text = f"The run used its time budget of {limit} seconds{phase} before the agent {result}."
         return f"{text} Last error: {detail['message']}"[:4000] if detail.get("message") else text
 
     def store_report(self, part_run: str, report: str) -> None:

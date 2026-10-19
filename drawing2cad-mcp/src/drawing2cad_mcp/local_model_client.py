@@ -315,6 +315,11 @@ def skill_references(skill_path):
 # Errors that can disappear on a later attempt with the same arguments. They do not start a repeated-failure stop.
 TRANSIENT_ERROR_CODES = frozenset({"WORKER_TIMEOUT", "WORKER_CRASH", "JOB_INTERRUPTED", "JOB_SERVICE_BUSY", "RUN_BUSY",
                                    "TOOL_FAILED", "SANDBOX_UNAVAILABLE", "CAD_VALIDATION_UNAVAILABLE"})
+# Tools that change server state that later requests can depend on: the part, its drawings, its release, and its note.
+# A successful call changes the state that the repeated-failure check compares. Drawing calls do not invalidate a
+# release, so this set is larger than MUTATION_TOOLS.
+STATE_CHANGING_TOOLS = MUTATION_TOOLS | frozenset({"drawing_render", "drawing_review", "export_step",
+                                                   "part_export_review", "notes_update"})
 # A model call or tool call that fails this close to the run deadline used the remaining time.
 DEADLINE_MARGIN_SECONDS = 1.0
 
@@ -349,7 +354,7 @@ def corrective_message(name, failure):
     at = f" at {failure['target']}" if failure["target"] else ""
     return {"role": "user", "content": (
         f"The {name} request failed with {failure['code']}{at}: {failure['message']} "
-        "The client will not send an identical request again while the part state is unchanged. An identical request "
+        "The client will not send an identical request again while the server state is unchanged. An identical request "
         "stops the run without progress. Correct the arguments with the error and the live tool schema, make new source "
         "observations, or use another valid approach. If this tool is optional for the current part, for example a "
         "calibration when the printed dimensions are sufficient, you can continue without it.")}
@@ -405,10 +410,10 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                "model_turns": 0, "model_seconds": 0.0, "mcp_seconds": 0.0, "questions": [], "released": False,
                "model_statistics": [], "skill_reads": 0, "supplied_references": []}
     supplied = summary["supplied_references"]
-    # Failed requests by canonical request and part state. A successful mutation changes the part state, so the
-    # same request can then legitimately give another result.
+    # Failed requests by canonical request and server state. A successful call of a state-changing tool changes the
+    # state, so the same request can then legitimately give another result.
     failures = {}
-    part_state = 0
+    server_state = 0
 
     def supply(paths, reason, turn):
         """Append the references that the model has not received yet."""
@@ -494,16 +499,16 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                     trace.write("question", arguments)
                     summary["status"] = "user_input_required"
                     break
-                key = (canonical_request(name, arguments), part_state)
+                key = (canonical_request(name, arguments), server_state)
                 if key in failures:
-                    # The same request already failed with the same part state. Do not execute it again.
+                    # The same request already failed with the same server state. Do not execute it again.
                     failure = failures[key]
                     failure["repeat_count"] += 1
                     summary["blocked_requests"] += 1
                     at = f" at {failure['target']}" if failure["target"] else ""
                     blocked = {"isError": True, "client_blocked": True, "content": [{"type": "text", "text": (
                         f"Blocked before execution: this {name} request is identical to a request that failed with "
-                        f"{failure['code']}{at}, and the part state did not change. The run stops without progress.")}]}
+                        f"{failure['code']}{at}, and the server state did not change. The run stops without progress.")}]}
                     trace.write("blocked-request", {"turn": turn, "name": name, "arguments": arguments, "failure": failure})
                     messages.append(response_messages(name, blocked, plan.get("max_tool_text_chars", 80000))[0])
                     summary["status"] = "no_progress"
@@ -545,10 +550,12 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                 failure = deterministic_failure(response_json)
                 if failure is not None:
                     failures[key] = {**failure, "tool": name, "repeat_count": 1}
-                    corrections.append(corrective_message(name, failure))
-                    trace.write("corrective-instruction", {"turn": turn, "name": name, "failure": failure})
-                elif name in MUTATION_TOOLS and not response_json.get("isError", False):
-                    part_state += 1
+                    correction = corrective_message(name, failure)
+                    corrections.append(correction)
+                    trace.write("corrective-instruction", {"turn": turn, "name": name, "failure": failure,
+                                                           "message": correction["content"]})
+                elif name in STATE_CHANGING_TOOLS and not response_json.get("isError", False):
+                    server_state += 1
                 if summary["status"] != "running":
                     break
             messages.extend(image_messages)

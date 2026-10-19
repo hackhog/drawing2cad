@@ -112,10 +112,13 @@ async def test_a_repeated_invalid_calibration_is_blocked_and_stops_without_progr
     correction = second[-1]["content"]
     assert correction.startswith("The pdf_calibrate request failed with INVALID_ARGUMENTS at /references/0/source_region/2")
     assert "calibration when the printed dimensions are sufficient" in correction
-    kinds = trace_kinds(tmp_path)
+    events = [json.loads(line) for line in (tmp_path / "trace.jsonl").read_text().splitlines()]
+    kinds = [event["kind"] for event in events]
     for kind in ("tool-response", "corrective-instruction", "blocked-request", "no-progress", "summary"):
         assert kind in kinds
     assert kinds.count("corrective-instruction") == 1 and kinds.count("tool-response") == 1
+    # The trace records the corrective text that the model received.
+    assert next(e for e in events if e["kind"] == "corrective-instruction")["message"] == correction
 
 
 @pytest.mark.asyncio
@@ -193,3 +196,21 @@ async def test_a_model_error_before_the_deadline_stays_a_failure(tmp_path):
         raise RuntimeError("Model endpoint returned HTTP 400")
     result = await drive(Session(), [], plan(total_timeout_seconds=60), "Skill", Trace(tmp_path), failed)
     assert result["status"] == "failed" and "HTTP 400" in result["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_a_successful_state_change_outside_the_part_permits_a_new_attempt(tmp_path):
+    # part_export_review fails before export_step. After a successful export_step, the same request is legitimate.
+    review = {"run_id": "localtest-a", "expected_revision": 2}
+    responses = {1: error_response({"code": "NOT_EXPORTED", "message": "Export the STEP first."})}
+    session = ScriptedSession(lambda name, arguments, count: responses.get(count, ok_response()))
+    model, _ = recorded(
+        model_response([call("part_export_review", review)]),
+        model_response([call("export_step", review)]),
+        model_response([call("part_export_review", review)]),
+        model_response(text="Done."),
+    )
+    result = await drive(session, catalog("part_export_review", "export_step"), plan(step_budget=10), "Skill",
+                         Trace(tmp_path), model_call=model)
+    assert session.calls == ["part_export_review", "export_step", "part_export_review"]
+    assert result["blocked_requests"] == 0 and result["status"] == "stopped_without_release"
