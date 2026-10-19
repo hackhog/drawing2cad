@@ -88,7 +88,10 @@ _EXTRA = {
     "notes_update": (_object({**RUN, "expected_revision": {"type": "integer", "minimum": 0},
                               "text": {"type": "string", "maxLength": 65536}}),
                      "Replace a run note with optimistic note revision control. Does not change the part revision."),
-    "drawing_schema": (_object({}), "Read DrawingSpec version 1.0 and its supported geometry, dimension, and review scope. Use native angular and radius dimensions plus source-linked notes for wall draft and inside fillets. Notes must identify their affected regions."),
+    "drawing_schema": (_object({"schema_version": {"type": "string", "enum": ["1.0", "2.0"]}}, required=[]),
+                       "Read DrawingSpec version 1.0 (default) or 2.0 and its supported geometry, dimension, and review scope. "
+                       "Version 2.0 adds isometric projection, ellipses, sections with cutting planes and hatching, sheet data, and a GPS profile. "
+                       "drawing_render rejects 2.0 content that it cannot render yet. Use native angular and radius dimensions plus source-linked notes for wall draft and inside fillets. Notes must identify their affected regions."),
     "drawing_validate": (_object({**REVISION, "drawing_spec": DRAWING}), "Check supplied views, dimensions, evidence, uncertainty markers, and layout against the current part. Does not render or prove CAD equivalence."),
     "drawing_render": (_object({**REVISION, "drawing_spec": DRAWING}), "Render supplied geometry and native DXF dimensions in the restricted worker. Return matching DXF and PDF artifacts on success. Layout failures can return bounded collision details and diagnostic PDF/JSON artifacts bound to the exact drawing and part revision. Diagnostic artifacts cannot be reviewed as an accepted drawing. A STEP release links them as the files of a failed drawing. Invalidate the previous drawing review before worker execution; schema or non-layout preflight failures leave it unchanged."),
     "drawing_read": (_object(RUN), "Read current drawing state, artifact IDs, and review binding."),

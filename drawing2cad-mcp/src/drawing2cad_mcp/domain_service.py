@@ -30,7 +30,7 @@ from .cad_tools import CAD_SCHEMAS
 from .domain_jobs import JobCancelled, JobFailed, JobService
 from .domain_store import AccessContext, DomainError, DomainStore
 from .domain_tools import DOMAIN_SCHEMAS
-from .drawing_contract import drawing_schema, drawing_validate
+from .drawing_contract import DRAWING_SCHEMA_VERSION, drawing_schema, drawing_validate, render_gate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import MAX_STROKE_LIMIT, PdfError, PdfService
 from .part_schema import EdgeSelectionDiagnostic
@@ -258,7 +258,7 @@ class DomainService:
         if name.startswith("step_"):
             return self._step_call(ctx, name, args)
         if name == "drawing_schema":
-            return drawing_schema()
+            return drawing_schema(args.get("schema_version", DRAWING_SCHEMA_VERSION))
         cad = self._backend(ctx)[0]
         if name in {"part_schema", "pmi_schema", "part_validate", "cad_worker_probe"}:
             if name == "cad_worker_probe":
@@ -822,7 +822,7 @@ class DomainService:
     def _render(self, ctx, cad, directory, state, spec):
         if not self.settings.cad.enabled:
             raise DomainError("CAD_DISABLED", "Enable the restricted worker before drawing creation.")
-        report = drawing_validate(spec, state["description"], state["revision"])
+        report = render_gate(drawing_validate(spec, state["description"], state["revision"]))
         if report["status"] != "pass" and not report.get("diagnostic_eligible"):
             report.pop("resolved", None)
             return report
