@@ -4,7 +4,7 @@ Date: 2026-10-18
 
 ## Status
 
-Accepted.
+Accepted. [ADR 0026](0026-complete-skill-in-agent-runs.md) replaces the decision to embed only two references. The other decisions stay valid.
 
 ## Context
 
