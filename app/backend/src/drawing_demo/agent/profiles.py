@@ -308,8 +308,8 @@ class ProfileStore:
             if expected_revision is not None and expected_revision != (stored_revision or 0):
                 # For example an edit of a profile that another browser deleted.
                 raise self._conflict(RevisionConflict(name, stored_revision))
-            before = self._active(self._profiles())[0]
-            selection = self._selection_revision()
+            # The active name and its selection revision come from one read, so that a later check is consistent.
+            before, selection = self._active(self._profiles())
             if key is None and (current is None or current["key_ciphertext"] is None):
                 raise ServiceError(422, "INVALID_PROFILE", "The API key is missing.", field="api_key")
             if key is not None and self.master is None:
@@ -339,8 +339,7 @@ class ProfileStore:
             if name in self._env:
                 raise ServiceError(409, "PROFILE_READ_ONLY", f"The profile {name} comes from the server configuration.",
                                    recovery="Remove the profile from the server .env.")
-            active, _ = self._active(self._profiles())
-            selection = self._selection_revision()
+            active, selection = self._active(self._profiles())
             try:
                 deleted = self.store.delete_profile(name, expected_revision, ACTOR)
             except RevisionConflict as error:
@@ -349,10 +348,6 @@ class ProfileStore:
                 raise ServiceError(404, "NOT_FOUND", f"Unknown model profile: {name}")
             if active == name:
                 self._adjust_selection(next(iter(self._profiles()), None), selection)
-
-    def _selection_revision(self) -> int:
-        stored = self.store.setting(ACTIVE_SETTING)
-        return stored[1] if stored else 0
 
     def _adjust_selection(self, name: str | None, read_revision: int) -> None:
         """Store an automatic change of the active profile, only if no other selection was stored since it was read."""

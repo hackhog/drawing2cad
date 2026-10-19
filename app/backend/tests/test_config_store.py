@@ -321,19 +321,43 @@ def test_a_stale_delete_of_a_deleted_profile_is_a_conflict(environment):
         assert client.delete("/api/agent/profiles/P").status_code == 404
 
 
-def test_an_automatic_selection_does_not_overwrite_a_selection_of_another_backend(tmp_path):
-    # Two stores on one database stand for two backends. The second one selects "no agent" while the first one
-    # creates the first profile; the automatic selection of the first one must not overwrite that choice.
+def test_an_automatic_selection_does_not_overwrite_a_selection_of_another_backend(tmp_path, monkeypatch):
+    # Two stores on one database stand for two backends. While the first one deletes the active profile A, the
+    # second one selects C. The automatic fallback of the first one must not overwrite that selection.
     master = MasterKey.from_text(TEST_MASTER_KEY)
     first = ProfileStore(tmp_path / "config.sqlite", env_profiles={}, master=master)
     second = ProfileStore(tmp_path / "config.sqlite", env_profiles={}, master=master)
     try:
-        read = first._selection_revision()
-        second.select(None, 0)
-        first.store.save_profile("P", {"provider": "openrouter", "base_url": "https://openrouter.ai/api/v1", "model": "m",
-                                       "api": "chat", "reasoning_effort": None, "key_header": "Authorization",
-                                       "limits_json": {}}, "k", master, 0, "web-ui")
-        first._adjust_selection("P", read)
+        for name in ("A", "B", "C"):
+            first.save(name, "openrouter", "", "vendor/m", "chat", f"key-{name}", None, expected_revision=0)
+        first.select("A")
+        original = first.store.delete_profile
+
+        def delete_while_another_backend_selects(*args, **kwargs):
+            second.select("C")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(first.store, "delete_profile", delete_while_another_backend_selects)
+        first.delete("A")
+        assert first.active == "C" and second.active == "C"
+    finally:
+        first.close()
+        second.close()
+
+
+def test_the_first_profile_does_not_overwrite_a_selection_of_another_backend(tmp_path, monkeypatch):
+    master = MasterKey.from_text(TEST_MASTER_KEY)
+    first = ProfileStore(tmp_path / "config.sqlite", env_profiles={}, master=master)
+    second = ProfileStore(tmp_path / "config.sqlite", env_profiles={}, master=master)
+    try:
+        original = first.store.save_profile
+
+        def save_while_another_backend_selects(*args, **kwargs):
+            second.select(None)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(first.store, "save_profile", save_while_another_backend_selects)
+        first.save("P", "openrouter", "", "vendor/m", "chat", "k", None, expected_revision=0)
         assert first.active is None and second.active is None
     finally:
         first.close()
