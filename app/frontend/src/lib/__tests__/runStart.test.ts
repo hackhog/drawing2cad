@@ -60,8 +60,14 @@ describe("startEntry", () => {
     expect(startEntry(caps({ agent_ready: false }), agent("A", profile("A")))).toBe("disabled");
   });
 
-  it("starts directly without profiles, for example in the simulated service", () => {
+  it("starts directly only in the simulated service", () => {
     expect(startEntry(caps({ simulated: true, runs: true }), undefined)).toBe("direct");
+    expect(startEntry(caps({ simulated: true, runs: false }), undefined)).toBe("disabled");
     expect(startEntry(caps({ runs: false }), agent(null))).toBe("disabled");
+  });
+
+  it("starts no run of a real service while its profiles load, after a failed request, or before the capabilities", () => {
+    expect(startEntry(caps({ runs: true }), undefined)).toBe("disabled");
+    expect(startEntry(undefined, agent("A", profile("A")))).toBe("disabled");
   });
 });

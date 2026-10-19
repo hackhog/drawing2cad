@@ -29,13 +29,15 @@ export function unusableReason(profile: AgentProfile): string | null {
 }
 
 /**
- * What "Start run" in the CAD runs card does: open the profile dialog, start the run directly (a service without
- * profiles, for example the simulated service), or nothing because no run can start.
+ * What "Start run" in the CAD runs card does: open the profile dialog, start the run directly (only the simulated
+ * service, which has no profiles), or nothing because no run can start. A real service needs its loaded profiles:
+ * while they load or after their request failed, no run starts, so that no run bypasses the dialog.
  */
 export function startEntry(caps: Capabilities | undefined, agent: AgentProfiles | undefined): "dialog" | "direct" | "disabled" {
+  if (!caps) return "disabled";
+  if (caps.simulated) return caps.runs ? "direct" : "disabled";
   const profiles = agent?.profiles ?? [];
-  if (!profiles.length) return caps?.runs ? "direct" : "disabled";
-  return caps?.agent_ready !== false && profiles.some(usable) ? "dialog" : "disabled";
+  return caps.agent_ready !== false && profiles.some(usable) ? "dialog" : "disabled";
 }
 
 /**

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Maximize, Play } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { FlagList } from "@/components/FlagList";
 import { ModelFrame, ModelPanel } from "@/components/ModelPanel";
@@ -190,6 +190,7 @@ function RunsCard({ sourceId }: { sourceId: string }) {
   // The profile for the next run. null uses the active profile of the settings; a selection here does not change it.
   const [chosen, setChosen] = useState<string | null>(null);
   const [dialog, setDialog] = useState(false);
+  const startButton = useRef<HTMLButtonElement>(null);
   const { profiles, selected, canStart, send } = runStartState(caps, agent, chosen);
   const entry = startEntry(caps, agent);
   const start = useMutation({
@@ -206,7 +207,7 @@ function RunsCard({ sourceId }: { sourceId: string }) {
     <Card className="gap-2.5 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0">
         <CardTitle className="text-sm font-bold">CAD runs</CardTitle>
-        <Button size="sm" className="h-7 rounded-full" disabled={entry === "disabled" || start.isPending}
+        <Button ref={startButton} size="sm" className="h-7 rounded-full" disabled={entry === "disabled" || start.isPending}
           onClick={() => {
             if (entry === "direct") return start.mutate();
             setChosen(null);  // Each dialog starts with the active profile.
@@ -216,7 +217,7 @@ function RunsCard({ sourceId }: { sourceId: string }) {
         </Button>
         <RunStartDialog open={dialog} onOpenChange={(open) => !start.isPending && setDialog(open)} profiles={profiles}
           active={agent?.active ?? null} selected={selected} onSelect={setChosen} canStart={canStart}
-          pending={start.isPending} onStart={() => start.mutate()} />
+          pending={start.isPending} onStart={() => start.mutate()} returnFocus={startButton} />
       </CardHeader>
       <CardContent className="px-0">
         {entry === "disabled" && !runs.length ? (
