@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.20.0"
+  version: "0.21.0"
 ---
 
 # drawing2cad
@@ -81,6 +81,10 @@ The local-path metric result does not satisfy the complete-service drawing requi
 
 ## References
 
+The skill is this file and all files under `references/`. Always use the complete skill.
+Before the first CAD tool call, read every reference file. If the client embeds the skill, use the embedded files.
+If a reference file is not available, report it as a limit of the run.
+
 - Read [drawing2cad-mcp.md](references/drawing2cad-mcp.md) for PDF inputs, images, measurements, and profile boundaries.
 - Use [projection-and-measurement.md](references/projection-and-measurement.md) to assign axes and measure missing values.
 - Use [managed-workflow.md](references/managed-workflow.md) for schema details, revisions, and permitted optional operations.
@@ -90,7 +94,7 @@ The local-path metric result does not satisfy the complete-service drawing requi
 - Use [computed-expected.md](references/computed-expected.md) for calculated volumes and extents. Do not calculate these values by hand.
 - Use [drawing-delivery.md](references/drawing-delivery.md) for domain drawing delivery and isolated STEP-only tests.
 - Use [validation.md](references/validation.md) and [delivery-and-backends.md](references/delivery-and-backends.md) to distinguish acceptance claims.
-- Load [target-format-exports.md](references/target-format-exports.md) only for requested native NX or SOLIDWORKS derivatives.
+- Apply [target-format-exports.md](references/target-format-exports.md) only for requested native NX or SOLIDWORKS derivatives.
 - Use [model-agnostic-workflow.md](references/model-agnostic-workflow.md) for budgets, trace records, and handoff.
 - Write technical documentation with [documentation-language.md](references/documentation-language.md).
 

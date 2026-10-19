@@ -23,10 +23,9 @@ ENV POETRY_NO_INTERACTION=1 \
 WORKDIR /src
 COPY drawing2cad-mcp/ drawing2cad-mcp/
 COPY app/backend/ app/backend/
-# The agent receives the maintained skill and its embedded drawing references as its work instruction.
+# The agent receives the complete maintained skill (SKILL.md and all references) as its work instruction.
 COPY skills/drawing2cad/SKILL.md skills/drawing2cad/SKILL.md
-COPY skills/drawing2cad/references/drawing-delivery.md skills/drawing2cad/references/verification-loop.md \
-     skills/drawing2cad/references/
+COPY skills/drawing2cad/references/ skills/drawing2cad/references/
 
 WORKDIR /src/app/backend
 # Install the locked runtime dependencies without the dev group. Poetry installs the MCP path

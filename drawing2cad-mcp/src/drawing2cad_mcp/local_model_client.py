@@ -223,22 +223,36 @@ class Trace:
         return {"path": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-# The model has no tool to open linked skill files, so the domain profile embeds the drawing references.
+# Each domain run needs the drawing references. The skill must contain them.
 DOMAIN_SKILL_REFERENCES = ("drawing-delivery.md", "verification-loop.md")
+# The complete skill is part of each model request, so its size is bounded.
+MAX_SKILL_BYTES = 256 * 1024
 
 
 def skill_text(skill_path, domain):
-    """SKILL.md, followed in the domain profile by the embedded drawing references."""
+    """SKILL.md, followed by every Markdown file directly under references/.
+
+    The model has no tool to open skill files, and older tool results are shortened to limit tokens.
+    The system prompt therefore embeds the complete skill. The domain profile requires the drawing references.
+    """
     skill_path = Path(skill_path)
-    text = skill_path.read_text(encoding="utf-8-sig")
-    if not domain:
-        return text
-    parts = [text, "\n\n# Embedded references\n\nThe following referenced files are included here. "
-                   "Other files under references/ are not available in this run.\n"]
-    for name in DOMAIN_SKILL_REFERENCES:
-        reference = (skill_path.parent / "references" / name).read_text(encoding="utf-8-sig")
+    references = skill_path.parent / "references"
+    names = sorted(path.name for path in references.glob("*.md")) if references.is_dir() else []
+    if domain:
+        missing = [name for name in DOMAIN_SKILL_REFERENCES if name not in names]
+        if missing:
+            raise ValueError(f"The skill has no {', '.join(missing)} under references/.")
+    parts = [skill_path.read_text(encoding="utf-8-sig")]
+    if names:
+        parts.append("\n\n# Embedded references\n\nAll files under references/ are included here. "
+                     "Together with the text above, they are the complete skill.\n")
+    for name in names:
+        reference = (references / name).read_text(encoding="utf-8-sig")
         parts.append(f"\n\n<reference path=\"references/{name}\">\n{reference.strip()}\n</reference>\n")
-    return "".join(parts)
+    text = "".join(parts)
+    if len(text.encode("utf-8")) > MAX_SKILL_BYTES:
+        raise ValueError(f"The complete skill exceeds {MAX_SKILL_BYTES // 1024} KiB.")
+    return text
 
 
 async def drive(session, catalog, plan, skill, trace, model_call=call_model):
@@ -376,8 +390,6 @@ async def run(plan_path, output):
     validate_plan(plan)
     skill_path = (plan_path.parent / plan["skill_path"]).resolve(strict=True)
     skill_bytes = skill_text(skill_path, "source_id" in plan).encode("utf-8")
-    if len(skill_bytes) > 128 * 1024:
-        raise ValueError("The skill exceeds 128 KiB.")
     output.mkdir(parents=True, exist_ok=False)
     (output / "plan.json").write_bytes(plan_bytes)
     (output / "skill.md").write_bytes(skill_bytes)

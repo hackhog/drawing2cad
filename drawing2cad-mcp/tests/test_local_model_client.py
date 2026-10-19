@@ -112,22 +112,44 @@ async def test_uploaded_source_prompt_requires_a_complete_drawing_before_release
     assert [tool["function"]["name"] for tool in requests[0]["tools"]] == ["drawing_review", "request_user_input"]
 
 
-def test_the_domain_skill_embeds_the_drawing_references(tmp_path):
+def test_the_skill_text_embeds_every_reference(tmp_path):
     (tmp_path / "references").mkdir()
     (tmp_path / "SKILL.md").write_text("# Skill")
-    for name in DOMAIN_SKILL_REFERENCES:
+    names = (*DOMAIN_SKILL_REFERENCES, "validation.md")
+    for name in names:
         (tmp_path / "references" / name).write_text(f"Rules of {name}")
-    assert skill_text(tmp_path / "SKILL.md", domain=False) == "# Skill"
-    text = skill_text(tmp_path / "SKILL.md", domain=True)
-    assert text.startswith("# Skill")
-    for name in DOMAIN_SKILL_REFERENCES:
-        assert f'<reference path="references/{name}">\nRules of {name}\n</reference>' in text
+    (tmp_path / "references" / "notes.txt").write_text("Not a reference")
+    for domain in (False, True):
+        text = skill_text(tmp_path / "SKILL.md", domain=domain)
+        assert text.startswith("# Skill")
+        for name in names:
+            assert f'<reference path="references/{name}">\nRules of {name}\n</reference>' in text
+        assert "Not a reference" not in text
 
 
-def test_the_maintained_skill_has_the_embedded_references():
+def test_the_domain_skill_requires_the_drawing_references(tmp_path):
+    (tmp_path / "references").mkdir()
+    (tmp_path / "SKILL.md").write_text("# Skill")
+    (tmp_path / "references" / DOMAIN_SKILL_REFERENCES[0]).write_text("Rules")
+    assert skill_text(tmp_path / "SKILL.md", domain=False).count("<reference path=") == 1
+    with pytest.raises(ValueError, match=DOMAIN_SKILL_REFERENCES[1]):
+        skill_text(tmp_path / "SKILL.md", domain=True)
+
+
+def test_the_skill_text_has_a_size_limit(tmp_path):
+    (tmp_path / "references").mkdir()
+    (tmp_path / "SKILL.md").write_text("# Skill")
+    (tmp_path / "references" / "large.md").write_text("x" * (256 * 1024))
+    with pytest.raises(ValueError, match="256 KiB"):
+        skill_text(tmp_path / "SKILL.md", domain=False)
+
+
+def test_the_maintained_skill_is_embedded_completely():
     skill = Path(__file__).resolve().parents[2] / "skills" / "drawing2cad" / "SKILL.md"
     text = skill_text(skill, domain=True)
-    assert "fully describe the required shape" in text and len(text.encode()) < 128 * 1024
+    assert "fully describe the required shape" in text and "Always use the complete skill" in text
+    for reference in sorted((skill.parent / "references").glob("*.md")):
+        assert f'<reference path="references/{reference.name}">' in text
 
 
 def test_images_and_truncation_are_explicit():
