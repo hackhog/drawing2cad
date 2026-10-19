@@ -225,27 +225,112 @@ class Trace:
         return {"path": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-# The model has no tool to open linked skill files, so the domain profile embeds the drawing references.
+# Each domain run needs the drawing references. The skill must contain them.
 DOMAIN_SKILL_REFERENCES = ("drawing-delivery.md", "verification-loop.md")
+# Bound for SKILL.md and all reference files of one run.
+MAX_SKILL_BYTES = 256 * 1024
+# The section of SKILL.md that assigns references to the tools of each step.
+STEP_SECTION = "## References for each step"
+STEP_ROW = re.compile(r"^\|(?P<step>[^|]+)\|(?P<tools>[^|]+)\|(?P<references>[^|]+)\|\s*$")
+STEP_TOOL = re.compile(r"`([a-z][a-z0-9_]*)`")
+STEP_REFERENCE = re.compile(r"\]\((references/[A-Za-z0-9_.-]+\.md)\)")
+SKILL_READ_TOOL = {"type": "function", "function": {
+    "name": "skill_read",
+    "description": "Read one file of the drawing2cad skill, for example references/validation.md. "
+                   "The client supplies the references of each step automatically. Use this tool for other skill files.",
+    "parameters": {"type": "object", "additionalProperties": False, "required": ["path"],
+                   "properties": {"path": {"type": "string", "minLength": 1}}},
+}}
+
+
+class SkillReferences:
+    """The reference files of a skill and the references of each step, from the step table in SKILL.md.
+
+    A run loads the files once, so that all its references come from the same skill revision.
+    """
+
+    def __init__(self, files, steps):
+        self.files = files
+        self.steps = steps
+
+    def initial(self):
+        """References of the first step. The client supplies them with the task."""
+        return list(self.steps[0][1]) if self.steps else []
+
+    def for_tool(self, name):
+        return [path for tools, paths in self.steps if name in tools for path in paths]
+
+    def read(self, arguments):
+        """Return the text of one skill file. Paths outside the loaded files fail."""
+        if not isinstance(arguments, dict) or set(arguments) != {"path"} or not isinstance(arguments["path"], str):
+            raise ValueError("skill_read needs exactly one path string.")
+        path = arguments["path"].strip().removeprefix("./")
+        if path not in self.files:
+            raise ValueError(f"Unknown skill file: {arguments['path']}. Available files: {', '.join(self.files)}.")
+        return self.files[path]
 
 
 def skill_text(skill_path, domain):
-    """SKILL.md, followed in the domain profile by the embedded drawing references."""
+    """SKILL.md. The domain profile requires the drawing references under references/."""
     skill_path = Path(skill_path)
-    text = skill_path.read_text(encoding="utf-8-sig")
-    if not domain:
-        return text
-    parts = [text, "\n\n# Embedded references\n\nThe following referenced files are included here. "
-                   "Other files under references/ are not available in this run.\n"]
-    for name in DOMAIN_SKILL_REFERENCES:
-        reference = (skill_path.parent / "references" / name).read_text(encoding="utf-8-sig")
-        parts.append(f"\n\n<reference path=\"references/{name}\">\n{reference.strip()}\n</reference>\n")
-    return "".join(parts)
+    if domain:
+        missing = [name for name in DOMAIN_SKILL_REFERENCES if not (skill_path.parent / "references" / name).is_file()]
+        if missing:
+            raise ValueError(f"The skill has no {', '.join(missing)} under references/.")
+    return skill_path.read_text(encoding="utf-8-sig")
 
 
-async def drive(session, catalog, plan, skill, trace, model_call=call_model):
-    """Execute one bounded conversation. Tool errors remain visible to the model."""
+def skill_references(skill_path):
+    """Load SKILL.md and each Markdown file directly under references/, and read the step table of SKILL.md."""
+    skill_path = Path(skill_path)
+    root = skill_path.parent.resolve(strict=True)
+    files = {"SKILL.md": skill_path.read_text(encoding="utf-8-sig")}
+    total = len(files["SKILL.md"].encode("utf-8"))
+    for path in sorted((root / "references").glob("*.md")):
+        if path.resolve().parent != root / "references":
+            raise ValueError(f"The skill file {path.name} is outside the skill directory.")
+        text = path.read_text(encoding="utf-8-sig")
+        total += len(text.encode("utf-8"))
+        files[f"references/{path.name}"] = text
+    if total > MAX_SKILL_BYTES:
+        raise ValueError(f"The skill files exceed {MAX_SKILL_BYTES // 1024} KiB.")
+    steps = []
+    lines = files["SKILL.md"].splitlines()
+    if STEP_SECTION in lines:
+        for line in lines[lines.index(STEP_SECTION) + 1:]:
+            if line.startswith("## "):
+                break
+            row = STEP_ROW.match(line)
+            tools = set(STEP_TOOL.findall(row["tools"])) if row else set()
+            if not tools:
+                continue  # Header, separator, or text.
+            paths = STEP_REFERENCE.findall(row["references"])
+            unknown = [path for path in paths if path not in files]
+            if unknown:
+                raise ValueError(f"The step table of SKILL.md names missing files: {', '.join(unknown)}.")
+            steps.append((frozenset(tools), tuple(paths)))
+    return SkillReferences(files, tuple(steps))
+
+
+def reference_message(paths, references, reason):
+    """One user message with the text of the given skill references."""
+    blocks = "".join(f"\n\n<reference path=\"{path}\">\n{references.files[path].strip()}\n</reference>" for path in paths)
+    return {"role": "user", "content": f"Skill references for {reason}. Apply them in this step. "
+                                       f"This content is part of the skill, not source evidence.{blocks}"}
+
+
+async def drive(session, catalog, plan, skill, trace, model_call=call_model, references=None):
+    """Execute one bounded conversation. Tool errors remain visible to the model.
+
+    With `references`, the client supplies the skill references of each step once, after the first tool request of
+    that step, as a user message. Text messages are not shortened later, so the references stay available. The model
+    reads other skill files with skill_read. These reads use no MCP call and do not count against the tool budget.
+    """
     tools = tool_catalog(catalog)
+    if references is not None:
+        tools.append(SKILL_READ_TOOL)
+        trace.write("skill-files", {"files": [{"path": path, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+                                              for path, text in references.files.items()]})
     available = {item["function"]["name"] for item in tools}
     domain = "source_id" in plan
     source = f"source ID {plan['source_id']} (SHA-256 {plan['source_sha256']})" if domain else plan["source_path"]
@@ -260,19 +345,34 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
               + "Record reasonable assumptions and continue. Use request_user_input only for a required question with no reasonable assumption. "
               f"Use only the authorized PDF {source}. Use run IDs that start with {plan['run_prefix']}-. "
               + ("The drawing is a required deliverable, not an optional detail. Make it with drawing_schema, drawing_validate, "
-                 "drawing_render, artifact_preview, and drawing_review, following the embedded references/drawing-delivery.md: "
+                 "drawing_render, artifact_preview, and drawing_review, following references/drawing-delivery.md: "
                  "its views must show every feature of the current part revision, with thicknesses, depths, and hole positions dimensioned. "
                  "If your drawing_review rejects the drawing, correct the drawing_spec, render it, and review it again. "
                  "Call export_step only after an accepted drawing review, or when the remaining tool requests cannot fit "
                  "another drawing attempt plus export_step and part_export_review; then report release.drawing.status with its reason. "
                  "Read source_flags_read before construction and apply the user decisions on review flags. " if domain else "")
+              + ("The client supplies the skill references of each step after your first tool request of that step. "
+                 "Read other skill files with skill_read. " if references is not None else "")
               + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
     task = ("Reconstruct the authorized PDF as a parameterized part description. Validate the model, "
             + ("make a complete dimensioned drawing of it, " if domain else "")
             + "release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits.")
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": task}]
     summary = {"status": "running", "model": plan["model"], "tool_requests": 0, "mcp_calls": 0, "model_turns": 0,
-               "model_seconds": 0.0, "mcp_seconds": 0.0, "questions": [], "released": False, "model_statistics": []}
+               "model_seconds": 0.0, "mcp_seconds": 0.0, "questions": [], "released": False, "model_statistics": [],
+               "skill_reads": 0, "supplied_references": []}
+    supplied = summary["supplied_references"]
+
+    def supply(paths, reason, turn):
+        """Append the references that the model has not received yet."""
+        new = [path for path in dict.fromkeys(paths) if path not in supplied]
+        if new:
+            supplied.extend(new)
+            trace.write("skill-references", {"turn": turn, "reason": reason, "paths": new})
+            messages.append(reference_message(new, references, reason))
+
+    if references is not None:
+        supply(references.initial(), "the first step", 0)
     started = time.monotonic()
     deadline = started + plan.get("total_timeout_seconds", 1200)
     try:
@@ -311,7 +411,21 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
                 summary["status"] = "released" if summary["released"] else "stopped_without_release"
                 break
             image_messages = []
+            step_references = []
             for request in requests:
+                function = request.get("function", {})
+                if references is not None and function.get("name") == "skill_read":
+                    summary["skill_reads"] += 1
+                    arguments = function.get("arguments", {})
+                    try:
+                        content, failed = references.read(arguments), False
+                    except ValueError as error:
+                        content, failed = str(error), True
+                    trace.write("skill-read", {"turn": turn, "arguments": arguments, "is_error": failed})
+                    messages.append({"role": "tool", "tool_name": "skill_read", "content": content})
+                    continue
+                if references is not None and function.get("name") in available:
+                    step_references.extend(references.for_tool(function.get("name")))
                 if summary["tool_requests"] >= plan.get("step_budget", 45):
                     summary["status"] = "tool_budget_reached"
                     break
@@ -357,6 +471,8 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model):
             messages.extend(image_messages)
             if summary["status"] != "running":
                 break
+            if references is not None:
+                supply(step_references, "the step of your last tool requests", turn)
         else:
             summary["status"] = "turn_budget_reached"
     except Exception as error:
@@ -378,8 +494,7 @@ async def run(plan_path, output):
     validate_plan(plan)
     skill_path = (plan_path.parent / plan["skill_path"]).resolve(strict=True)
     skill_bytes = skill_text(skill_path, "source_id" in plan).encode("utf-8")
-    if len(skill_bytes) > 128 * 1024:
-        raise ValueError("The skill exceeds 128 KiB.")
+    references = skill_references(skill_path)
     output.mkdir(parents=True, exist_ok=False)
     (output / "plan.json").write_bytes(plan_bytes)
     (output / "skill.md").write_bytes(skill_bytes)
@@ -394,7 +509,8 @@ async def run(plan_path, output):
                     catalog = await session.list_tools()
                     catalog_json = catalog.model_dump(mode="json", by_alias=True)
                     trace.write("catalog", {"response": catalog_json})
-                    summary = await drive(session, catalog_json["tools"], plan, skill_bytes.decode("utf-8"), trace)
+                    summary = await drive(session, catalog_json["tools"], plan, skill_bytes.decode("utf-8"), trace,
+                                          references=references)
     except Exception as error:
         summary.update(status="failed", error=_error(error))
         trace.write("session-error", summary)

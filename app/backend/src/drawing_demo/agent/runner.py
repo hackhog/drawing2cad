@@ -16,7 +16,7 @@ from pathlib import Path
 import re
 from typing import Any, Callable
 
-from drawing2cad_mcp.local_model_client import Trace, drive, skill_text
+from drawing2cad_mcp.local_model_client import Trace, drive, skill_references, skill_text
 import httpx2
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
@@ -144,7 +144,7 @@ class AgentRunner:
         async with self.session() as session:
             catalog = (await session.list_tools()).model_dump(mode="json", by_alias=True)["tools"]
             summary = await drive(session, catalog, plan, skill_text(self.skill_path, domain=True), trace,
-                                  model_call=make_model_call(settings))
+                                  model_call=make_model_call(settings), references=skill_references(self.skill_path))
         (directory / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         self.finish(run_id, summary)
 

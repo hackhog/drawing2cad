@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.20.0"
+  version: "0.21.0"
 ---
 
 # drawing2cad
@@ -81,6 +81,11 @@ The local-path metric result does not satisfy the complete-service drawing requi
 
 ## References
 
+The skill is this file and all files under `references/`. You can always read each of these files.
+Before the first tool of a step, read the references of that step. The table in "References for each step" assigns them.
+If the client supplies the references of a step, use the supplied text. Read the other references when their topic applies.
+If a reference file is not available, report it as a limit of the run.
+
 - Read [drawing2cad-mcp.md](references/drawing2cad-mcp.md) for PDF inputs, images, measurements, and profile boundaries.
 - Use [projection-and-measurement.md](references/projection-and-measurement.md) to assign axes and measure missing values.
 - Use [managed-workflow.md](references/managed-workflow.md) for schema details, revisions, and permitted optional operations.
@@ -90,9 +95,25 @@ The local-path metric result does not satisfy the complete-service drawing requi
 - Use [computed-expected.md](references/computed-expected.md) for calculated volumes and extents. Do not calculate these values by hand.
 - Use [drawing-delivery.md](references/drawing-delivery.md) for domain drawing delivery and isolated STEP-only tests.
 - Use [validation.md](references/validation.md) and [delivery-and-backends.md](references/delivery-and-backends.md) to distinguish acceptance claims.
-- Load [target-format-exports.md](references/target-format-exports.md) only for requested native NX or SOLIDWORKS derivatives.
+- Apply [target-format-exports.md](references/target-format-exports.md) only for requested native NX or SOLIDWORKS derivatives.
 - Use [model-agnostic-workflow.md](references/model-agnostic-workflow.md) for budgets, trace records, and handoff.
 - Write technical documentation with [documentation-language.md](references/documentation-language.md).
 
 Keep generated files in configured output storage. Record versions, hashes, assumptions, revisions, and actual tests.
 Keep customer parts, resource links, host snapshots, and historical adapter instructions outside this skill.
+
+## References for each step
+
+The step numbers refer to "Minimum path for the hackathon metric". A step starts with the first call of one of its tools.
+
+| Step | Tools | References |
+|---|---|---|
+| 1. Start | `drawing2cad_status`, `cad_capabilities`, `cad_worker_probe` | [drawing2cad-mcp.md](references/drawing2cad-mcp.md), [model-agnostic-workflow.md](references/model-agnostic-workflow.md) |
+| 2 and 3. Source inspection | `pdf_info`, `pdf_read_text`, `pdf_render_page`, `pdf_crop_region`, `drawing_extract`, `source_flags_read` | [drawing2cad-mcp.md](references/drawing2cad-mcp.md) |
+| 4. Measurement | `pdf_calibrate`, `pdf_measure_distance`, `pdf_measure_circle` | [projection-and-measurement.md](references/projection-and-measurement.md) |
+| 5 to 7. Part description | `part_schema`, `part_validate`, `part_create`, `part_read`, `part_update` | [managed-workflow.md](references/managed-workflow.md), [computed-expected.md](references/computed-expected.md), [tolerances-and-changes.md](references/tolerances-and-changes.md) |
+| 8 to 10. Build and correction | `build_from_description`, `create_base_body`, `add_hole`, `add_pocket`, `add_cut`, `add_chamfer`, `add_fillet`, `model_projection_check` | [verification-loop.md](references/verification-loop.md), [draft-and-fillets.md](references/draft-and-fillets.md) |
+| 11 and 12. Drawing | `drawing_schema`, `drawing_validate`, `drawing_render`, `drawing_read`, `artifact_preview`, `drawing_review` | [drawing-delivery.md](references/drawing-delivery.md) |
+| 13 and 14. Release | `export_step`, `part_export_review` | [validation.md](references/validation.md), [delivery-and-backends.md](references/delivery-and-backends.md) |
+
+Read [ap242-adapter.md](references/ap242-adapter.md), [target-format-exports.md](references/target-format-exports.md), and [documentation-language.md](references/documentation-language.md) only when their topic applies.
