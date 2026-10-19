@@ -17,13 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useApi } from "@/lib/apiContext";
 import { useArtifactUrl } from "@/lib/artifacts";
-import type { AgentProfile, Artifact, Run } from "@/lib/contract";
+import type { Artifact, Run } from "@/lib/contract";
 import type { ReviewFlag } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { recoveryFor } from "@/lib/errors";
 import { explainedShare, fmt, partName, pct, shortHash, time } from "@/lib/format";
 import { agentProfilesQuery, analysisQuery, capabilitiesQuery, flagsQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
 import { delivery, isActive } from "@/lib/release";
+import { profileLabel, runStartState, usable } from "@/lib/runStart";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
 import { setStepPreview, useStepPreview } from "@/lib/stepPreviews";
 import { isPdf, useUploads } from "@/lib/uploads";
@@ -178,11 +179,6 @@ function RunModel({ run, artifact }: { run: Run; artifact: Artifact }) {
   );
 }
 
-/** A profile can start a run if it has a key that the server can decrypt. */
-function usable(profile: AgentProfile): boolean {
-  return profile.key_set && !profile.key_locked;
-}
-
 function RunsCard({ sourceId }: { sourceId: string }) {
   const api = useApi();
   const navigate = useNavigate();
@@ -192,13 +188,9 @@ function RunsCard({ sourceId }: { sourceId: string }) {
   const { data: agent } = useQuery({ ...agentProfilesQuery(api), enabled: caps?.simulated === false });
   // The profile for the next run. null uses the active profile of the settings; a selection here does not change it.
   const [chosen, setChosen] = useState<string | null>(null);
-  const profiles = agent?.profiles ?? [];
-  const selected = chosen ?? agent?.active ?? null;
-  const profile = profiles.find((p) => p.name === selected);
-  // Without profiles (for example the simulated service), the capabilities decide, as before.
-  const canStart = profiles.length ? !!profile && usable(profile) : !!caps?.runs;
+  const { profiles, selected, profile, canStart, send } = runStartState(caps, agent, chosen);
   const start = useMutation({
-    mutationFn: () => api.createRun(sourceId, profiles.length ? selected : null),
+    mutationFn: () => api.createRun(sourceId, send),
     onSuccess: async (run) => {
       await queryClient.invalidateQueries({ queryKey: keys.runs(sourceId) });
       void navigate({ to: "/runs/$runId", params: { runId: run.run_id } });
@@ -217,9 +209,7 @@ function RunsCard({ sourceId }: { sourceId: string }) {
               value={selected ?? ""} disabled={start.isPending} onChange={(e) => setChosen(e.target.value || null)}>
               {selected === null && <option value="">Choose a profile</option>}
               {profiles.map((p) => (
-                <option key={p.name} value={p.name} disabled={!usable(p)}>
-                  {p.name}{p.name === agent?.active ? " (default)" : ""}{p.key_locked ? " – key locked" : !p.key_set ? " – no key" : ""}
-                </option>
+                <option key={p.name} value={p.name} disabled={!usable(p)}>{profileLabel(p, agent?.active)}</option>
               ))}
             </select>
           )}

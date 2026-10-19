@@ -50,4 +50,11 @@ describe("run start", () => {
     expect(JSON.parse(calls[0][1].body as string)).toEqual({ profile: "OpenRouter" });
     expect(calls[1][1].body).toBeUndefined();
   });
+
+  it("sends an empty profile name, so that the server rejects it", async () => {
+    const fetch = stubFetch();
+    await new HttpApi().createRun("src_1", "");
+    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ profile: "" });
+  });
 });

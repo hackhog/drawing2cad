@@ -217,6 +217,8 @@ def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
         "max_pdf_bytes": s.backend.max_source_bytes,
         "agent_model": s.runner.profiles.model(s.runner.profiles.active) if s.runner.available else None,
         "agent_profile": s.runner.profiles.active if s.runner.available else None,
+        # True if the service can start agent runs with a usable profile, also when the active profile cannot.
+        "agent_ready": s.runner.skill_path.is_file(),
     }
 
 
@@ -401,7 +403,8 @@ def create_run(source_id: str, start: RunStart | None = None, s: Services = Depe
     The agent builds the model only through the MCP endpoint (ADR 0018). The run does not change the active profile.
     """
     # Read the profile name once, so that a selection during this request cannot mix two profiles.
-    profile = start.profile if start is not None and start.profile else s.runner.profiles.active
+    # Only an omitted or null profile uses the active one; an empty or unknown name fails with UNKNOWN_PROFILE.
+    profile = start.profile if start is not None and start.profile is not None else s.runner.profiles.active
     if profile is None or not s.runner.skill_path.is_file():
         raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "No model profile active (DRAWING2CAD_AGENT_*).",
                            recovery="Choose a model profile in the settings, or enter an endpoint in .env "

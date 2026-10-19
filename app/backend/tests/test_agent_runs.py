@@ -186,6 +186,7 @@ def with_two_profiles(monkeypatch):
 def test_a_run_uses_the_profile_selected_at_its_start_and_keeps_the_active_profile(environment):
     with_two_profiles(environment)
     environment.setenv("DRAWING2CAD_AGENT_OPENROUTER_STEP_BUDGET", "12")
+    environment.setenv("DRAWING2CAD_AGENT_OPENROUTER_REASONING_EFFORT", "low")
     submitted = []
     environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id, settings: submitted.append(
         (settings.model, settings.api_key, settings.api)))
@@ -196,7 +197,7 @@ def test_a_run_uses_the_profile_selected_at_its_start_and_keeps_the_active_profi
         assert chosen.status_code == 201
         run = chosen.json()
         assert run["agent"]["profile"] == "OpenRouter" and run["agent"]["model"] == "vendor/b"
-        assert run["agent"]["limits"]["step_budget"] == 12
+        assert run["agent"]["reasoning_effort"] == "low" and run["agent"]["limits"]["step_budget"] == 12
         assert submitted == [("vendor/b", "secret-OPENROUTER", "responses")]
         # The active profile of the settings does not change.
         assert client.get("/api/agent/profiles").json()["active"] == "Foundry"
@@ -204,9 +205,11 @@ def test_a_run_uses_the_profile_selected_at_its_start_and_keeps_the_active_profi
         for body in ({}, {"profile": None}, None):
             res = client.post(runs, json=body) if body is not None else client.post(runs)
             assert res.status_code == 201 and res.json()["agent"]["profile"] == "Foundry"
-        res = client.post(runs, json={"profile": "Missing"})
-        assert res.status_code == 422 and res.json()["detail"]["code"] == "UNKNOWN_PROFILE"
+        for name in ("Missing", ""):
+            res = client.post(runs, json={"profile": name})
+            assert res.status_code == 422 and res.json()["detail"]["code"] == "UNKNOWN_PROFILE"
         assert len(submitted) == 4
+        assert client.get("/api/capabilities").json()["agent_ready"] is True
 
 
 def test_a_selected_profile_with_a_locked_key_fails_at_start(environment):
@@ -223,6 +226,31 @@ def test_a_selected_profile_with_a_locked_key_fails_at_start(environment):
         assert res.status_code == 409 and res.json()["detail"]["code"] == "PROFILE_KEY_LOCKED" and submitted == []
         # The active environment profile still starts runs.
         assert client.post(f"/api/sources/{source['source_id']}/runs").status_code == 201
+
+
+def test_a_selected_profile_without_a_key_fails_at_start(environment, tmp_path):
+    from drawing_demo.agent import config_store
+    from test_config_store import OPENROUTER, OTHER_MASTER_KEY
+    with_model_endpoint(environment)
+    with TestClient(api.create_app()) as client:
+        client.put("/api/agent/profiles/Hosted", json={**OPENROUTER, "api_key": "k"})
+    new = tmp_path / "new.key"
+    new.write_text(OTHER_MASTER_KEY, encoding="ascii")
+    config_store.main(["forget-keys", "--database", str(tmp_path / "data" / "config.sqlite"), "--new-key-file", str(new), "--yes"])
+    environment.setenv("DRAWING2CAD_SECRET_KEY", OTHER_MASTER_KEY)
+    environment.setattr(runner_module.AgentRunner, "submit", lambda self, run_id, settings: None)
+    with TestClient(api.create_app()) as client:
+        source = upload(client)
+        res = client.post(f"/api/sources/{source['source_id']}/runs", json={"profile": "Hosted"})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "PROFILE_KEY_MISSING"
+
+
+def test_capabilities_report_that_runs_cannot_start_without_the_skill(environment, tmp_path):
+    with_model_endpoint(environment)
+    environment.setenv("DRAWING2CAD_SKILL_PATH", str(tmp_path / "missing" / "SKILL.md"))
+    with TestClient(api.create_app()) as client:
+        capabilities = client.get("/api/capabilities").json()
+        assert capabilities["agent_ready"] is False and capabilities["runs"] is False
 
 
 def test_profiles_are_listed_without_keys(environment):

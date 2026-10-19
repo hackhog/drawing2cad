@@ -55,7 +55,7 @@ Commit the changed `poetry.lock`. The backend CI job stops if the lock is out of
 | Method | Path | Response |
 |---|---|---|
 | `GET` | `/api/health` | Status and `drawing2cad_mcp_version` |
-| `GET` | `/api/capabilities` | Available functions; `runs` is true only with an active model profile; `agent_profile` and `agent_model` name it |
+| `GET` | `/api/capabilities` | Available functions; `runs` is true only with an active model profile; `agent_profile` and `agent_model` name it; `agent_ready` is true if runs can start with a usable profile |
 | `GET` | `/api/agent/profiles` | Model profiles (`name`, `provider`, `origin`, `base_url`, `model`, `api`, `reasoning_effort`, `key_set`, `key_locked`, `limits`, `revision`), the `active` profile with `active_revision`, `master_key_set`, and the default and maximum run limits; never a key ([ADR 0020](../../docs/adr/0020-agent-model-profiles-selected-in-the-web-ui.md), [ADR 0028](../../docs/adr/0028-configuration-store-with-encrypted-keys.md)) |
 | `PUT` | `/api/agent/active` | Select the profile for new runs: `name`, or `null` for no agent, and optional `revision` (422 `UNKNOWN_PROFILE`, 409 `REVISION_CONFLICT`) |
 | `PUT`/`DELETE` | `/api/agent/profiles/{name}` | Create, change, or delete a UI profile: `provider` (`openrouter`, `azure`, `openai`), `endpoint`, `model`, `api`, `api_key` (empty keeps the stored key), `reasoning_effort`, `limits`, and optional `revision` (body for `PUT`, query parameter for `DELETE`). Environment profiles are read-only (409 `PROFILE_READ_ONLY`). Without a master key, a key cannot be saved (503 `SECRET_KEY_MISSING`) |

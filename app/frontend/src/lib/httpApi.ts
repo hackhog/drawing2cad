@@ -42,7 +42,7 @@ export class HttpApi implements WebApi {
   exportFeedback(): Promise<Blob> { return requestBlob("/api/feedback"); }
   listRuns(sourceId: string): Promise<Run[]> { return request(`/api/sources/${id(sourceId)}/runs`); }
   createRun(sourceId: string, profile?: string | null): Promise<Run> {
-    const init: RequestInit = profile
+    const init: RequestInit = profile != null
       ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile }) }
       : { method: "POST" };
     return request(`/api/sources/${id(sourceId)}/runs`, init);
