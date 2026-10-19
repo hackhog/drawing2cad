@@ -21,10 +21,12 @@ The backend uses the MCP package as a Python dependency.
 From the repository root, run:
 
 ```bash
-docker compose up --build
+docker compose -f deployment/compose.yaml up -d                  # published images
+docker compose -f deployment/compose.local.yaml up --build -d    # local build from the current source
 ```
 
 Open `http://localhost:8000`.
+`deployment/compose.yaml` uses the published images of the version in `DRAWING2CAD_VERSION`, or `latest` ([ADR 0027](../docs/adr/0027-container-images-on-ghcr-for-version-tags.md)).
 If a Compose project with the former single `app` service still runs, add `--remove-orphans` once.
 The backend image includes the MCP package and Poppler.
 Neither image includes source drawings or local configuration.
@@ -119,5 +121,5 @@ Run `poetry run pytest` in `backend/` for API and review tests.
 Sample-based tests are skipped when their inputs are absent.
 Synthetic tests verify the shared service boundary, path-free records, and one agent run through the mounted MCP endpoint.
 Run `npm test` and `npm run build` in `frontend/` for the unit tests, the type check, and the build.
-Run `docker compose build` at the repository root for both container builds.
+Run `docker compose -f deployment/compose.local.yaml build backend frontend` at the repository root for both container builds.
 These commands describe the test procedure. They do not assert a completed test run.

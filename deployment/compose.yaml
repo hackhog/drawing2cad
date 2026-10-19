@@ -1,0 +1,73 @@
+# drawing2cad from the published images of one version (ADR 0027). Run the commands from the repository root.
+#   Web app:         docker compose -f deployment/compose.yaml up -d            then open http://localhost:8000
+#   MCP over stdio:  docker compose -f deployment/compose.yaml run --rm -T mcp
+#   MCP over HTTP:   docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
+# DRAWING2CAD_VERSION selects the version tag for all services, for example v1.3. Without it, Compose uses latest.
+# deployment/compose.local.yaml builds the same services from the current source.
+name: drawing2cad               # Keeps the project name and the volume names of earlier installations.
+
+services:
+  backend:
+    image: ghcr.io/hackhog/drawing2cad-backend:${DRAWING2CAD_VERSION:-latest}
+    # Only the frontend can reach this API through the Compose network.
+    # Optional model endpoint for agent runs (ADR 0018). Without .env, the stack runs; runs show as unavailable.
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      # The key can come from the shell instead of .env, for example from a password manager; the shell value wins.
+      DRAWING2CAD_AGENT_API_KEY: ${DRAWING2CAD_AGENT_API_KEY:-}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp                    # Temporary render artifacts of each analysis.
+    volumes:
+      - backend-data:/data      # Domain store (sources, parts, artifacts, notes, jobs) and web run records.
+
+  frontend:
+    image: ghcr.io/hackhog/drawing2cad-frontend:${DRAWING2CAD_VERSION:-latest}
+    ports:
+      - "127.0.0.1:8000:8080"   # Bind to the local computer only.
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp                    # nginx PID file and temporary upload data.
+
+  # Standalone MCP over stdio for MCP clients. Clients upload PDF bytes through MCP.
+  # The profile keeps it out of "up" for the web app. "run mcp" starts it.
+  mcp:
+    image: ghcr.io/hackhog/drawing2cad-mcp:${DRAWING2CAD_VERSION:-latest}
+    profiles: [mcp]
+    stdin_open: true
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 4g
+    cpus: 2
+    pids_limit: 128
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
+    volumes:
+      - cad-data:/data          # Uploaded sources, revisions, jobs, notes, and artifacts.
+
+  # Standalone MCP over Streamable HTTP. Only the host loopback interface exposes it.
+  # Supply DRAWING2CAD_HTTP_TOKEN through your secret mechanism. Without a token, the server does not start.
+  mcp-http:
+    extends:
+      service: mcp
+    profiles: [mcp-http]
+    network_mode: bridge
+    stdin_open: false
+    command: ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8765:8000"
+    environment:
+      DRAWING2CAD_HTTP_TOKEN: ${DRAWING2CAD_HTTP_TOKEN:-}
+
+volumes:
+  backend-data:
+  cad-data:

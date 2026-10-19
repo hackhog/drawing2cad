@@ -5,10 +5,10 @@ name: MCP
 
 on:
   pull_request:
-    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.github/workflows/mcp.yml']
+    paths: ['drawing2cad-mcp/**', 'deployment/**', '.github/workflows/mcp.yml']
   push:
     branches: [main]
-    paths: ['drawing2cad-mcp/**', 'compose.mcp.yaml', '.github/workflows/mcp.yml']
+    paths: ['drawing2cad-mcp/**', 'deployment/**', '.github/workflows/mcp.yml']
 
 permissions:
   contents: read
