@@ -304,6 +304,11 @@ class ProfileStore:
                 raise ServiceError(409, "PROFILE_READ_ONLY", f"The profile {name} comes from the server configuration.",
                                    field="name", recovery="Choose a different name or change the server .env.")
             current = self.store.profile(name)
+            stored_revision = current["revision"] if current else None
+            if expected_revision is not None and expected_revision != (stored_revision or 0):
+                # For example an edit of a profile that another browser deleted.
+                raise self._conflict(RevisionConflict(name, stored_revision))
+            before = self._active(self._profiles())[0]
             if key is None and (current is None or current["key_ciphertext"] is None):
                 raise ServiceError(422, "INVALID_PROFILE", "The API key is missing.", field="api_key")
             if key is not None and self.master is None:
@@ -323,6 +328,9 @@ class ProfileStore:
                                    "the profile again.") from None
             stored = self.store.setting(ACTIVE_SETTING)
             if stored is not None and stored[0]["name"] is None and len(self._profiles()) == 1:
+                self.store.set_setting(ACTIVE_SETTING, {"name": name}, None, ACTOR)
+            elif stored is None and self._active(self._profiles())[0] != before:
+                # The first profile became active by default. Store the selection, so that its revision changes.
                 self.store.set_setting(ACTIVE_SETTING, {"name": name}, None, ACTOR)
 
     def delete(self, name: str, expected_revision: int | None = None) -> None:

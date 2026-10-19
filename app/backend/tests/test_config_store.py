@@ -195,9 +195,11 @@ def test_the_audit_records_changes_without_values(tmp_path):
     profiles.delete("P")
     events = profiles.store.events()
     profiles.close()
+    # The first profile becomes active by default, and the store records this selection too.
     assert [(e["actor"], e["action"], e["target"]) for e in events] == [
         ("web-ui", "profile_create", "P"), ("web-ui", "setting_update", "active_profile"),
-        ("web-ui", "profile_delete", "P"), ("web-ui", "setting_update", "active_profile")]
+        ("web-ui", "setting_update", "active_profile"), ("web-ui", "profile_delete", "P"),
+        ("web-ui", "setting_update", "active_profile")]
     assert "audit-secret" not in json.dumps(events)
 
 
@@ -257,15 +259,54 @@ def test_a_backend_with_the_former_master_key_writes_no_key_after_a_rotation(env
         assert client.app.state.services.runner.profiles.get("A").api_key == "key-A"
 
 
-def test_forget_keys_removes_all_stored_keys_after_a_lost_master_key(environment, tmp_path, capsys):
+def test_forget_keys_adopts_a_new_master_key_and_keeps_the_fence(environment, tmp_path, capsys):
+    new = tmp_path / "new.key"
+    new.write_text(OTHER_MASTER_KEY, encoding="ascii")
     with TestClient(api.create_app()) as client:
         client.put("/api/agent/profiles/A", json={**OPENROUTER, "api_key": "key-A"})
-    with pytest.raises(SystemExit):
-        config_store.main(["forget-keys", "--database", str(database(tmp_path))])  # --yes is required.
-    config_store.main(["forget-keys", "--database", str(database(tmp_path)), "--yes"])
-    assert "Removed 1 stored API keys" in capsys.readouterr().out
+        with pytest.raises(SystemExit):
+            config_store.main(["forget-keys", "--database", str(database(tmp_path)), "--new-key-file", str(new)])  # --yes.
+        config_store.main(["forget-keys", "--database", str(database(tmp_path)), "--new-key-file", str(new), "--yes"])
+        assert "Removed 1 stored API keys" in capsys.readouterr().out
+        # This backend still has the former master key: it saves no key.
+        res = client.put("/api/agent/profiles/A", json={**OPENROUTER, "api_key": "key-A2"})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "MASTER_KEY_CHANGED"
     environment.setenv("DRAWING2CAD_SECRET_KEY", OTHER_MASTER_KEY)
     with TestClient(api.create_app()) as client:
         profile = client.get("/api/agent/profiles").json()["profiles"][0]
         assert profile["key_set"] is False and profile["key_locked"] is False
         assert client.put("/api/agent/profiles/A", json={**OPENROUTER, "api_key": "key-A2"}).status_code == 200
+        assert client.app.state.services.runner.profiles.get("A").api_key == "key-A2"
+
+
+def test_the_first_profile_becomes_active_with_a_new_selection_revision(environment):
+    with TestClient(api.create_app()) as client:
+        before = client.get("/api/agent/profiles").json()
+        assert before["active"] is None and before["active_revision"] == 0
+        after = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "revision": 0}).json()
+        assert after["active"] == "P" and after["active_revision"] > 0
+        # A browser with the former selection cannot select "no agent" without a conflict.
+        res = client.put("/api/agent/active", json={"name": None, "revision": before["active_revision"]})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "REVISION_CONFLICT"
+
+
+def test_saving_a_deleted_profile_is_a_conflict_not_a_missing_key(environment):
+    with TestClient(api.create_app()) as client:
+        revision = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k"}).json()["profiles"][0]["revision"]
+        client.delete("/api/agent/profiles/P", params={"revision": revision})
+        # The stale edit form sends no key, because it kept the stored key.
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "model": "vendor/n", "revision": revision})
+        assert res.status_code == 409 and res.json()["detail"]["code"] == "REVISION_CONFLICT"
+
+
+def test_two_stores_on_a_new_database_apply_each_migration_once(tmp_path):
+    path = tmp_path / "config.sqlite"
+    first, second = ConfigStore(path), ConfigStore(path)
+    try:
+        assert first.schema_version() == second.schema_version() == len(config_store.MIGRATIONS)
+        with sqlite3.connect(path) as db:
+            assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == len(config_store.MIGRATIONS)
+    finally:
+        first.close()
+        second.close()
+

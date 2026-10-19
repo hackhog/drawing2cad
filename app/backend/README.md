@@ -147,11 +147,14 @@ docker compose -f deployment/compose.local.yaml exec backend python -m drawing_d
 Then set the new key in the deployment and restart the backend. The command changes no key if the old key is wrong.
 After the rotation, a backend that still has the former master key saves no new key (409 `MASTER_KEY_CHANGED`) until it restarts.
 
-If a master key is lost, its stored keys cannot be decrypted. Remove them, then enter the keys of the UI profiles again:
+If a master key is lost, its stored keys cannot be decrypted. Remove them and adopt a new master key, then restart the
+backend with the new key and enter the keys of the UI profiles again:
 
 ```bash
-docker compose -f deployment/compose.local.yaml exec backend python -m drawing_demo.agent.config_store forget-keys --database /data/config.sqlite --yes
+docker compose -f deployment/compose.local.yaml exec backend python -m drawing_demo.agent.config_store forget-keys --database /data/config.sqlite --new-key-file /run/secrets/new.key --yes
 ```
+
+A backend that still has another master key saves no key after this command.
 
 ## Structure
 

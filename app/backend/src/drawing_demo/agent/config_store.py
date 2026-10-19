@@ -156,12 +156,13 @@ class ConfigStore:
 
     def _migrate(self) -> None:
         self._db.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)")
-        applied = {row[0] for row in self._db.execute("SELECT version FROM schema_migrations")}
         for version, script in enumerate(MIGRATIONS, start=1):
-            if version in applied:
-                continue
             self._db.execute("BEGIN IMMEDIATE")
             try:
+                # Read the applied versions only under the write lock, so that two starts cannot apply one migration twice.
+                if self._db.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (version,)).fetchone():
+                    self._db.execute("COMMIT")
+                    continue
                 for statement in filter(str.strip, script.split(";")):
                     self._db.execute(statement)
                 self._db.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", (version, _now()))
@@ -318,8 +319,11 @@ class ConfigStore:
                          "revision = settings.revision + 1, updated_at = excluded.updated_at",
                          (MASTER_VERSION_SETTING, json.dumps(version), _now()))
 
-    def forget_keys(self, actor: str = "forget-keys-command") -> int:
-        """Remove all stored keys, for example after the loss of the master key. Users then enter the keys again."""
+    def forget_keys(self, new: MasterKey, actor: str = "forget-keys-command") -> int:
+        """Remove all stored keys after the loss of a master key, and adopt the new master key.
+
+        Only a backend with the new master key can then save keys. Users enter the keys again.
+        """
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -327,7 +331,7 @@ class ConfigStore:
                 count = self._db.execute("UPDATE profiles SET key_ciphertext = NULL, key_nonce = NULL, key_version = NULL, "
                                          "revision = ?, updated_at = ? WHERE key_ciphertext IS NOT NULL",
                                          (revision, _now())).rowcount
-                self._set_master_version(None)
+                self._set_master_version(new.version)
                 self._db.execute("COMMIT")
                 return count
             except Exception:
@@ -346,7 +350,9 @@ def main(argv: list[str] | None = None) -> None:
     # The keys come from files, so that they do not appear in the process list or the shell history.
     rotate.add_argument("--old-key-file", required=True)
     rotate.add_argument("--new-key-file", required=True)
-    forget = commands.add_parser("forget-keys", help="Remove all stored API keys, for example after the loss of the master key.")
+    forget = commands.add_parser("forget-keys", help="Remove all stored API keys after the loss of the master key, "
+                                 "and adopt a new master key.")
+    forget.add_argument("--new-key-file", required=True)
     for command in (rotate, forget):
         command.add_argument("--database", type=Path,
                              default=Path(os.environ.get("DRAWING2CAD_DATA_DIR", ".data")) / "config.sqlite")
@@ -357,8 +363,8 @@ def main(argv: list[str] | None = None) -> None:
     store = ConfigStore(arguments.database)
     try:
         if arguments.command == "forget-keys":
-            count = store.forget_keys()
-            print(f"Removed {count} stored API keys. Enter the keys of the UI profiles again.")
+            count = store.forget_keys(_read_key(arguments.new_key_file))
+            print(f"Removed {count} stored API keys. Start the backend with the new master key, then enter the keys again.")
             return
         count = store.rotate(_read_key(arguments.old_key_file), _read_key(arguments.new_key_file))
     except SecretKeyError as error:
