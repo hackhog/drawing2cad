@@ -1,5 +1,9 @@
 # Streamable HTTP setup and operation
 
+Copy `.env.example` in the repository root to `.env` and set the required values.
+Use `--env-file .env` to load this file for Compose interpolation. Shell values have priority.
+If no `.env` exists, omit `--env-file .env` and supply required values through the shell.
+
 Use this guide to run `drawing2cad-mcp` as an HTTP service and connect an MCP client or LiteLLM.
 Use the current domain profile for uploads, drawing delivery, and artifact downloads. The local-path development profile remains a separate option.
 
@@ -28,7 +32,7 @@ Supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism. Do not commit its
 From the repository root, run:
 
 ```bash
-docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
+docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 ```
 
 This uses the published image. To build the current source, use `deployment/compose.local.yaml` instead, and add `--build`.
@@ -38,7 +42,7 @@ The service listens on container port 8000 and publishes only the host loopback 
 The `cad-data` volume stores uploaded PDFs, revisions, jobs, notes, and artifacts under `/data`.
 No source-directory mount is required. The image enables `[domain]` with private storage at `/data/domain`.
 
-Use `docker compose -f deployment/compose.yaml --profile mcp-http stop mcp-http` to stop the service after active jobs finish.
+Use `docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http stop mcp-http` to stop the service after active jobs finish.
 This retains the named volume. Do not remove it while its sources or evidence are needed.
 The host-installation commands below are optional development setup. They use port 8000 unless configured otherwise.
 
