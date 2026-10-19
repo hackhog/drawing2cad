@@ -28,5 +28,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0025](0025-poetry-for-the-python-projects.md) | Poetry for the Python projects |
 | [0026](0026-complete-skill-in-agent-runs.md) | Complete skill in agent runs, with references for each step |
 | [0027](0027-container-images-on-ghcr-for-version-tags.md) | Container images on ghcr.io for version tags |
+| [0028](0028-configuration-store-with-encrypted-keys.md) | Configuration store in SQLite with encrypted API keys |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.
