@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1770 1192" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1770 1209" role="img" aria-labelledby="title desc">
 <title id="title">Drawing2CAD: shared headless service and delivery milestones</title><desc id="desc">Generated from the versioned architecture JSON. Dashed connections identify optional or legacy paths.</desc>
-<rect width="1770" height="1192" fill="#0c1624"/><g font-family="Arial, Helvetica, sans-serif">
+<rect width="1770" height="1209" fill="#0c1624"/><g font-family="Arial, Helvetica, sans-serif">
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8ca4be"/></marker></defs>
 <text x="40" y="45" font-size="24" fill="#e5edf7" font-weight="700" text-anchor="start">Drawing2CAD: shared headless service and delivery milestones</text>
 <text x="40" y="70" font-size="14" fill="#a8b8cb" font-weight="400" text-anchor="start">Headless delivery, drawing diagnostics, and AP242 inspection</text>
@@ -99,7 +99,7 @@
 <text x="1580" y="504" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="middle">Persistent domain store</text>
 <text x="1580" y="523" font-size="11.5" fill="#a8b8cb" font-weight="400" text-anchor="middle">Sources, jobs, JSON, DXF, PDF, STEP</text>
 </g>
-<rect x="40" y="924" width="404.5" height="218" rx="10" fill="#142238" stroke="#37516d"/>
+<rect x="40" y="924" width="404.5" height="235" rx="10" fill="#142238" stroke="#37516d"/>
 <text x="56" y="952" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="start">M2 MCP: shared services</text>
 <text x="56" y="978" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">PDF bytes arrive through bounded resumable uploads</text>
 <text x="56" y="995" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
@@ -109,7 +109,7 @@
 <text x="56" y="1063" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
 <text x="56" y="1080" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">MCP and web routes share one Python service</text>
 <text x="56" y="1097" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<rect x="468.5" y="924" width="404.5" height="218" rx="10" fill="#142238" stroke="#37516d"/>
+<rect x="468.5" y="924" width="404.5" height="235" rx="10" fill="#142238" stroke="#37516d"/>
 <text x="484.5" y="952" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="start">Headless worker boundary</text>
 <text x="484.5" y="978" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Landlock, seccomp, finite resources, and timeouts</text>
 <text x="484.5" y="995" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
@@ -119,18 +119,19 @@
 <text x="484.5" y="1063" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
 <text x="484.5" y="1080" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Supplied 2D views become native DXF dimensions and PDF</text>
 <text x="484.5" y="1097" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<rect x="897" y="924" width="404.5" height="218" rx="10" fill="#142238" stroke="#37516d"/>
+<rect x="897" y="924" width="404.5" height="235" rx="10" fill="#142238" stroke="#37516d"/>
 <text x="913" y="952" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="start">Web delivery and acceptance follow-up</text>
 <text x="913" y="978" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Web routes and agent runs share one service instance</text>
 <text x="913" y="995" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<text x="913" y="1012" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">No automatic arbitrary projection or section extraction</text>
-<text x="913" y="1029" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<text x="913" y="1046" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Drawing review follows the current model build</text>
-<text x="913" y="1063" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<text x="913" y="1080" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Resource acceptance remains deferred until milestones</text>
-<text x="913" y="1097" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">finish</text>
-<text x="913" y="1114" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<rect x="1325.5" y="924" width="404.5" height="218" rx="10" fill="#142238" stroke="#37516d"/>
+<text x="913" y="1012" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Derived views and sections; ellipses and hatching do not</text>
+<text x="913" y="1029" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">render yet</text>
+<text x="913" y="1046" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
+<text x="913" y="1063" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Drawing review follows the current model build</text>
+<text x="913" y="1080" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
+<text x="913" y="1097" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">Resource acceptance remains deferred until milestones</text>
+<text x="913" y="1114" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">finish</text>
+<text x="913" y="1131" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
+<rect x="1325.5" y="924" width="404.5" height="235" rx="10" fill="#142238" stroke="#37516d"/>
 <text x="1341.5" y="952" font-size="15" fill="#e5edf7" font-weight="700" text-anchor="start">M3: bounded adapter, open</text>
 <text x="1341.5" y="978" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">AP242 with application construction and nominal PMI</text>
 <text x="1341.5" y="995" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
@@ -140,5 +141,5 @@
 <text x="1341.5" y="1063" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
 <text x="1341.5" y="1080" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start">STEPcode checks and actual stored-PMI inspection views</text>
 <text x="1341.5" y="1097" font-size="12.5" fill="#a8b8cb" font-weight="400" text-anchor="start"></text>
-<text x="40" y="1172" font-size="11" fill="#a8b8cb" font-weight="400" text-anchor="start">Source: docs/diagrams/drawing2cad-overview.json | ADR 0014</text>
+<text x="40" y="1189" font-size="11" fill="#a8b8cb" font-weight="400" text-anchor="start">Source: docs/diagrams/drawing2cad-overview.json | ADR 0014</text>
 </g></svg>

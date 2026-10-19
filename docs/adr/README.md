@@ -30,5 +30,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0027](0027-container-images-on-ghcr-for-version-tags.md) | Container images on ghcr.io for version tags |
 | [0028](0028-configuration-store-with-encrypted-keys.md) | Configuration store in SQLite with encrypted API keys |
 | [0029](0029-drawing-contract-2-with-projection-sheet-and-gps-data.md) | Drawing contract 2.0 with projection, sheet, and GPS data |
+| [0030](0030-views-derived-from-the-validated-model.md) | Views derived from the validated model |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

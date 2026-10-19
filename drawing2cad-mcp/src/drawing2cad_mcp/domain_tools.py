@@ -46,7 +46,28 @@ PROJECTION_VIEW = _object({
                         "description": "Part mm per sheet mm from pdf_calibrate in sheet_mm: 1:2 gives 2.0."},
 }, ["view_id", "region", "toward_viewer", "up", "mm_per_sheet_mm"])
 
+VECTOR3 = {"type": "array", "items": {"type": "number", "minimum": -100000, "maximum": 100000}, "minItems": 3, "maxItems": 3}
+DERIVED_VIEW = _object({
+    "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,47}$"},
+    "kind": {"enum": ["orthographic", "isometric", "section"]},
+    "projection_type": {"enum": ["parallel", "perspective"], "description": "Only parallel is supported."},
+    "view_direction": {**VECTOR3, "description": "Model direction from the part toward the viewer, for example [0, -1, 0] for a front view. Not for a section."},
+    "up": {**VECTOR3, "description": "Model direction that points up in the view."},
+    "scale_convention": {"enum": ["true_size", "isometric_drawing", "isometric_projection"]},
+    "hidden_lines": {"type": "boolean"},
+    "cutting_plane": _object({"letter": {"type": "string", "pattern": "^[A-Z]$"}, "origin": VECTOR3, "normal": VECTOR3,
+                              "viewing_side": {"enum": ["positive_normal", "negative_normal"]},
+                              "source_view_id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,47}$"}}),
+}, ["id", "kind", "up"])
+
 _EXTRA = {
+    "drawing_derive_views": (_object({**REVISION, "views": {"type": "array", "items": DERIVED_VIEW, "minItems": 1, "maxItems": 8}}),
+        "Derive orthographic, isometric, and section views from the current validated build in the restricted worker. "
+        "Return DrawingSpec 2.0 view drafts: projection matrix, visible and hidden edges, center lines, circles, arcs, ellipses, "
+        "polylines for other curves with their approximation error, section boundaries with hatching, and the cutting line in the source view. "
+        "Local view coordinates are matrix * model point. An isometric view needs a body-diagonal view_direction; dimetric, trimetric, "
+        "and perspective requests fail. The derivation is bound to the part revision and the build hash. "
+        "A model change makes it stale, and drawing_validate and drawing_render reject a stale derivation."),
     "model_projection_check": (_object({**REVISION, "source_id": ID, "page": PAGE,
                                         "views": {"type": "array", "items": PROJECTION_VIEW, "minItems": 1, "maxItems": 8}}),
         "Project the current validated build into orthographic drawing views in the restricted worker and compare the edges "

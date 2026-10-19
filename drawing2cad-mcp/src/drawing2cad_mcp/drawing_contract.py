@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, ValidationError, field_validator
 
 from .drawing_contract_v2 import (
-    GPS_PROFILE_ID, TITLE_BLOCK_MANDATORY, Border, CuttingPlane, Datum, Ellipse, Hatching, Projection, TitleBlock,
+    GPS_PROFILE_ID, TITLE_BLOCK_MANDATORY, Border, CuttingPlane, Datum, Derivation, Ellipse, Hatching, Projection, TitleBlock,
     ToleranceFrame, UnsupportedGps, ellipse_bounds, frame_review, gps_profile, projection_defects,
 )
 from .part_schema import ClosedModel, EvidenceIds, Identifier, Number, _references, parse_description
@@ -111,6 +111,9 @@ class View(ClosedModel):
     projection: Projection | None = Field(default=None, description="Schema 2.0: the parallel projection of this view. Necessary for an isometric view.")
     cutting_plane: CuttingPlane | None = Field(default=None, description="Schema 2.0: the cutting plane of a section view.")
     hatching: Annotated[list[Hatching], Field(max_length=20)] = Field(default=[], description="Schema 2.0: hatched cut surfaces of a section view.")
+    derivation: Derivation | None = Field(default=None, description=(
+        "Schema 2.0: a view from drawing_derive_views. The service adds the derived geometry, projection, cutting plane, and hatching "
+        "before validation and rendering. Do not supply these items. Your own geometry is kept after the derived geometry."))
     origin: Point = Field(description=SHEET_POINT_DESCRIPTION + " This is the sheet position of local view point (0, 0).")
     frame: tuple[Number, Number, Number, Number] = Field(
         description="Absolute sheet bounds [xmin, ymin, xmax, ymax] in mm, from the bottom-left corner. Do not translate or scale these bounds by view.origin or view.scale. Keep geometry, dimensions, and labels inside this frame and the sheet margin. Reserve space for the view label at [xmin+2, ymax-4] and any section note at [xmin+2, ymin+3].")
@@ -807,7 +810,7 @@ def _version_2_content(drawing: DrawingSpec) -> list[str]:
     for view in drawing.views:
         if view.kind == "isometric" or view.orientation == "isometric":
             used.append(f"views[{view.id}].kind")
-        used += [f"views[{view.id}].{name}" for name in ("projection", "cutting_plane", "hatching") if getattr(view, name)]
+        used += [f"views[{view.id}].{name}" for name in ("projection", "cutting_plane", "hatching", "derivation") if getattr(view, name)]
         if any(isinstance(g, Ellipse) for g in view.geometry):
             used.append(f"views[{view.id}].geometry")
         if any(d.theoretically_exact for d in view.dimensions):
@@ -816,9 +819,9 @@ def _version_2_content(drawing: DrawingSpec) -> list[str]:
 
 
 VERSION_2_DEFINITIONS = {"Projection", "Ellipse", "CuttingPlane", "Hatching", "TitleBlock", "Border", "Datum", "DatumReference",
-                         "ToleranceFrame", "UnsupportedGps"}
+                         "ToleranceFrame", "UnsupportedGps", "Derivation"}
 VERSION_2_PROPERTIES = {"title_block", "border", "projection_symbol", "datums", "tolerance_frames", "unsupported_gps"}
-VERSION_2_VIEW_PROPERTIES = {"projection", "cutting_plane", "hatching"}
+VERSION_2_VIEW_PROPERTIES = {"projection", "cutting_plane", "hatching", "derivation"}
 
 
 def _schema_1(schema: dict[str, Any]) -> dict[str, Any]:

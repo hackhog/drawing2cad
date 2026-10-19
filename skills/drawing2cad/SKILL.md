@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.22.1"
+  version: "0.23.0"
 ---
 
 # drawing2cad
@@ -25,7 +25,7 @@ metadata:
    Domain only: call `model_projection_check` for the source views; see [verification-loop.md](references/verification-loop.md).
 10. If correction is necessary, call `part_read` → `part_validate` → `part_update` → `build_from_description`. Use the new revision and repeat step 9.
 11. Domain only: prepare the source-to-output coverage table of [drawing-delivery.md](references/drawing-delivery.md). It includes the isometric view, the sections, the border, and the title block.
-12. Domain only: call `drawing_schema` → `drawing_validate` → `drawing_render` → `artifact_preview` for a revision-bound DXF/PDF drawing.
+12. Domain only: call `drawing_schema` → `drawing_derive_views` → `drawing_validate` → `drawing_render` → `artifact_preview` for a revision-bound DXF/PDF drawing.
 13. Domain only: correct failures, then repeat step 12.
 14. Domain only: compare source, model, and drawing, and update the coverage table. Record each item that the current tools cannot supply as a limit.
 15. Domain only: record an accepted `drawing_review` only after review passes. Name its open coverage rows in the review reason.
@@ -116,7 +116,7 @@ The step numbers refer to "Minimum path for the hackathon metric". A step starts
 | 4. Measurement | `pdf_calibrate`, `pdf_measure_distance`, `pdf_measure_circle` | [projection-and-measurement.md](references/projection-and-measurement.md) |
 | 5 to 7. Part description | `part_schema`, `part_validate`, `part_create`, `part_read`, `part_update` | [managed-workflow.md](references/managed-workflow.md), [computed-expected.md](references/computed-expected.md), [tolerances-and-changes.md](references/tolerances-and-changes.md) |
 | 8 to 10. Build and correction | `build_from_description`, `create_base_body`, `add_hole`, `add_pocket`, `add_cut`, `add_chamfer`, `add_fillet`, `model_projection_check` | [verification-loop.md](references/verification-loop.md), [draft-and-fillets.md](references/draft-and-fillets.md) |
-| 11 to 15. Drawing | `drawing_schema`, `drawing_validate`, `drawing_render`, `drawing_read`, `artifact_preview`, `drawing_review` | [drawing-delivery.md](references/drawing-delivery.md) |
+| 11 to 15. Drawing | `drawing_schema`, `drawing_derive_views`, `drawing_validate`, `drawing_render`, `drawing_read`, `artifact_preview`, `drawing_review` | [drawing-delivery.md](references/drawing-delivery.md) |
 | 16 and 17. Release | `export_step`, `part_export_review` | [validation.md](references/validation.md), [delivery-and-backends.md](references/delivery-and-backends.md) |
 
 Read [ap242-adapter.md](references/ap242-adapter.md), [target-format-exports.md](references/target-format-exports.md), and [documentation-language.md](references/documentation-language.md) only when their topic applies.
