@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .drawing_contract import _inside, _overlap, description_digest, drawing_validate
+from .drawing_contract import _inside, _overlap, description_digest, drawing_validate, render_gate
 
 
 def _layout_diagnostics(labels: list[dict[str, Any]], affected_ids: set[str] | None = None) -> dict[str, Any]:
@@ -93,7 +93,7 @@ def _diagnostic_pdf(pdf: bytes, sheet: dict[str, Any], report: dict[str, Any]) -
 def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: int,
                    output_dir: Path) -> dict[str, Any]:
     """Render fixed artifact names inside the restricted worker directory."""
-    report = drawing_validate(spec, description, revision)
+    report = render_gate(drawing_validate(spec, description, revision))
     if report["status"] != "pass" and not report.get("diagnostic_eligible", False):
         return report
     import ezdxf

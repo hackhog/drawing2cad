@@ -132,6 +132,7 @@ They do not prove modeled helical flanks or semantic thread PMI in STEP.
 This section applies to the domain profile. The local-path metric skips drawing tools.
 
 Read `drawing_schema` and prepare DrawingSpec 1.0 with the current `part_revision` and `description_sha256` from `part_read`.
+DrawingSpec 2.0 adds declarations that `drawing_validate` checks and `drawing_render` rejects (see drawing-delivery.md).
 Supply 2D views, line/circle/arc geometry, feature and evidence references, dimensions, notes, and uncertainty markers.
 Drawing scalar references can use a parameter, factor, and offset. Rebind and regenerate after model changes.
 Use `drawing_validate`, then `drawing_render` with `run_id`, `expected_revision`, and `drawing_spec`.

@@ -66,13 +66,16 @@ Report the open rows in the final report and in `drawing_review`.
 
 The tools cannot yet supply each required item. Do not hide a limit with a work-around.
 
-- The drawing contract has no isometric camera and no projection matrix. A view with `orientation: "custom"` is not an isometric view.
+- DrawingSpec 2.0 (`drawing_schema` with `schema_version: "2.0"`) declares isometric projections, sections with cutting planes and hatching,
+  ellipses, sheet data, datums, and tolerance frames. `drawing_validate` checks them. `drawing_render` rejects this content with `render_unsupported`.
+  Use 2.0 validation to check the declarations. Render the delivered drawing with content that the renderer supports.
+- The renderer has no isometric camera. A view with `orientation: "custom"` is not an isometric view.
   Do not draw hand-calculated isometric lines and call them an isometric view. Record the isometric row as `not_tested` with this limit.
 - The adapter does not derive views or sections from the solid. It has no cutting-plane definition.
   Supply section geometry, the cutting line, arrows, and letters explicitly, and review them against the model. Record automatic section derivation as `not_tested`.
 - The renderer draws a sheet title, not a complete border and title block. Record the border, title-block, and projection-symbol rows as `not_tested`.
-- The contract has no structured geometrical tolerance frames, datums, or datum systems. Show a source GPS requirement as a note with its literal text,
-  and record its row as `needs_review`. A note does not establish GPS semantics.
+- The renderer does not draw tolerance frames or datums. Show a source GPS requirement as a note with its literal text,
+  and record its row as `needs_review`. A note does not establish GPS semantics. A 2.0 validation pass of the frame is evidence for the declaration only.
 - No tool verifies the final PDF bytes independently. Record final-PDF verification as `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.
