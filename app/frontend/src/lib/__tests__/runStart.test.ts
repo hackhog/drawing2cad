@@ -1,7 +1,7 @@
 // Which profile the next run uses and when it can start (CAD runs card).
 import { describe, expect, it } from "vitest";
 import type { AgentProfile, AgentProfiles, Capabilities } from "../contract";
-import { profileLabel, runStartState } from "../runStart";
+import { runStartState, startEntry, unusableReason } from "../runStart";
 
 const caps = (change: Partial<Capabilities> = {}) => ({ simulated: false, runs: true, agent_ready: true, ...change }) as Capabilities;
 const profile = (name: string, change: Partial<AgentProfile> = {}): AgentProfile => ({
@@ -40,10 +40,28 @@ describe("runStartState", () => {
   });
 });
 
-describe("profileLabel", () => {
-  it("shows name, model, default mark, and key state", () => {
-    expect(profileLabel(profile("A"), "A")).toBe("A · vendor/a (default)");
-    expect(profileLabel(profile("B", { key_locked: true }), "A")).toBe("B · vendor/b – key locked");
-    expect(profileLabel(profile("C", { key_set: false }), null)).toBe("C · vendor/c – no key");
+describe("unusableReason", () => {
+  it("names the reason why a profile cannot start a run", () => {
+    expect(unusableReason(profile("A"))).toBeNull();
+    expect(unusableReason(profile("B", { key_locked: true }))).toMatch(/^Key locked/);
+    expect(unusableReason(profile("C", { key_set: false }))).toMatch(/^No API key/);
+  });
+});
+
+describe("startEntry", () => {
+  it("opens the dialog when a usable profile exists and the service is ready", () => {
+    expect(startEntry(caps(), agent("A", profile("A")))).toBe("dialog");
+    // The active profile is locked, but another one can start the run.
+    expect(startEntry(caps({ runs: false }), agent("A", profile("A", { key_locked: true }), profile("B")))).toBe("dialog");
+  });
+
+  it("is disabled without a usable profile or when the service is not ready", () => {
+    expect(startEntry(caps(), agent(null, profile("A", { key_locked: true })))).toBe("disabled");
+    expect(startEntry(caps({ agent_ready: false }), agent("A", profile("A")))).toBe("disabled");
+  });
+
+  it("starts directly without profiles, for example in the simulated service", () => {
+    expect(startEntry(caps({ simulated: true, runs: true }), undefined)).toBe("direct");
+    expect(startEntry(caps({ runs: false }), agent(null))).toBe("disabled");
   });
 });
