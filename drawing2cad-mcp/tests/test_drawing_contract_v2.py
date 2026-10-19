@@ -50,6 +50,8 @@ def complete_spec():
     description, spec = drawing_fixture()
     spec["schema_version"] = "2.0"
     spec["notes"] = []
+    spec["views"][0]["projection"] = {"view_direction": [0, 0, 1], "up": [0, 1, 0], "scale_convention": "true_size",
+                                      "matrix": [[1, 0, 0], [0, 1, 0]]}
     spec["views"] += [isometric_view(), section_view()]
     spec["title_block"] = {"legal_owner": "Example GmbH", "identification_number": "D-001", "date_of_issue": "2026-10-19",
                            "document_type": "Detail drawing", "creator": "Test", "approval_person": "Reviewer",
@@ -250,3 +252,52 @@ def test_failures_keep_the_result_fields(tmp_path):
     _, complete = complete_spec()
     gated = render_gate(drawing_validate(complete, description, 1))
     assert gated["total_defects"] == 1 and gated["checks"]["render_support"] == "fail"
+
+
+def test_repeated_hatching_boundary_fails():
+    description, spec = complete_spec()
+    spec["views"][3]["hatching"][0]["boundary_primitive_ids"] = ["s_bottom", "s_bottom"]
+    assert "hatching" in codes(drawing_validate(spec, description, 1))
+
+
+def test_version_2_schema_accepts_only_version_2():
+    assert drawing_schema("2.0")["schema"]["properties"]["schema_version"]["const"] == "2.0"
+
+
+def test_cutting_line_must_follow_the_plane_trace():
+    description, spec = complete_spec()
+    spec["views"][3]["cutting_plane"]["line"] = [[-5, 0], [65, 30]]
+    assert "cutting_plane" in codes(drawing_validate(spec, description, 1))
+    spec["views"][3]["cutting_plane"]["line"] = [[-5, 15], [65, 15]]
+    spec["views"][3]["cutting_plane"]["normal"] = [0, 0, 1]
+    spec["views"][3]["projection"] = {"view_direction": [0, 0, 1], "up": [0, 1, 0], "scale_convention": "true_size",
+                                      "matrix": [[1, 0, 0], [0, 1, 0]]}
+    assert "cutting_plane" in codes(drawing_validate(spec, description, 1))
+    del spec["views"][0]["projection"]
+    spec["views"][3]["cutting_plane"]["normal"] = [0, 1, 0]
+    spec["views"][3]["projection"] = section_view()["projection"]
+    result = drawing_validate(spec, description, 1)
+    assert result["status"] == "pass", result["defects"]
+    assert "section_trace" in {f["code"] for f in result["findings"]}
+
+
+def test_zero_tolerance_needs_material_condition():
+    description, spec = complete_spec()
+    spec["tolerance_frames"][1]["value"] = 0.0
+    assert drawing_validate(spec, description, 1)["status"] == "pass"
+    spec["tolerance_frames"][1]["modifiers"] = []
+    assert "gps_frame" in codes(drawing_validate(spec, description, 1))
+
+
+def test_invalid_datum_evidence_fails_the_gps_check():
+    description, spec = complete_spec()
+    spec["datums"][0]["evidence_ids"] = ["missing"]
+    result = drawing_validate(spec, description, 1)
+    assert result["checks"]["gps_profile"] == "fail"
+    assert {f["id"]: f["status"] for f in result["gps"]["frames"]}["hole_position"] == "fail"
+
+
+def test_schema_failure_is_not_a_render_support_defect():
+    description, _ = complete_spec()
+    report = render_gate(drawing_validate({"schema_version": "2.0"}, description, 1))
+    assert [d["code"] for d in report["defects"]] == ["schema"]

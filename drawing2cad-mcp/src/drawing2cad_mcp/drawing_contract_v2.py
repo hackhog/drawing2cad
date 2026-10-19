@@ -118,7 +118,8 @@ class DatumReference(ClosedModel):
 class ToleranceFrame(ClosedModel):
     id: Identifier
     characteristic: Characteristic
-    value: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False, strict=True)] = Field(description="Tolerance value in mm.")
+    value: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False, strict=True)] = Field(
+        description="Tolerance value in mm. The value 0 needs the modifier M or L (ISO 2692).")
     zone: Literal["width", "diameter", "spherical_diameter"] = "width"
     modifiers: Annotated[list[Modifier], Field(max_length=4)] = []
     datums: Annotated[list[DatumReference], Field(max_length=3)] = Field(default=[], description="Datum references in their order: primary, secondary, tertiary.")
@@ -259,6 +260,8 @@ def frame_review(frame: ToleranceFrame) -> tuple[list[str], list[str]]:
         defects.append("Datum references must be distinct: a datum letter occurs more than once.")
     if len(frame.modifiers) != len(set(frame.modifiers)):
         defects.append("A modifier occurs more than once.")
+    if frame.value == 0 and not {"M", "L"} & set(frame.modifiers):
+        defects.append("A tolerance value of 0 needs the modifier M or L.")
     if {"M", "L"} <= set(frame.modifiers):
         defects.append("The modifiers M and L exclude each other.")
     if frame.zone != "width" and characteristic in NO_DIAMETER_ZONE:

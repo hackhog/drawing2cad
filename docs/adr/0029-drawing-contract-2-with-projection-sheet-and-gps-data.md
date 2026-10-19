@@ -42,7 +42,10 @@ The later steps (isometric projection, section derivation, sheet rendering, GPS 
 - A 2.0 section view needs a `cutting_plane` (letter, origin, normal, viewing side, source view, cutting line, evidence),
   `hatching` with boundary primitives of the view, and a `projection`.
 - The validator checks the letter, the `L-L` label, the source view, the cutting line inside the source frame, the cutting-plane evidence,
-  the closed hatching boundary, and the agreement of the section view direction with the plane normal and the viewing side.
+  the closed hatching boundary without repeated primitives, and the agreement of the section view direction with the plane normal and the viewing side.
+- When the source view has a projection, the source view must show the plane as a line, and the cutting line must be parallel to that trace.
+  The projection has no translation. Thus the check does not compare `origin` with the position of the cutting line.
+  When the source view has no projection, the trace check gets status `needs_review`.
 
 ### Sheet data
 
@@ -55,7 +58,7 @@ The later steps (isometric projection, section derivation, sheet rendering, GPS 
 - Version 2.0 adds `datums`, `tolerance_frames`, theoretically exact dimensions, and `unsupported_gps`.
 - The supported profile is `drawing2cad-gps-1`. It contains the form, orientation, and run-out characteristics, position, coaxiality, and the modifiers M and L.
 - A frame fails for an invalid declaration: a form tolerance with datums, an orientation or run-out tolerance without datums, repeated datum letters,
-  an unknown datum, M and L together, or a diameter zone on a characteristic without one.
+  an unknown or invalid datum, a tolerance value of 0 without M or L, M and L together, or a diameter zone on a characteristic without one.
 - A characteristic, modifier, or datum modifier outside the profile (each datum modifier), a position tolerance without datum, and each `unsupported_gps` item get status `needs_review`. They never pass automatically.
 - A pass means agreement with this bounded profile. It is not ISO conformity and not a manufacturing acceptance.
 
@@ -68,7 +71,9 @@ The later steps (isometric projection, section derivation, sheet rendering, GPS 
 ### Validation results
 
 - Each result has `schema_version`, `findings`, and `render_support`. This includes schema and version failures.
-- A 2.0 result also has `gps` (profile and status of each frame) and the checks `isometric_projection`, `gps_profile`, and `sheet_items`.
+  After a schema failure, `render_support` is null, and `schema_version` is null for an unknown version.
+- A 2.0 result after a successful schema check also has `gps` (profile and status of each frame) and the checks
+  `isometric_projection`, `gps_profile`, and `sheet_items`. A schema or version failure does not have these fields.
 
 ## Consequences
 

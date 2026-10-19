@@ -183,7 +183,7 @@ def drawing_schema(schema_version: str = DRAWING_SCHEMA_VERSION) -> dict[str, An
         raise ValueError(f"Unknown drawing schema version: {schema_version}.")
     version_2 = schema_version == DRAWING_SCHEMA_VERSION_2
     return {"schema_version": schema_version, "supported_versions": list(DRAWING_SCHEMA_VERSIONS),
-            "schema": DrawingSpec.model_json_schema() if version_2 else _schema_1(DrawingSpec.model_json_schema()),
+            "schema": _schema_2(DrawingSpec.model_json_schema()) if version_2 else _schema_1(DrawingSpec.model_json_schema()),
             **({"version_2": {
                 "content": ["isometric view with a projection matrix", "parallel projection of other views", "ellipse",
                             "cutting plane and hatching", "title block (ISO 7200)", "border", "projection symbol",
@@ -336,7 +336,7 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
         declared = spec.get("schema_version") if isinstance(spec, dict) else None
         return {"status": "fail", "diagnostic_eligible": False,
                 "schema_version": declared if declared in DRAWING_SCHEMA_VERSIONS else None, "findings": [],
-                "render_support": {"renderable": False, "unsupported": ["The drawing does not match its schema."]},
+                "render_support": None,
                 "defects": [{"code": "schema", "message": "The drawing or part does not match its schema.",
                              "fields": fields, "truncated": len(errors) > len(fields)}]}
 
@@ -510,13 +510,15 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
             unknown = [ref for ref in hatch.boundary_primitive_ids if ref not in geometry]
             if unknown:
                 fail("hatching", view.id, "Hatching boundaries must be primitives of the section view: " + ", ".join(unknown) + ".")
+            elif len(set(hatch.boundary_primitive_ids)) != len(hatch.boundary_primitive_ids):
+                fail("hatching", view.id, "A hatching boundary must not repeat a primitive.")
             elif open_points := _open_ends([geometry[ref] for ref in hatch.boundary_primitive_ids]):
                 fail("hatching", view.id, "The hatching boundary is not closed. Each end point must meet another end point.",
                      open_points=open_points[:6])
         views.append({**view.model_dump(), "geometry": list(geometry.values()), "dimensions": dimensions})
     present = {v["id"] for v in views}
     if version_2:
-        _check_sections(drawing, views, evidence, fail)
+        _check_sections(drawing, views, evidence, fail, findings)
         _check_gps(drawing, views, features, evidence, fail, findings, gps_frames)
         _check_sheet_items(drawing, findings)
     if len(drawing.required_view_ids) != len(set(drawing.required_view_ids)) or not set(drawing.required_view_ids) <= present:
@@ -677,8 +679,9 @@ def _render_support(drawing: DrawingSpec) -> dict[str, Any]:
     return {"renderable": not unsupported, "unsupported": unsupported}
 
 
-def _check_sections(drawing: DrawingSpec, views: list[dict], evidence: dict, fail) -> None:
+def _check_sections(drawing: DrawingSpec, views: list[dict], evidence: dict, fail, findings) -> None:
     by_id = {view["id"]: view for view in views}
+    models = {view.id: view for view in drawing.views}
     letters: dict[str, str] = {}
     for view in drawing.views:
         plane = view.cutting_plane
@@ -705,6 +708,7 @@ def _check_sections(drawing: DrawingSpec, views: list[dict], evidence: dict, fai
         if not _inside(box, source["frame"]):
             fail("cutting_plane", view.id, "The cutting line exceeds the frame of its source view.", sheet_bounds=box,
                  frame=source["frame"])
+        _check_trace(view.id, plane, models[plane.source_view_id].projection, fail, findings)
         if view.projection is not None:
             normal = [float(c) for c in plane.normal]
             length = math.sqrt(sum(c * c for c in normal))
@@ -719,29 +723,34 @@ def _check_sections(drawing: DrawingSpec, views: list[dict], evidence: dict, fai
 def _check_gps(drawing: DrawingSpec, views: list[dict], features: set[str], evidence: dict, fail, findings, frames) -> None:
     primitives = {(view["id"], primitive["id"]) for view in views for primitive in view["geometry"]}
     datum_letters: set[str] = set()
+    invalid_datums: set[str] = set()
     for datum in drawing.datums:
+        problems = []
         if datum.letter in datum_letters:
-            fail("gps_datum", datum.letter, f"Datum letter {datum.letter} is defined more than once.")
+            problems.append(f"Datum letter {datum.letter} is defined more than once.")
         datum_letters.add(datum.letter)
         if not set(datum.feature_ids) <= features:
-            fail("gps_datum", datum.letter, "A datum must identify existing part features.")
+            problems.append("A datum must identify existing part features.")
         if (datum.view_id, datum.primitive_id) not in primitives:
-            fail("gps_datum", datum.letter, "A datum needs a primitive in its view.")
-        for ref in datum.evidence_ids:
-            if ref not in evidence:
-                fail("unknown_evidence", datum.letter, f"Unknown evidence: {ref}.")
+            problems.append("A datum needs a primitive in its view.")
+        problems += [f"Unknown evidence: {ref}." for ref in datum.evidence_ids if ref not in evidence]
+        for message in problems:
+            fail("gps_datum", datum.letter, message)
+        if problems:
+            invalid_datums.add(datum.letter)
     for frame in drawing.tolerance_frames:
         defects, review = frame_review(frame)
         unknown = [reference.letter for reference in frame.datums if reference.letter not in datum_letters]
         if unknown:
             defects.append("Unknown datum letters: " + ", ".join(unknown) + ".")
+        invalid = sorted({reference.letter for reference in frame.datums} & invalid_datums)
+        if invalid:
+            defects.append("The frame refers to invalid datums: " + ", ".join(invalid) + ".")
         if not set(frame.feature_ids) <= features:
             defects.append("A tolerance frame must identify existing part features.")
         if (frame.view_id, frame.primitive_id) not in primitives:
             defects.append("A tolerance frame needs a primitive in its view.")
-        for ref in frame.evidence_ids:
-            if ref not in evidence:
-                defects.append(f"Unknown evidence: {ref}.")
+        defects += [f"Unknown evidence: {ref}." for ref in frame.evidence_ids if ref not in evidence]
         for message in defects:
             fail("gps_frame", frame.id, message)
         for message in review:
@@ -750,12 +759,13 @@ def _check_gps(drawing: DrawingSpec, views: list[dict], features: set[str], evid
                        "status": "fail" if defects else "needs_review" if review else "pass",
                        "defects": defects, "review": review})
     for item in drawing.unsupported_gps:
-        for ref in item.evidence_ids:
-            if ref not in evidence:
-                fail("unknown_evidence", item.id, f"Unknown evidence: {ref}.")
+        unknown = [f"Unknown evidence: {ref}." for ref in item.evidence_ids if ref not in evidence]
+        for message in unknown:
+            fail("gps_evidence", item.id, message)
         findings.append({"code": "gps_unsupported", "id": item.id, "status": "needs_review",
                          "message": f"Outside the supported profile: {item.literal_text} ({item.reason})"})
-        frames.append({"id": item.id, "characteristic": None, "status": "needs_review", "defects": [], "review": [item.reason]})
+        frames.append({"id": item.id, "characteristic": None, "status": "fail" if unknown else "needs_review",
+                       "defects": unknown, "review": [item.reason]})
 
 
 def _check_sheet_items(drawing: DrawingSpec, findings) -> None:
@@ -779,8 +789,8 @@ def _check_sheet_items(drawing: DrawingSpec, findings) -> None:
 
 def render_gate(report: dict[str, Any]) -> dict[str, Any]:
     """Reject validated content that the renderer cannot draw. Return the report unchanged otherwise."""
-    support = report.get("render_support") or {"renderable": True}
-    if support["renderable"]:
+    support = report.get("render_support")
+    if not support or support["renderable"]:
         return report
     defect = {"code": "render_unsupported", "id": "drawing",
               "message": "drawing_render cannot render this content yet: " + ", ".join(support["unsupported"][:20]) + "."}
@@ -867,3 +877,34 @@ def _open_ends(items: list[dict]) -> list[list[float]]:
         if partners % 2 == 0:
             unmatched.append([round(point[0], 6), round(point[1], 6)])
     return unmatched
+
+
+def _schema_2(schema: dict[str, Any]) -> dict[str, Any]:
+    """The JSON schema of version 2.0. It accepts only the version value 2.0."""
+    schema["properties"]["schema_version"] = {"const": DRAWING_SCHEMA_VERSION_2, "type": "string", "title": "Schema Version"}
+    return schema
+
+
+def _check_trace(view_id: str, plane, projection, fail, findings) -> None:
+    """Compare the cutting line with the trace of the cutting plane in the source view.
+
+    The projection has no translation, so this check covers the directions only. It does not check plane.origin.
+    """
+    if projection is None:
+        findings.append({"code": "section_trace", "id": view_id, "status": "needs_review",
+                         "message": "The source view has no projection. The cutting line is not checked against the cutting plane."})
+        return
+    normal = [float(c) for c in plane.normal]
+    direction = [float(c) for c in projection.view_direction]
+    normal_length = math.sqrt(sum(c * c for c in normal))
+    direction_length = math.sqrt(sum(c * c for c in direction))
+    if normal_length <= 1e-12 or direction_length <= 1e-12:
+        return
+    if abs(sum(a * b for a, b in zip(normal, direction))) / (normal_length * direction_length) > 1e-6:
+        fail("cutting_plane", view_id, "The source view must show the cutting plane as a line: the normal must be perpendicular to its view direction.")
+        return
+    projected = [sum(float(m) * n for m, n in zip(row, normal)) for row in projection.matrix]
+    line = [float(plane.line[1][i]) - float(plane.line[0][i]) for i in (0, 1)]
+    scale = math.hypot(*projected) * math.hypot(*line)
+    if scale > 1e-12 and abs(projected[0] * line[0] + projected[1] * line[1]) / scale > 1e-6:
+        fail("cutting_plane", view_id, "The cutting line is not parallel to the trace of the cutting plane in the source view.")

@@ -67,7 +67,8 @@ Report the open rows in the final report and in `drawing_review`.
 The tools cannot yet supply each required item. Do not hide a limit with a work-around.
 
 - DrawingSpec 2.0 (`drawing_schema` with `schema_version: "2.0"`) declares isometric projections, sections with cutting planes and hatching,
-  ellipses, sheet data, datums, and tolerance frames. `drawing_validate` checks them. `drawing_render` rejects this content with `render_unsupported`.
+  ellipses, sheet data, datums, and tolerance frames. `drawing_validate` checks them. `drawing_render` rejects ellipses, cutting planes, hatching,
+  theoretically exact dimensions, sheet data, and GPS data with `render_unsupported`.
   Use 2.0 validation to check the declarations. Render the delivered drawing with content that the renderer supports.
 - The renderer has no isometric camera. A view with `orientation: "custom"` is not an isometric view.
   Do not draw hand-calculated isometric lines and call them an isometric view. Record the isometric row as `not_tested` with this limit.
