@@ -4,7 +4,7 @@ Date: 2026-10-19
 
 ## Status
 
-Accepted. Replaces the storage decision of [ADR 0020](0020-agent-model-profiles-selected-in-the-web-ui.md) (`agent-profiles.json`). The other decisions of ADR 0020 stay valid. Not implemented yet.
+Accepted. Replaces the storage decision of [ADR 0020](0020-agent-model-profiles-selected-in-the-web-ui.md) (`agent-profiles.json`). The other decisions of ADR 0020 stay valid. Implemented in the web backend (`app/backend/src/drawing_demo/agent/config_store.py`, `profiles.py`).
 
 ## Context
 
@@ -49,13 +49,16 @@ schema_migrations(version, applied_at)
 - `key_version` identifies the master key. A rotation command decrypts each key with the old master key and encrypts it with the new one in one transaction.
 - The backend decrypts a key only for the model call of a run or for the connection check. It does not keep decrypted keys in a log, a trace, a run record, or an API response. A response shows `key_set` only, as before.
 - Without a master key, the web UI cannot save a profile with a key. The API returns an actionable error. Profiles from the environment still work.
-- If the master key does not decrypt a stored key (wrong or lost master key), the profile shows `key_locked`. A run with that profile fails at start with an actionable error. The user enters the key again.
+- If the master key does not decrypt a stored key (wrong or lost master key), the profile shows `key_locked`. A run with that profile fails at start with an actionable error (`PROFILE_KEY_LOCKED`). The user enters the key again.
+- The profile view reports `master_key_set`, so the web UI can tell users that keys cannot be saved.
+- `key_version` is a short SHA-256 value of the master key. It identifies the key and does not disclose it.
 
 ### Run limits for each profile
 
 - A profile can set `step_budget`, `max_turns`, `model_timeout_seconds`, `call_timeout_seconds`, `total_timeout_seconds`, and `max_tool_text_chars`.
 - A value that a profile does not set uses the server default. The defaults are the current values of `runner.py`.
-- The deployment configuration sets the maximum of each limit. The API rejects a value above the maximum or below 1.
+- The deployment configuration sets the maximum of each limit with `DRAWING2CAD_RUN_MAX_<LIMIT>`. The API rejects a value above the maximum or below 1.
+- An environment profile reads its limits from `DRAWING2CAD_AGENT[_<NAME>]_<LIMIT>`, for example `DRAWING2CAD_AGENT_LITELLM_STEP_BUDGET`. An invalid value stops the start.
 - A run records the limits that it used, next to the profile name, the model, and the reasoning effort.
 
 ### No migration

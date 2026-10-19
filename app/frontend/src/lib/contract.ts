@@ -194,6 +194,12 @@ export interface Capabilities {
 export type AgentProvider = "openrouter" | "azure" | "openai";
 export type AgentApi = "chat" | "responses";
 
+/** Run limits of the agent loop (ADR 0028). */
+export type AgentLimitName =
+  | "step_budget" | "max_turns" | "model_timeout_seconds" | "call_timeout_seconds" | "total_timeout_seconds" | "max_tool_text_chars";
+/** Limits that a profile sets. A missing or null limit uses the server default. */
+export type AgentLimits = Partial<Record<AgentLimitName, number | null>>;
+
 /** A model profile of the server. The server keeps the key; `key_set` tells if one is stored. */
 export interface AgentProfile {
   name: string;
@@ -205,6 +211,12 @@ export interface AgentProfile {
   api: AgentApi;
   reasoning_effort: string | null;
   key_set: boolean;
+  /** The server cannot decrypt the stored key, for example after a change of its master key. */
+  key_locked?: boolean;
+  /** The limits that this profile sets. */
+  limits?: AgentLimits;
+  /** Revision of a stored profile; null for a profile from the server configuration. */
+  revision?: number | null;
 }
 
 /** A profile as the web UI saves it. The server derives the base URL and the key header from the provider. */
@@ -217,6 +229,9 @@ export interface AgentProfileInput {
   /** Empty keeps the stored key of a changed profile. */
   api_key: string;
   reasoning_effort: string | null;
+  limits?: AgentLimits;
+  /** The revision that the client read. A stale revision fails with REVISION_CONFLICT. */
+  revision?: number | null;
 }
 
 /** Result of one short request without tools to the endpoint of a profile. */
@@ -229,5 +244,10 @@ export interface ConnectionCheck {
 /** The configured model profiles. `active` is null when new runs use no agent. */
 export interface AgentProfiles {
   active: string | null;
+  /** Revision of the selection. A stale revision fails with REVISION_CONFLICT. */
+  active_revision?: number;
   profiles: AgentProfile[];
+  /** False when the server has no master key: it cannot store API keys from the web UI. */
+  master_key_set?: boolean;
+  limits?: { defaults: Record<AgentLimitName, number>; maximums: Record<AgentLimitName, number> };
 }

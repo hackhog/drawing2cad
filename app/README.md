@@ -107,6 +107,8 @@ The browser uploads PDFs to `/api/sources`. The backend transfers each source to
 the agent builds the model only through the MCP endpoint of the same service, and step 4 shows the released model.
 Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values; without `.env`, runs show as unavailable.
 Docker Compose also takes `DRAWING2CAD_AGENT_API_KEY` from the shell, so the key can stay in a password manager instead of `.env`.
+To add profiles with keys in the web UI, set a master key (`DRAWING2CAD_SECRET_KEY`); the backend stores these keys only encrypted.
+See [backend/README.md](backend/README.md#configuration-store-and-master-key).
 
 ## Structure and validation
 

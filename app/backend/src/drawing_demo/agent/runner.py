@@ -25,24 +25,29 @@ from ..jobs import JobStore, now
 from ..service import DomainBackend, ServiceError
 from .mapping import phase_for
 from .model import ModelSettings, make_model_call
-from .profiles import ProfileStore
+from .profiles import DEFAULT_LIMITS, ProfileStore
 
 log = logging.getLogger(__name__)
 # The `metadata.version` field in the YAML front matter of SKILL.md.
 SKILL_VERSION = re.compile(r'^---\n.*?^\s+version:\s*"?([^"\n]+?)"?\s*$.*?^---$', re.MULTILINE | re.DOTALL)
 
-# Bounds for one run. The spike used 25 tool calls and about 6 minutes for a small part.
-LIMITS = {"step_budget": 45, "max_turns": 60, "model_timeout_seconds": 300, "total_timeout_seconds": 2400,
-          "call_timeout_seconds": 240, "max_tool_text_chars": 80000}
+# Default bounds for one run. A profile can set its own limits (ADR 0028). The spike used 25 tool calls and about
+# 6 minutes for a small part.
+LIMITS = DEFAULT_LIMITS
 MAX_NOTE_CHARS = 65536
 
 
-def iterations(turns: int, tool_requests: int, **counts: int) -> dict[str, int]:
+def iterations(turns: int, tool_requests: int, step_budget: int = LIMITS["step_budget"], **counts: int) -> dict[str, int]:
     """Model turns and tool requests of the agent loop so far, with the tool request budget.
 
     The final summary adds the actual MCP calls and the requests that the loop blocked before execution.
     """
-    return {"model_turns": turns, "tool_requests": tool_requests, "step_budget": LIMITS["step_budget"], **counts}
+    return {"model_turns": turns, "tool_requests": tool_requests, "step_budget": step_budget, **counts}
+
+
+def run_limits(record: dict[str, Any]) -> dict[str, int]:
+    """The limits that a run records at its creation. Older records have none and use the defaults."""
+    return {**LIMITS, **((record.get("agent") or {}).get("limits") or {})}
 
 
 class ProgressTrace(Trace):
@@ -97,6 +102,8 @@ class AgentRunner:
 
     def close(self) -> None:
         self.executor.shutdown(wait=False, cancel_futures=True)
+        if self.profiles is not None:
+            self.profiles.close()
 
     def _execute(self, run_id: str, settings: ModelSettings) -> None:
         try:
@@ -113,20 +120,21 @@ class AgentRunner:
                          error={"code": code, "message": message, "field": field, "recovery": recovery})
 
     @asynccontextmanager
-    async def session(self) -> AsyncIterator[ClientSession]:
+    async def session(self, call_timeout: int = LIMITS["call_timeout_seconds"]) -> AsyncIterator[ClientSession]:
         """An MCP session with the mounted endpoint of this backend."""
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
-        async with httpx2.AsyncClient(headers=headers, timeout=LIMITS["call_timeout_seconds"], trust_env=False) as client:
+        async with httpx2.AsyncClient(headers=headers, timeout=call_timeout, trust_env=False) as client:
             async with streamable_http_client(self.mcp_url, http_client=client) as streams:
-                async with ClientSession(*streams, read_timeout_seconds=LIMITS["call_timeout_seconds"]) as session:
+                async with ClientSession(*streams, read_timeout_seconds=call_timeout) as session:
                     await session.initialize()
                     yield session
 
     async def _run(self, run_id: str, settings: ModelSettings) -> None:
         run = self.jobs.get(run_id)
+        limits = run_limits(run)
         source = self.backend.call("source_get", source_id=run["source_id"])
         plan = {"model": settings.model, "source_id": source["source_id"], "source_sha256": source["sha256"],
-                "run_prefix": run["part_prefix"], **LIMITS}
+                "run_prefix": run["part_prefix"], **limits}
         self.jobs.update(run_id, phase="analyzing", job={"status": "running", "started_at": now()})
         requested: dict[str, Any] = {}
 
@@ -136,15 +144,15 @@ class AgentRunner:
                 requested["arguments"] = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
                 current = self.jobs.get(run_id)
                 self.jobs.update(run_id, phase=phase_for(name, current["phase"]),
-                                 iterations=iterations(data.get("turn", 0), data.get("request_number", 0)),
-                                 job={"progress": min(0.95, data.get("request_number", 0) / LIMITS["step_budget"])})
+                                 iterations=iterations(data.get("turn", 0), data.get("request_number", 0), limits["step_budget"]),
+                                 job={"progress": min(0.95, data.get("request_number", 0) / limits["step_budget"])})
             elif name == "part_create" and not data.get("response", {}).get("isError", True):
                 # Only a part run that the service created holds a result.
                 self.jobs.update(run_id, part_run_id=requested["arguments"].get("run_id"))
 
         directory = self.jobs.directory(run_id)
         trace = ProgressTrace(directory / "trace", on_event)
-        async with self.session() as session:
+        async with self.session(limits["call_timeout_seconds"]) as session:
             catalog = (await session.list_tools()).model_dump(mode="json", by_alias=True)["tools"]
             summary = await drive(session, catalog, plan, skill_text(self.skill_path, domain=True), trace,
                                   model_call=make_model_call(settings), references=skill_references(self.skill_path))
@@ -154,9 +162,10 @@ class AgentRunner:
     def finish(self, run_id: str, summary: dict[str, Any]) -> None:
         """Store the agent report as a note of the part run and set the final job state from the domain part state."""
         # The last model turn answers without a tool request; only the summary counts it.
+        limits = run_limits(self.jobs.get(run_id))
         part_run = self.jobs.update(run_id, iterations=iterations(
-            summary.get("model_turns", 0), summary.get("tool_requests", 0), mcp_calls=summary.get("mcp_calls", 0),
-            blocked_requests=summary.get("blocked_requests", 0)))["part_run_id"]
+            summary.get("model_turns", 0), summary.get("tool_requests", 0), limits["step_budget"],
+            mcp_calls=summary.get("mcp_calls", 0), blocked_requests=summary.get("blocked_requests", 0)))["part_run_id"]
         report = summary.get("final_text") or ""
         if part_run is not None and report:
             self.store_report(part_run, report)
@@ -180,7 +189,7 @@ class AgentRunner:
         out_of_time = summary.get("status") == "time_budget_reached"
         if part_run is None:
             if out_of_time:
-                self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary),
+                self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary, False, limits["total_timeout_seconds"]),
                            "Start the run again, or use a faster model endpoint.")
                 return
             self._fail(run_id, "AGENT_NO_PART", f"The agent created no part (status: {summary.get('status')}).",
@@ -193,7 +202,7 @@ class AgentRunner:
             self.jobs.update(run_id, phase="done", error=None, job={"status": "succeeded", "progress": 1, "finished_at": now()})
         elif out_of_time:
             # The time ended before a release. A model built before stays readable, but the run is not a finished result.
-            self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary, built),
+            self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary, built, limits["total_timeout_seconds"]),
                        "Start the run again, or use a faster model endpoint.")
         else:
             # The complete report is the run note; the error names only the result.
@@ -201,10 +210,10 @@ class AgentRunner:
                        "Look at the report and open review items in the Review tab; clarify the drawing and start the run again.")
 
     @staticmethod
-    def _time_budget_message(summary: dict[str, Any], built: bool = False) -> str:
+    def _time_budget_message(summary: dict[str, Any], built: bool = False,
+                             limit: int = LIMITS["total_timeout_seconds"]) -> str:
         detail = summary.get("time_budget") or {}
         phase = {"model_inference": " during model inference", "tool_call": " during a tool call"}.get(detail.get("phase"), "")
-        limit = LIMITS["total_timeout_seconds"]
         result = "released the STEP model; the built model stays readable" if built else "built a valid model"
         text = f"The run used its time budget of {limit} seconds{phase} before the agent {result}."
         return f"{text} Last error: {detail['message']}"[:4000] if detail.get("message") else text
