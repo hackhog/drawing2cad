@@ -18,15 +18,18 @@ No one could see which revision of an image runs.
 - The workflow publishes nothing if the tagged commit is not on `main`, or if the MCP test suite fails in its container.
 - It builds `ghcr.io/hackhog/drawing2cad-mcp`, `drawing2cad-backend`, and `drawing2cad-frontend` from the tagged commit, for `linux/amd64` and `linux/arm64` on native runners.
 - Each image has the tags `<version>` and `latest`, and the OCI labels for source, revision, version, and title.
-- `compose.yaml` and `compose.mcp.yaml` use the published images. `DRAWING2CAD_VERSION` selects one version for all services. The default is `latest`.
-- `compose.build.yaml` and `compose.mcp.build.yaml` build the current source for development. They use local image tags, so a local build does not replace a published tag.
+- The `deployment/` directory has two Compose files with the same services: backend, frontend, `mcp` (stdio), and `mcp-http`. The MCP services use Compose profiles, so `up` starts only the web app.
+- `deployment/compose.yaml` uses the published images. `DRAWING2CAD_VERSION` selects one version for all services. The default is `latest`.
+- `deployment/compose.local.yaml` builds all containers from the current source. Its services extend `deployment/compose.yaml`, so the runtime settings stay the same. It uses local image tags, so a local build does not replace a published tag.
+- Both files set the project name `drawing2cad`. The volumes of earlier installations stay in use.
 - Pull request and `main` workflows still build images for tests. They do not push images.
 
 ## Consequences
 
 - All images of one version come from the same commit. The `org.opencontainers.image.revision` label identifies it.
-- `docker compose up` needs no local build and no credentials while the packages are public.
-- Before the first tag after this change, `docker compose up` cannot pull an image. Use the build override files until then.
+- `docker compose -f deployment/compose.yaml up` needs no local build and no credentials while the packages are public.
+- Before the first tag after this change, `deployment/compose.yaml` cannot pull an image. Use `deployment/compose.local.yaml` until then.
+- The Compose files are no longer in the repository root. Each command needs `-f deployment/<file>`.
 - `latest` changes with each release. A deployment that must not change sets `DRAWING2CAD_VERSION`.
 - A release takes longer, because the workflow runs the MCP test suite and builds six platform images.
 - The package visibility on ghcr.io must be public for pulls without a login. A new package can start as private. An organization owner sets the visibility once.

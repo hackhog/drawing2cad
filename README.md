@@ -6,17 +6,25 @@ The skill uses domain tools and remains independent of the CAD backend.
 
 ## Docker start
 
-From the repository root:
+The `deployment/` directory has two Compose files with the same services ([ADR 0027](docs/adr/0027-container-images-on-ghcr-for-version-tags.md)):
+
+| File | Image source |
+|---|---|
+| [deployment/compose.yaml](deployment/compose.yaml) | Published images on `ghcr.io/hackhog`. Each version tag publishes them. |
+| [deployment/compose.local.yaml](deployment/compose.local.yaml) | Local build from the current source, with local image tags. |
+
+Set `DRAWING2CAD_VERSION` to a version tag, for example `v1.3`, to use the images of that version. Without it, Compose uses `latest`.
+Run `pull` with the same file to get a newer `latest` image.
+To build from the current source, use `deployment/compose.local.yaml` in the commands below and add `--build` to `up`.
+Run all commands from the repository root.
+
+### MCP
 
 ```bash
-docker compose -f compose.mcp.yaml pull
-docker compose -f compose.mcp.yaml run --rm -T mcp
+docker compose -f deployment/compose.yaml run --rm -T mcp
 ```
 
-Each version tag publishes the images to `ghcr.io/hackhog` ([ADR 0027](docs/adr/0027-container-images-on-ghcr-for-version-tags.md)).
-Set `DRAWING2CAD_VERSION` to a version tag, for example `v1.3`, to use the images of that version. Without it, Compose uses `latest`.
-Run `docker compose ... pull` to get a newer `latest` image.
-The second command starts an MCP stdio process.
+This command starts an MCP stdio process.
 Connect an MCP client to its stdin/stdout; it is not a browser endpoint.
 The container has no network.
 Send PDF bytes through the upload tools. Clients use source, run, job, and artifact IDs.
@@ -26,11 +34,11 @@ The named `cad-data` volume preserves uploaded sources, revisions, jobs, notes, 
 For Streamable HTTP, supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism, then run:
 
 ```bash
-docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up -d
+docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 ```
 
 Connect to `http://127.0.0.1:8765/mcp` with the same bearer token.
-The HTTP profile exposes only the host loopback interface. It does not include the web interface.
+The HTTP service exposes only the host loopback interface. It does not include the web interface.
 
 Call `drawing2cad_status`, `cad_capabilities`, and `cad_worker_probe` before CAD work.
 The worker requires the supported Linux sandbox.
@@ -39,23 +47,19 @@ See the [MCP guide](drawing2cad-mcp/README.md) for tools, configuration, and tes
 
 ## Web app with agent runs
 
-From the repository root:
-
 ```bash
-docker compose up                # pulls the published images; open http://localhost:8000
+docker compose -f deployment/compose.yaml up -d                  # published images
+docker compose -f deployment/compose.local.yaml up --build -d    # local build
 ```
 
-To build unreleased changes, add the build override files:
-`docker compose -f compose.yaml -f compose.build.yaml up --build` for the web app, and
-`docker compose -f compose.mcp.yaml -f compose.mcp.build.yaml build` for the MCP.
-
+Open `http://localhost:8000`.
 Upload drawing PDFs, review the analysis, and start a run.
 A run lets an agent build the model only through the `drawing2cad-mcp` endpoint of the backend; step 4 shows the released STEP in 3D
 ([ADR 0018](docs/adr/0018-agent-runner-in-the-web-backend.md)).
-Runs need an OpenAI-compatible model endpoint: copy `.env.example` to `.env`, fill in the values, and run `docker compose up -d`.
+Runs need an OpenAI-compatible model endpoint: copy `.env.example` to `.env`, fill in the values, and run `docker compose -f deployment/compose.yaml up -d`.
 Without `.env`, the app starts and shows runs as unavailable. See the [app guide](app/README.md).
 To keep the key out of `.env`, leave `DRAWING2CAD_AGENT_API_KEY` empty there and pass it from the shell, for example from the macOS Keychain:
-`DRAWING2CAD_AGENT_API_KEY=$(security find-generic-password -a <account> -s <service> -w) docker compose up -d`.
+`DRAWING2CAD_AGENT_API_KEY=$(security find-generic-password -a <account> -s <service> -w) docker compose -f deployment/compose.yaml up -d`.
 
 ## Delivery milestones
 
@@ -123,8 +127,7 @@ The renderer is part of the repository; it needs no machine-local archify instal
 | Path | Contents |
 |---|---|
 | [drawing2cad-mcp/](drawing2cad-mcp/README.md) | Python MCP, PDF tools, part service, worker, and tests. |
-| [compose.mcp.yaml](compose.mcp.yaml) | Headless Docker service with uploads and stdio transport. |
-| [compose.mcp-http.yaml](compose.mcp-http.yaml) | Authenticated Streamable HTTP override on host port 8765. |
+| [deployment/](deployment/compose.yaml) | Compose files: published images, and a local build from the current source. |
 | [Streamable HTTP guide](drawing2cad-mcp/STREAMABLE_HTTP.md) | HTTP transport, authentication, LiteLLM, and deployment limits. |
 | [skills/drawing2cad/](skills/drawing2cad/SKILL.md) | Reusable skill and focused references. |
 | [app/](app/README.md) | Web app: React frontend and Python backend with agent runs through the MCP. |

@@ -12,9 +12,9 @@ Agent or LiteLLM -> HTTP /mcp -> drawing2cad-mcp -> PDF tools
 ```
 
 The image includes PDF tools, a build123d worker, and the DXF/PDF drawing adapter.
-The supplied `compose.mcp.yaml` profile uses stdio with network disabled.
+The `mcp` service in `deployment/compose.yaml` uses stdio with network disabled.
 It does not expose an HTTP port.
-The `compose.mcp-http.yaml` override adds an authenticated listener on host loopback port 8765.
+The `mcp-http` service of the same file adds an authenticated listener on host loopback port 8765.
 The CAD child retains its own network and filesystem restrictions.
 
 The domain profile supplies persistent PDF uploads and artifact downloads through MCP tools.
@@ -28,17 +28,17 @@ Supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism. Do not commit its
 From the repository root, run:
 
 ```bash
-docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml up -d
+docker compose -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 ```
 
-This uses the published image. To build the current source, add `-f compose.mcp.build.yaml` and `--build`.
+This uses the published image. To build the current source, use `deployment/compose.local.yaml` instead, and add `--build`.
 
 Connect to `http://127.0.0.1:8765/mcp` with the same bearer token.
-The override listens on container port 8000 and publishes only the host loopback interface.
+The service listens on container port 8000 and publishes only the host loopback interface.
 The `cad-data` volume stores uploaded PDFs, revisions, jobs, notes, and artifacts under `/data`.
 No source-directory mount is required. The image enables `[domain]` with private storage at `/data/domain`.
 
-Use `docker compose -f compose.mcp.yaml -f compose.mcp-http.yaml down` to stop the service after active jobs finish.
+Use `docker compose -f deployment/compose.yaml --profile mcp-http stop mcp-http` to stop the service after active jobs finish.
 This retains the named volume. Do not remove it while its sources or evidence are needed.
 The host-installation commands below are optional development setup. They use port 8000 unless configured otherwise.
 
