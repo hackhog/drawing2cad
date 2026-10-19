@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from drawing2cad_mcp.local_model_client import (
-    ALLOWED_TOOLS, DOMAIN_SKILL_REFERENCES, Trace, authorize_call, drive, response_messages, skill_references, skill_text,
-    tool_catalog, validate_plan,
+    ALLOWED_TOOLS, DOMAIN_SKILL_REFERENCES, MUTATION_TOOLS, Trace, authorize_call, drive, response_messages, skill_references,
+    skill_text, tool_catalog, validate_plan,
 )
 
 
@@ -92,6 +92,27 @@ def test_uploaded_source_scope():
     assert authorize_call("pdf_info", {"source_id": source_id}, config, {"pdf_info"})
     assert authorize_call("part_create", {"run_id": "localtest-a", "sources": [
         {"source_id": source_id, "sha256": digest, "role": "construction"}]}, config, {"part_create"})
+
+
+def test_projection_check_scope():
+    source_id = "src_" + "a" * 32
+    config = plan(source_id=source_id, source_sha256="b" * 64)
+    available = {"model_projection_check"}
+    assert "model_projection_check" not in MUTATION_TOOLS
+    arguments = {"run_id": "localtest-a", "expected_revision": 1, "source_id": source_id, "page": 1, "views": []}
+    assert [item["function"]["name"] for item in tool_catalog(catalog("model_projection_check"))] == [
+        "model_projection_check", "request_user_input"]
+    assert authorize_call("model_projection_check", arguments, config, available) == arguments
+    with pytest.raises(ValueError, match="PDF source"):
+        authorize_call("model_projection_check", {**arguments, "source_id": "src_" + "c" * 32}, config, available)
+    with pytest.raises(ValueError, match="PDF source"):
+        authorize_call("model_projection_check", {key: value for key, value in arguments.items() if key != "source_id"},
+                       config, available)
+    with pytest.raises(ValueError, match="prefix"):
+        authorize_call("model_projection_check", {**arguments, "run_id": "another-run"}, config, available)
+    # The local-path profile has no source ID, so a projection check cannot match its source.
+    with pytest.raises(ValueError, match="PDF source"):
+        authorize_call("model_projection_check", arguments, plan(), available)
 
 
 async def test_uploaded_source_prompt_requires_a_complete_drawing_before_release(tmp_path):
@@ -178,9 +199,9 @@ def test_the_maintained_skill_assigns_existing_references_to_its_steps():
     text = references.files["SKILL.md"]
     for path in references.files:
         assert path == "SKILL.md" or path in assigned or f"]({path})" in text
-    # The step table names only tools of the bounded client, except tools that it does not permit yet.
+    # The step table names only tools of the bounded client.
     named = {tool for tools, _ in references.steps for tool in tools}
-    assert named - ALLOWED_TOOLS <= {"model_projection_check"}
+    assert named <= ALLOWED_TOOLS
 
 
 @pytest.mark.asyncio

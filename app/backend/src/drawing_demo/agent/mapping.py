@@ -17,6 +17,7 @@ PHASE_BY_TOOL = {
     "drawing_schema": "drawing", "drawing_validate": "drawing", "drawing_render": "drawing", "drawing_review": "drawing",
     "artifact_preview": "drawing",
     # part_export_review only exports the current state; it keeps the phase, so a failed build stays in "modeling".
+    # model_projection_check only reads the validated build and does not gate the release; it keeps the phase.
     "export_step": "validating",
 }
 # Domain artifact roles that the web UI delivers. Previews of sources and artifacts are inspection aids only.
