@@ -47,6 +47,10 @@ export function JobCard({ run }: { run: Run }) {
             <>
               <dt>Turns</dt><dd>{run.iterations.model_turns}</dd>
               <dt>Tools</dt><dd>{run.iterations.tool_requests} of {run.iterations.step_budget} calls</dd>
+              {run.iterations.mcp_calls !== undefined && <><dt>MCP calls</dt><dd>{run.iterations.mcp_calls}</dd></>}
+              {!!run.iterations.blocked_requests && (
+                <><dt>Blocked</dt><dd>{run.iterations.blocked_requests} repeated failed requests</dd></>
+              )}
             </>
           )}
           {run.agent && (

@@ -37,9 +37,12 @@ LIMITS = {"step_budget": 45, "max_turns": 60, "model_timeout_seconds": 300, "tot
 MAX_NOTE_CHARS = 65536
 
 
-def iterations(turns: int, tool_requests: int) -> dict[str, int]:
-    """Model turns and tool requests of the agent loop so far, with the tool request budget."""
-    return {"model_turns": turns, "tool_requests": tool_requests, "step_budget": LIMITS["step_budget"]}
+def iterations(turns: int, tool_requests: int, **counts: int) -> dict[str, int]:
+    """Model turns and tool requests of the agent loop so far, with the tool request budget.
+
+    The final summary adds the actual MCP calls and the requests that the loop blocked before execution.
+    """
+    return {"model_turns": turns, "tool_requests": tool_requests, "step_budget": LIMITS["step_budget"], **counts}
 
 
 class ProgressTrace(Trace):
@@ -103,11 +106,11 @@ class AgentRunner:
             self._fail(run_id, "AGENT_FAILED", f"{type(error).__name__}: {error}"[:2000],
                        "Start the run again. If the error persists, check the server logs.")
 
-    def _fail(self, run_id: str, code: str, message: str, recovery: str) -> None:
+    def _fail(self, run_id: str, code: str, message: str, recovery: str, field: str | None = None) -> None:
         # Keep the phase in which the run failed, so the UI does not show later phases as completed.
         self.jobs.update(run_id, phase="failed", failed_phase=self.jobs.get(run_id)["phase"],
                          job={"status": "failed", "finished_at": now()},
-                         error={"code": code, "message": message, "field": None, "recovery": recovery})
+                         error={"code": code, "message": message, "field": field, "recovery": recovery})
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[ClientSession]:
@@ -151,8 +154,9 @@ class AgentRunner:
     def finish(self, run_id: str, summary: dict[str, Any]) -> None:
         """Store the agent report as a note of the part run and set the final job state from the domain part state."""
         # The last model turn answers without a tool request; only the summary counts it.
-        part_run = self.jobs.update(run_id, iterations=iterations(summary.get("model_turns", 0),
-                                                                  summary.get("tool_requests", 0)))["part_run_id"]
+        part_run = self.jobs.update(run_id, iterations=iterations(
+            summary.get("model_turns", 0), summary.get("tool_requests", 0), mcp_calls=summary.get("mcp_calls", 0),
+            blocked_requests=summary.get("blocked_requests", 0)))["part_run_id"]
         report = summary.get("final_text") or ""
         if part_run is not None and report:
             self.store_report(part_run, report)
@@ -163,7 +167,22 @@ class AgentRunner:
             self._fail(run_id, "AGENT_FAILED", f"{error.get('type', 'Error')}: {error.get('message', '')}"[:4000],
                        "Check the model endpoint and DRAWING2CAD_AGENT_*, then start the run again.")
             return
+        stalled = summary.get("no_progress")
+        if summary.get("status") == "no_progress" and stalled:
+            # The loop stopped a repeated failed request. Report the tool, field, and count, also when no part exists.
+            at = f" at {stalled['target']}" if stalled.get("target") else ""
+            self._fail(run_id, "AGENT_NO_PROGRESS",
+                       f"The agent sent the same failed {stalled['tool']} request {stalled['repeat_count']} times "
+                       f"({stalled['code']}{at}): {stalled['message']}"[:4000],
+                       "Look at the trace. Start the run again with a model that corrects tool arguments.",
+                       field=stalled.get("target"))
+            return
+        out_of_time = summary.get("status") == "time_budget_reached"
         if part_run is None:
+            if out_of_time:
+                self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary),
+                           "Start the run again, or use a faster model endpoint.")
+                return
             self._fail(run_id, "AGENT_NO_PART", f"The agent created no part (status: {summary.get('status')}).",
                        "Check the drawing and start the run again.")
             return
@@ -171,10 +190,21 @@ class AgentRunner:
         if part.get("release") or (part.get("build") or {}).get("status") == "pass":
             # A built model without release is a finished run; its review shows why the release is blocked.
             self.jobs.update(run_id, phase="done", error=None, job={"status": "succeeded", "progress": 1, "finished_at": now()})
+        elif out_of_time:
+            self._fail(run_id, "AGENT_TIME_BUDGET", self._time_budget_message(summary),
+                       "Start the run again, or use a faster model endpoint.")
         else:
             # The complete report is the run note; the error names only the result.
             self._fail(run_id, "AGENT_NO_MODEL", f"The agent built no valid model (status: {summary.get('status')}).",
                        "Look at the report and open review items in the Review tab; clarify the drawing and start the run again.")
+
+    @staticmethod
+    def _time_budget_message(summary: dict[str, Any]) -> str:
+        detail = summary.get("time_budget") or {}
+        phase = {"model_inference": " during model inference", "tool_call": " during a tool call"}.get(detail.get("phase"), "")
+        limit = LIMITS["total_timeout_seconds"]
+        text = f"The run used its time budget of {limit} seconds{phase} before the agent built a valid model."
+        return f"{text} Last error: {detail['message']}"[:4000] if detail.get("message") else text
 
     def store_report(self, part_run: str, report: str) -> None:
         """Replace the run note with the report. The note has its own revision; the first note uses revision zero."""

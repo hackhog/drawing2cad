@@ -312,6 +312,49 @@ def skill_references(skill_path):
     return SkillReferences(files, tuple(steps))
 
 
+# Errors that can disappear on a later attempt with the same arguments. They do not start a repeated-failure stop.
+TRANSIENT_ERROR_CODES = frozenset({"WORKER_TIMEOUT", "WORKER_CRASH", "JOB_INTERRUPTED", "JOB_SERVICE_BUSY", "RUN_BUSY",
+                                   "TOOL_FAILED", "SANDBOX_UNAVAILABLE", "CAD_VALIDATION_UNAVAILABLE"})
+# A model call or tool call that fails this close to the run deadline used the remaining time.
+DEADLINE_MARGIN_SECONDS = 1.0
+
+
+def canonical_request(name, arguments):
+    """The tool name and arguments as text that does not depend on object-key order."""
+    return json.dumps({"name": name, "arguments": arguments}, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                      default=str)
+
+
+def deterministic_failure(response):
+    """The code, target, and message of a failed tool response that the same request would repeat, else None.
+
+    Transport errors and transient service errors are not deterministic. A client rejection is deterministic.
+    """
+    if not response.get("isError") or response.get("transport_error"):
+        return None
+    texts = [item.get("text", "") for item in response.get("content", []) if item.get("type") == "text"]
+    if response.get("client_rejected"):
+        return {"code": "CLIENT_REJECTED", "target": None, "message": " ".join(texts)[:500]}
+    data = response.get("structuredContent", response.get("structured_content")) or {}
+    error = data.get("error") if isinstance(data.get("error"), dict) else {}
+    code = error.get("code") or ("STATUS_FAIL" if data.get("status") == "fail" else "TOOL_ERROR")
+    if code in TRANSIENT_ERROR_CODES:
+        return None
+    message = error.get("message") or " ".join(texts)
+    return {"code": code, "target": error.get("target") or error.get("field"), "message": str(message)[:500]}
+
+
+def corrective_message(name, failure):
+    """One bounded instruction after a failed request. It names the error and invents no replacement values."""
+    at = f" at {failure['target']}" if failure["target"] else ""
+    return {"role": "user", "content": (
+        f"The {name} request failed with {failure['code']}{at}: {failure['message']} "
+        "The client will not send an identical request again while the part state is unchanged. An identical request "
+        "stops the run without progress. Correct the arguments with the error and the live tool schema, make new source "
+        "observations, or use another valid approach. If this tool is optional for the current part, for example a "
+        "calibration when the printed dimensions are sufficient, you can continue without it.")}
+
+
 def reference_message(paths, references, reason):
     """One user message with the text of the given skill references."""
     blocks = "".join(f"\n\n<reference path=\"{path}\">\n{references.files[path].strip()}\n</reference>" for path in paths)
@@ -358,10 +401,14 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
             + ("make a complete dimensioned drawing of it, " if domain else "")
             + "release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits.")
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": task}]
-    summary = {"status": "running", "model": plan["model"], "tool_requests": 0, "mcp_calls": 0, "model_turns": 0,
-               "model_seconds": 0.0, "mcp_seconds": 0.0, "questions": [], "released": False, "model_statistics": [],
-               "skill_reads": 0, "supplied_references": []}
+    summary = {"status": "running", "model": plan["model"], "tool_requests": 0, "mcp_calls": 0, "blocked_requests": 0,
+               "model_turns": 0, "model_seconds": 0.0, "mcp_seconds": 0.0, "questions": [], "released": False,
+               "model_statistics": [], "skill_reads": 0, "supplied_references": []}
     supplied = summary["supplied_references"]
+    # Failed requests by canonical request and part state. A successful mutation changes the part state, so the
+    # same request can then legitimately give another result.
+    failures = {}
+    part_state = 0
 
     def supply(paths, reason, turn):
         """Append the references that the model has not received yet."""
@@ -393,6 +440,12 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                 elapsed = time.monotonic() - before
                 summary["model_seconds"] += elapsed
                 trace.write("model-error", {"turn": turn, "duration_seconds": elapsed, "error": {"type": type(error).__name__, "message": str(error)}})
+                if time.monotonic() >= deadline - DEADLINE_MARGIN_SECONDS:
+                    # The model call used the remaining run time. Report the time budget, not the endpoint error.
+                    summary["status"] = "time_budget_reached"
+                    summary["time_budget"] = {"phase": "model_inference", "turn": turn,
+                                              "message": f"{type(error).__name__}: {error}"[:500]}
+                    break
                 raise
             elapsed = time.monotonic() - before
             summary["model_seconds"] += elapsed
@@ -411,6 +464,7 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                 summary["status"] = "released" if summary["released"] else "stopped_without_release"
                 break
             image_messages = []
+            corrections = []
             step_references = []
             for request in requests:
                 function = request.get("function", {})
@@ -440,6 +494,22 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                     trace.write("question", arguments)
                     summary["status"] = "user_input_required"
                     break
+                key = (canonical_request(name, arguments), part_state)
+                if key in failures:
+                    # The same request already failed with the same part state. Do not execute it again.
+                    failure = failures[key]
+                    failure["repeat_count"] += 1
+                    summary["blocked_requests"] += 1
+                    at = f" at {failure['target']}" if failure["target"] else ""
+                    blocked = {"isError": True, "client_blocked": True, "content": [{"type": "text", "text": (
+                        f"Blocked before execution: this {name} request is identical to a request that failed with "
+                        f"{failure['code']}{at}, and the part state did not change. The run stops without progress.")}]}
+                    trace.write("blocked-request", {"turn": turn, "name": name, "arguments": arguments, "failure": failure})
+                    messages.append(response_messages(name, blocked, plan.get("max_tool_text_chars", 80000))[0])
+                    summary["status"] = "no_progress"
+                    summary["no_progress"] = {"tool": name, **{k: failure[k] for k in ("code", "target", "message", "repeat_count")}}
+                    trace.write("no-progress", summary["no_progress"])
+                    break
                 before = time.monotonic()
                 try:
                     authorize_call(name, arguments, plan, available)
@@ -455,8 +525,14 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                 except ValueError as error:
                     response_json = {"isError": True, "client_rejected": True, "content": [{"type": "text", "text": str(error)}]}
                 except Exception as error:
+                    # A mutation with unknown completion is never repeated: the run stops here in each case.
                     response_json = {"isError": True, "transport_error": True, "content": [{"type": "text", "text": f"{type(error).__name__}: {error}"}]}
-                    summary["status"] = "transport_failed"
+                    if isinstance(error, TimeoutError) and time.monotonic() >= deadline - DEADLINE_MARGIN_SECONDS:
+                        summary["status"] = "time_budget_reached"
+                        summary["time_budget"] = {"phase": "tool_call", "turn": turn, "tool": name,
+                                                  "message": f"{type(error).__name__}: {error}"[:500]}
+                    else:
+                        summary["status"] = "transport_failed"
                 elapsed = time.monotonic() - before
                 summary["mcp_seconds"] += elapsed
                 trace.write("tool-response", {"turn": turn, "name": name, "duration_seconds": elapsed, "response": response_json})
@@ -466,9 +542,17 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                 data = response_json.get("structuredContent", response_json.get("structured_content", {})) or {}
                 if name == "export_step" and not response_json.get("isError", False) and data.get("status") == "pass" and data.get("release"):
                     summary["released"] = True
+                failure = deterministic_failure(response_json)
+                if failure is not None:
+                    failures[key] = {**failure, "tool": name, "repeat_count": 1}
+                    corrections.append(corrective_message(name, failure))
+                    trace.write("corrective-instruction", {"turn": turn, "name": name, "failure": failure})
+                elif name in MUTATION_TOOLS and not response_json.get("isError", False):
+                    part_state += 1
                 if summary["status"] != "running":
                     break
             messages.extend(image_messages)
+            messages.extend(corrections)
             if summary["status"] != "running":
                 break
             if references is not None:
