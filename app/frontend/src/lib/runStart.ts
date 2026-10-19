@@ -1,5 +1,9 @@
 // State of the run start in the CAD runs card: which model profile the next run uses and whether it can start.
-import type { AgentProfile, AgentProfiles, Capabilities } from "./contract";
+import type { AgentProfile, AgentProfiles, AgentProvider, Capabilities } from "./contract";
+
+export const PROVIDER_LABEL: Record<AgentProvider, string> = {
+  openrouter: "OpenRouter", azure: "Azure AI Foundry", openai: "OpenAI-compatible",
+};
 
 export interface RunStartState {
   /** The profiles to choose from; empty for a service without profiles, for example the simulated service. */
@@ -17,10 +21,23 @@ export function usable(profile: AgentProfile): boolean {
   return profile.key_set && !profile.key_locked;
 }
 
-/** The label of a profile in the selection: name, model, default mark, and key state. */
-export function profileLabel(profile: AgentProfile, active: string | null | undefined): string {
-  const state = profile.key_locked ? " – key locked" : !profile.key_set ? " – no key" : "";
-  return `${profile.name} · ${profile.model}${profile.name === active ? " (default)" : ""}${state}`;
+/** Why a profile cannot start a run, or null if it can. */
+export function unusableReason(profile: AgentProfile): string | null {
+  if (profile.key_locked) return "Key locked: enter the API key again in the settings.";
+  if (!profile.key_set) return "No API key: enter it in the settings.";
+  return null;
+}
+
+/**
+ * What "Start run" in the CAD runs card does: open the profile dialog, start the run directly (only the simulated
+ * service, which has no profiles), or nothing because no run can start. A real service needs its loaded profiles:
+ * while they load or after their request failed, no run starts, so that no run bypasses the dialog.
+ */
+export function startEntry(caps: Capabilities | undefined, agent: AgentProfiles | undefined): "dialog" | "direct" | "disabled" {
+  if (!caps) return "disabled";
+  if (caps.simulated) return caps.runs ? "direct" : "disabled";
+  const profiles = agent?.profiles ?? [];
+  return caps.agent_ready !== false && profiles.some(usable) ? "dialog" : "disabled";
 }
 
 /**
