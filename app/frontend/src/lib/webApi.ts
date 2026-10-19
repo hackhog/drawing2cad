@@ -31,7 +31,8 @@ export interface WebApi {
   /** All flag decisions as JSON feedback for the developers of the drawing analysis. */
   exportFeedback(): Promise<Blob>;
   listRuns(sourceId: string): Promise<Run[]>;
-  createRun(sourceId: string): Promise<Run>;
+  /** Start a run with the given model profile, or with the active profile. The active profile does not change. */
+  createRun(sourceId: string, profile?: string | null): Promise<Run>;
   getRun(runId: string): Promise<Run>;
   /** Change parameters through the shared revision API. A wrong expected revision fails with REVISION_CONFLICT. */
   changeParameters(runId: string, expectedRevision: number, changes: ParameterChange[]): Promise<Run>;

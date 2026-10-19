@@ -17,12 +17,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useApi } from "@/lib/apiContext";
 import { useArtifactUrl } from "@/lib/artifacts";
-import type { Artifact, Run } from "@/lib/contract";
+import type { AgentProfile, Artifact, Run } from "@/lib/contract";
 import type { ReviewFlag } from "@/lib/drawing";
 import { dropTarget } from "@/lib/drop";
 import { recoveryFor } from "@/lib/errors";
 import { explainedShare, fmt, partName, pct, shortHash, time } from "@/lib/format";
-import { analysisQuery, capabilitiesQuery, flagsQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
+import { agentProfilesQuery, analysisQuery, capabilitiesQuery, flagsQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
 import { delivery, isActive } from "@/lib/release";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
 import { setStepPreview, useStepPreview } from "@/lib/stepPreviews";
@@ -178,14 +178,27 @@ function RunModel({ run, artifact }: { run: Run; artifact: Artifact }) {
   );
 }
 
+/** A profile can start a run if it has a key that the server can decrypt. */
+function usable(profile: AgentProfile): boolean {
+  return profile.key_set && !profile.key_locked;
+}
+
 function RunsCard({ sourceId }: { sourceId: string }) {
   const api = useApi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: caps } = useQuery(capabilitiesQuery(api));
   const { data: runs = [] } = useQuery(runsQuery(api, sourceId));
+  const { data: agent } = useQuery({ ...agentProfilesQuery(api), enabled: caps?.simulated === false });
+  // The profile for the next run. null uses the active profile of the settings; a selection here does not change it.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const profiles = agent?.profiles ?? [];
+  const selected = chosen ?? agent?.active ?? null;
+  const profile = profiles.find((p) => p.name === selected);
+  // Without profiles (for example the simulated service), the capabilities decide, as before.
+  const canStart = profiles.length ? !!profile && usable(profile) : !!caps?.runs;
   const start = useMutation({
-    mutationFn: () => api.createRun(sourceId),
+    mutationFn: () => api.createRun(sourceId, profiles.length ? selected : null),
     onSuccess: async (run) => {
       await queryClient.invalidateQueries({ queryKey: keys.runs(sourceId) });
       void navigate({ to: "/runs/$runId", params: { runId: run.run_id } });
@@ -197,12 +210,26 @@ function RunsCard({ sourceId }: { sourceId: string }) {
     <Card className="gap-2.5 rounded-xl px-3.5 pt-3 pb-3.5 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0">
         <CardTitle className="text-sm font-bold">CAD runs</CardTitle>
-        <Button size="sm" className="h-7 rounded-full" disabled={!caps?.runs || start.isPending} onClick={() => start.mutate()}>
-          <Play className="size-3" />Start run
-        </Button>
+        <div className="flex items-center gap-1.5">
+          {profiles.length > 0 && (
+            <select aria-label="Model profile for the run" title={profile ? `${profile.model}${profile.reasoning_effort ? ` · reasoning ${profile.reasoning_effort}` : ""}` : undefined}
+              className="h-7 max-w-44 truncate rounded-full border border-input bg-transparent px-2.5 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              value={selected ?? ""} disabled={start.isPending} onChange={(e) => setChosen(e.target.value || null)}>
+              {selected === null && <option value="">Choose a profile</option>}
+              {profiles.map((p) => (
+                <option key={p.name} value={p.name} disabled={!usable(p)}>
+                  {p.name}{p.name === agent?.active ? " (default)" : ""}{p.key_locked ? " – key locked" : !p.key_set ? " – no key" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+          <Button size="sm" className="h-7 rounded-full" disabled={!canStart || start.isPending} onClick={() => start.mutate()}>
+            <Play className="size-3" />Start run
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="px-0">
-        {!caps?.runs && !runs.length ? (
+        {!caps?.runs && !profiles.some(usable) && !runs.length ? (
           <p className="text-xs text-muted-foreground">
             The connected service starts no CAD runs: no model endpoint is configured for the agent.
           </p>

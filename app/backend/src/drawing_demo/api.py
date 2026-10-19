@@ -220,6 +220,11 @@ def capabilities(s: Services = Depends(services)) -> dict[str, Any]:
     }
 
 
+class RunStart(BaseModel):
+    # The model profile for this run. None uses the active profile of the settings, which this run does not change.
+    profile: str | None = None
+
+
 class ProfileSelection(BaseModel):
     # None selects no profile: the service then starts no agent runs.
     name: str | None
@@ -390,10 +395,13 @@ def list_runs(source_id: str, s: Services = Depends(services)) -> list[dict[str,
 
 
 @router.post("/sources/{source_id}/runs", status_code=201)
-def create_run(source_id: str, s: Services = Depends(services)) -> dict[str, Any]:
-    """Queue one agent run with the active model profile. The agent builds the model only through the MCP endpoint (ADR 0018)."""
-    # Read the active profile once, so that a selection during this request cannot mix two profiles.
-    profile = s.runner.profiles.active
+def create_run(source_id: str, start: RunStart | None = None, s: Services = Depends(services)) -> dict[str, Any]:
+    """Queue one agent run with the selected model profile, or with the active one if no profile is selected.
+
+    The agent builds the model only through the MCP endpoint (ADR 0018). The run does not change the active profile.
+    """
+    # Read the profile name once, so that a selection during this request cannot mix two profiles.
+    profile = start.profile if start is not None and start.profile else s.runner.profiles.active
     if profile is None or not s.runner.skill_path.is_file():
         raise ServiceError(503, "CAPABILITY_UNAVAILABLE", "No model profile active (DRAWING2CAD_AGENT_*).",
                            recovery="Choose a model profile in the settings, or enter an endpoint in .env "

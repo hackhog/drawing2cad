@@ -39,3 +39,15 @@ describe("model profile requests", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({ limits: { step_budget: 20, model_timeout_seconds: null }, revision: 4 });
   });
 });
+
+describe("run start", () => {
+  it("sends the selected profile, and no body without a selection", async () => {
+    const fetch = stubFetch();
+    await new HttpApi().createRun("src_1", "OpenRouter");
+    await new HttpApi().createRun("src_1");
+    const calls = fetch.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe("/api/sources/src_1/runs");
+    expect(JSON.parse(calls[0][1].body as string)).toEqual({ profile: "OpenRouter" });
+    expect(calls[1][1].body).toBeUndefined();
+  });
+});

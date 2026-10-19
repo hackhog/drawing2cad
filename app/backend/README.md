@@ -68,7 +68,7 @@ Commit the changed `poetry.lock`. The backend CI job stops if the lock is out of
 | `GET` | `/api/feedback` | All flag decisions as a JSON download for the developers of the analysis |
 | `GET` | `/api/measurements` | Review measurements of all sources, oldest first: review time, optional manual-effort estimate, and estimator |
 | `POST` | `/api/sources/{id}/measurements` | Record one review: `review_seconds`, optional `manual_hours` and `estimator` (`drafter`, `guest`, `team`) |
-| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run with the active profile and its run limits (503 without active profile, 409 `PROFILE_KEY_LOCKED` when the stored key cannot be decrypted) |
+| `GET`/`POST` | `/api/sources/{id}/runs` | List runs / queue an agent run with the profile in the optional body `{"profile": "<name>"}`, else with the active profile, and its run limits. The run does not change the active profile (503 without profile, 422 `UNKNOWN_PROFILE`, 409 `PROFILE_KEY_LOCKED` or `PROFILE_KEY_MISSING`) |
 | `DELETE` | `/api/sources/{id}` | Delete a source with its web run records and measurements (409 `RUN_ACTIVE` while a run is active) |
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
 | `GET`/`PUT` | `/api/runs/{id}/note` | Read / replace the run note; `PUT` takes `expected_revision` and `text` (409 on a stale revision or an active run) |

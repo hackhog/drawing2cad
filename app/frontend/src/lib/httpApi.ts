@@ -41,7 +41,12 @@ export class HttpApi implements WebApi {
   }
   exportFeedback(): Promise<Blob> { return requestBlob("/api/feedback"); }
   listRuns(sourceId: string): Promise<Run[]> { return request(`/api/sources/${id(sourceId)}/runs`); }
-  createRun(sourceId: string): Promise<Run> { return request(`/api/sources/${id(sourceId)}/runs`, { method: "POST" }); }
+  createRun(sourceId: string, profile?: string | null): Promise<Run> {
+    const init: RequestInit = profile
+      ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile }) }
+      : { method: "POST" };
+    return request(`/api/sources/${id(sourceId)}/runs`, init);
+  }
   getRun(runId: string): Promise<Run> { return request(`/api/runs/${id(runId)}`); }
   changeParameters(_runId: string, _expectedRevision: number, _changes: ParameterChange[]): Promise<Run> {
     return Promise.reject(unavailable("Changing parameters"));
