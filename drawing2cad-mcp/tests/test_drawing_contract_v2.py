@@ -36,6 +36,8 @@ def section_view():
                 "evidence_ids": ["drawing"], "feature_ids": ["base"]}
     return {"id": "section_a", "label": "Section A-A", "kind": "section", "orientation": "front",
             "origin": [80, 30], "frame": [60, 15, 160, 75],
+            "projection": {"view_direction": [0, 1, 0], "up": [0, 0, 1], "scale_convention": "true_size",
+                           "matrix": [[-1, 0, 0], [0, 0, 1]]},
             "cutting_plane": {"letter": "A", "origin": [0, 15, 0], "normal": [0, 1, 0], "viewing_side": "positive_normal",
                               "source_view_id": "top", "line": [[-5, 15], [65, 15]], "evidence_ids": ["drawing"]},
             "hatching": [{"boundary_primitive_ids": ["s_bottom", "s_right", "s_top", "s_left"]}],
@@ -202,3 +204,49 @@ def test_invalid_frames_have_actionable_messages(change, message):
     result = drawing_validate(spec, description, 1)
     frame = next(d for d in result["defects"] if d["id"] == "hole_position")
     assert frame["code"] == "gps_frame" and message.lower() in frame["message"].lower()
+
+
+def test_open_hatching_unknown_cutting_evidence_and_missing_section_projection():
+    description, spec = complete_spec()
+    section = spec["views"][3]
+    section["hatching"][0]["boundary_primitive_ids"] = ["s_bottom", "s_right", "s_top"]
+    section["cutting_plane"]["evidence_ids"] = ["missing"]
+    result = drawing_validate(spec, description, 1)
+    assert "hatching" in codes(result) and "unknown_evidence" in codes(result)
+    section.pop("projection")
+    assert "section_definition" in codes(drawing_validate(spec, description, 1))
+
+
+def test_section_direction_must_follow_the_normal():
+    description, spec = complete_spec()
+    spec["views"][3]["cutting_plane"]["viewing_side"] = "negative_normal"
+    assert "cutting_plane" in codes(drawing_validate(spec, description, 1))
+
+
+def test_datum_modifier_needs_review_not_schema_failure():
+    description, spec = complete_spec()
+    spec["tolerance_frames"][1]["datums"] = [{"letter": "A", "modifiers": ["P"]}]
+    result = drawing_validate(spec, description, 1)
+    assert result["status"] == "pass", result["defects"]
+    assert result["checks"]["gps_profile"] == "needs_review"
+
+
+def test_version_1_schema_has_no_version_2_content():
+    schema = drawing_schema("1.0")["schema"]
+    text = str(schema)
+    assert "Ellipse" not in text and "Projection" not in text and "theoretically_exact" not in text
+    assert schema["properties"]["schema_version"]["const"] == "1.0"
+    assert "isometric" not in schema["$defs"]["View"]["properties"]["kind"]["enum"]
+    assert "title_block" not in schema["properties"]
+
+
+def test_failures_keep_the_result_fields(tmp_path):
+    description, spec = drawing_fixture()
+    spec["views"].append(isometric_view())
+    early = drawing_validate(spec, description, 1)
+    broken = drawing_validate({"schema_version": "2.0"}, description, 1)
+    for result in (early, broken):
+        assert {"schema_version", "findings", "render_support"} <= set(result)
+    _, complete = complete_spec()
+    gated = render_gate(drawing_validate(complete, description, 1))
+    assert gated["total_defects"] == 1 and gated["checks"]["render_support"] == "fail"

@@ -183,7 +183,7 @@ def drawing_schema(schema_version: str = DRAWING_SCHEMA_VERSION) -> dict[str, An
         raise ValueError(f"Unknown drawing schema version: {schema_version}.")
     version_2 = schema_version == DRAWING_SCHEMA_VERSION_2
     return {"schema_version": schema_version, "supported_versions": list(DRAWING_SCHEMA_VERSIONS),
-            "schema": DrawingSpec.model_json_schema(),
+            "schema": DrawingSpec.model_json_schema() if version_2 else _schema_1(DrawingSpec.model_json_schema()),
             **({"version_2": {
                 "content": ["isometric view with a projection matrix", "parallel projection of other views", "ellipse",
                             "cutting plane and hatching", "title block (ISO 7200)", "border", "projection symbol",
@@ -333,13 +333,17 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
         fields = [{"location": ([str(item)[:100] for item in detail["loc"][:-1][:11]] + ["[unknown_field]"]
                                 if detail["type"] == "extra_forbidden" else [str(item)[:100] for item in detail["loc"][:12]]), "type": detail["type"]}
                   for detail in errors[:20]]
+        declared = spec.get("schema_version") if isinstance(spec, dict) else None
         return {"status": "fail", "diagnostic_eligible": False,
+                "schema_version": declared if declared in DRAWING_SCHEMA_VERSIONS else None, "findings": [],
+                "render_support": {"renderable": False, "unsupported": ["The drawing does not match its schema."]},
                 "defects": [{"code": "schema", "message": "The drawing or part does not match its schema.",
                              "fields": fields, "truncated": len(errors) > len(fields)}]}
 
     version_2 = drawing.schema_version == DRAWING_SCHEMA_VERSION_2
     if not version_2 and (used := _version_2_content(drawing)):
-        return {"status": "fail", "diagnostic_eligible": False,
+        return {"status": "fail", "diagnostic_eligible": False, "schema_version": drawing.schema_version, "findings": [],
+                "render_support": _render_support(drawing),
                 "defects": [{"code": "schema_version", "id": "drawing", "fields": used[:20],
                              "message": "This content needs schema_version 2.0."}]}
 
@@ -403,8 +407,8 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
                 for message in projection_defects(view.kind, view.projection):
                     fail("projection", view.id, message)
             if view.kind == "section":
-                if view.cutting_plane is None or not view.hatching:
-                    fail("section_definition", view.id, "A section view needs a cutting plane and hatching.")
+                if view.cutting_plane is None or not view.hatching or view.projection is None:
+                    fail("section_definition", view.id, "A section view needs a cutting plane, hatching, and a projection.")
             elif view.cutting_plane is not None or view.hatching:
                 fail("section_definition", view.id, "Only a section view has a cutting plane or hatching.")
         elif view.kind == "section" and (not view.section_note or not any(g.style == "section" for g in view.geometry)):
@@ -506,10 +510,13 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
             unknown = [ref for ref in hatch.boundary_primitive_ids if ref not in geometry]
             if unknown:
                 fail("hatching", view.id, "Hatching boundaries must be primitives of the section view: " + ", ".join(unknown) + ".")
+            elif open_points := _open_ends([geometry[ref] for ref in hatch.boundary_primitive_ids]):
+                fail("hatching", view.id, "The hatching boundary is not closed. Each end point must meet another end point.",
+                     open_points=open_points[:6])
         views.append({**view.model_dump(), "geometry": list(geometry.values()), "dimensions": dimensions})
     present = {v["id"] for v in views}
     if version_2:
-        _check_sections(drawing, views, fail)
+        _check_sections(drawing, views, evidence, fail)
         _check_gps(drawing, views, features, evidence, fail, findings, gps_frames)
         _check_sheet_items(drawing, findings)
     if len(drawing.required_view_ids) != len(set(drawing.required_view_ids)) or not set(drawing.required_view_ids) <= present:
@@ -670,7 +677,7 @@ def _render_support(drawing: DrawingSpec) -> dict[str, Any]:
     return {"renderable": not unsupported, "unsupported": unsupported}
 
 
-def _check_sections(drawing: DrawingSpec, views: list[dict], fail) -> None:
+def _check_sections(drawing: DrawingSpec, views: list[dict], evidence: dict, fail) -> None:
     by_id = {view["id"]: view for view in views}
     letters: dict[str, str] = {}
     for view in drawing.views:
@@ -680,6 +687,9 @@ def _check_sections(drawing: DrawingSpec, views: list[dict], fail) -> None:
         if plane.letter in letters:
             fail("section_letter", view.id, f"Section letter {plane.letter} is also used by {letters[plane.letter]}.")
         letters[plane.letter] = view.id
+        for ref in plane.evidence_ids:
+            if ref not in evidence:
+                fail("unknown_evidence", view.id, f"Unknown cutting-plane evidence: {ref}.")
         if f"{plane.letter}-{plane.letter}" not in view.label:
             fail("section_label", view.id, f"The section view label must contain {plane.letter}-{plane.letter}.")
         if math.sqrt(sum(float(c) ** 2 for c in plane.normal)) <= 1e-12:
@@ -774,7 +784,10 @@ def render_gate(report: dict[str, Any]) -> dict[str, Any]:
         return report
     defect = {"code": "render_unsupported", "id": "drawing",
               "message": "drawing_render cannot render this content yet: " + ", ".join(support["unsupported"][:20]) + "."}
-    return {**report, "status": "fail", "diagnostic_eligible": False, "defects": [defect, *report["defects"]][:100]}
+    total = report.get("total_defects", len(report["defects"])) + 1
+    checks = {**report.get("checks", {}), "render_support": "fail"}
+    return {**report, "status": "fail", "diagnostic_eligible": False, "defects": [defect, *report["defects"]][:100],
+            "total_defects": total, "defects_truncated": total > 100, "checks": checks}
 
 
 def _version_2_content(drawing: DrawingSpec) -> list[str]:
@@ -790,3 +803,67 @@ def _version_2_content(drawing: DrawingSpec) -> list[str]:
         if any(d.theoretically_exact for d in view.dimensions):
             used.append(f"views[{view.id}].dimensions")
     return used
+
+
+VERSION_2_DEFINITIONS = {"Projection", "Ellipse", "CuttingPlane", "Hatching", "TitleBlock", "Border", "Datum", "DatumReference",
+                         "ToleranceFrame", "UnsupportedGps"}
+VERSION_2_PROPERTIES = {"title_block", "border", "projection_symbol", "datums", "tolerance_frames", "unsupported_gps"}
+VERSION_2_VIEW_PROPERTIES = {"projection", "cutting_plane", "hatching"}
+
+
+def _schema_1(schema: dict[str, Any]) -> dict[str, Any]:
+    """The JSON schema of version 1.0: the same model without the content that only version 2.0 permits."""
+    definitions = schema.get("$defs", {})
+    for name in VERSION_2_DEFINITIONS:
+        definitions.pop(name, None)
+    for name in VERSION_2_PROPERTIES:
+        schema["properties"].pop(name, None)
+    schema["properties"]["schema_version"] = {"const": DRAWING_SCHEMA_VERSION, "type": "string", "title": "Schema Version"}
+    view = definitions["View"]["properties"]
+    for name in VERSION_2_VIEW_PROPERTIES:
+        view.pop(name, None)
+    for name in ("kind", "orientation"):
+        view[name]["enum"] = [value for value in view[name]["enum"] if value != "isometric"]
+    for definition in definitions.values():
+        definition.get("properties", {}).pop("theoretically_exact", None)
+
+    def prune(node):
+        if isinstance(node, dict):
+            for key in ("oneOf", "anyOf"):
+                if key in node:
+                    node[key] = [item for item in node[key]
+                                 if not (isinstance(item, dict) and item.get("$ref", "").removeprefix("#/$defs/") in VERSION_2_DEFINITIONS)]
+            mapping = node.get("discriminator", {}).get("mapping")
+            if mapping:
+                node["discriminator"]["mapping"] = {k: v for k, v in mapping.items()
+                                                    if v.removeprefix("#/$defs/") not in VERSION_2_DEFINITIONS}
+            for value in node.values():
+                prune(value)
+        elif isinstance(node, list):
+            for value in node:
+                prune(value)
+    prune(schema)
+    return schema
+
+
+def _open_ends(items: list[dict]) -> list[list[float]]:
+    """End points of a boundary that do not meet another end point. Circles and full ellipses are closed."""
+    ends: list[list[float]] = []
+    for item in items:
+        if item["type"] == "line":
+            ends += [item["start"], item["end"]]
+        elif item["type"] == "arc":
+            ends += [[item["center"][i] + item["radius"] * f(math.radians(item[key + "_angle"])) for i, f in ((0, math.cos), (1, math.sin))]
+                     for key in ("start", "end")]
+        elif item["type"] == "ellipse" and item["end_parameter"] - item["start_parameter"] < 360 - 1e-9:
+            major = item["major_axis"]
+            minor = [-major[1] * item["ratio"], major[0] * item["ratio"]]
+            for key in ("start_parameter", "end_parameter"):
+                angle = math.radians(item[key])
+                ends.append([item["center"][i] + math.cos(angle) * major[i] + math.sin(angle) * minor[i] for i in (0, 1)])
+    unmatched = []
+    for index, point in enumerate(ends):
+        partners = sum(1 for other, candidate in enumerate(ends) if other != index and math.dist(point, candidate) <= 1e-6)
+        if partners % 2 == 0:
+            unmatched.append([round(point[0], 6), round(point[1], 6)])
+    return unmatched

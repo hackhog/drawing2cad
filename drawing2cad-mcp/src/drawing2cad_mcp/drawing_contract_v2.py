@@ -111,7 +111,8 @@ Modifier = Literal["M", "L", "E", "P", "F", "R", "CZ", "SZ", "T", "U", "ACS"]
 
 class DatumReference(ClosedModel):
     letter: Annotated[str, Field(pattern=r"^[A-Z]{1,2}$")]
-    modifiers: Annotated[list[Literal["M", "L"]], Field(max_length=1)] = []
+    modifiers: Annotated[list[Modifier], Field(max_length=2)] = Field(
+        default=[], description="Datum modifiers. The supported profile keeps each datum modifier for review.")
 
 
 class ToleranceFrame(ClosedModel):

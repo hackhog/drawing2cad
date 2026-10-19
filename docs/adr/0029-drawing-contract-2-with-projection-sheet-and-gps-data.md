@@ -24,7 +24,8 @@ The later steps (isometric projection, section derivation, sheet rendering, GPS 
 
 - The contract accepts `schema_version` `"1.0"` and `"2.0"`. Version 1.0 stays the default of `drawing_schema` and keeps its behavior.
 - A 1.0 drawing that contains 2.0 content fails with code `schema_version`. The defect names the fields. The agent changes the version or removes the fields.
-- `drawing_schema` takes an optional `schema_version`. For 2.0, the result describes the new content, the render limits, the isometry rule, and the GPS profile.
+- `drawing_schema` takes an optional `schema_version`. Each version gets its own JSON schema. The 1.0 schema does not contain 2.0 content.
+  For 2.0, the result also describes the new content, the render limits, the isometry rule, and the GPS profile.
 
 ### Projection and views
 
@@ -38,9 +39,10 @@ The later steps (isometric projection, section derivation, sheet rendering, GPS 
 ### Curves and sections
 
 - Version 2.0 adds an `ellipse` primitive with an explicit `approximation_error` in mm. The value is necessary, because a later renderer can approximate the curve.
-- A section view needs a `cutting_plane` (letter, origin, normal, viewing side, source view, cutting line) and `hatching` with boundary primitives of the view.
-- The validator checks the letter, the `L-L` label, the source view, the cutting line inside the source frame, the hatching boundaries,
-  and the agreement of the section view direction with the plane normal.
+- A 2.0 section view needs a `cutting_plane` (letter, origin, normal, viewing side, source view, cutting line, evidence),
+  `hatching` with boundary primitives of the view, and a `projection`.
+- The validator checks the letter, the `L-L` label, the source view, the cutting line inside the source frame, the cutting-plane evidence,
+  the closed hatching boundary, and the agreement of the section view direction with the plane normal and the viewing side.
 
 ### Sheet data
 
@@ -54,18 +56,18 @@ The later steps (isometric projection, section derivation, sheet rendering, GPS 
 - The supported profile is `drawing2cad-gps-1`. It contains the form, orientation, and run-out characteristics, position, coaxiality, and the modifiers M and L.
 - A frame fails for an invalid declaration: a form tolerance with datums, an orientation or run-out tolerance without datums, repeated datum letters,
   an unknown datum, M and L together, or a diameter zone on a characteristic without one.
-- A characteristic, modifier, or datum modifier outside the profile, a position tolerance without datum, and each `unsupported_gps` item get status `needs_review`. They never pass automatically.
+- A characteristic, modifier, or datum modifier outside the profile (each datum modifier), a position tolerance without datum, and each `unsupported_gps` item get status `needs_review`. They never pass automatically.
 - A pass means agreement with this bounded profile. It is not ISO conformity and not a manufacturing acceptance.
 
 ### Rendering
 
 - The renderer does not draw 2.0 content yet. `drawing_validate` reports `render_support`.
 - `drawing_render` rejects ellipses, cutting planes, hatching, theoretically exact dimensions, sheet data, and GPS data with code `render_unsupported`.
-  The domain service and the worker apply this check before the worker writes a file. A 2.0 drawing without such content renders like a 1.0 drawing.
+  The domain service and the worker apply this check before the worker writes a file. The check `render_support` is then `fail`. A 2.0 drawing without such content renders like a 1.0 drawing.
 
 ### Validation results
 
-- Each result has `schema_version`, `findings`, and `render_support`.
+- Each result has `schema_version`, `findings`, and `render_support`. This includes schema and version failures.
 - A 2.0 result also has `gps` (profile and status of each frame) and the checks `isometric_projection`, `gps_profile`, and `sheet_items`.
 
 ## Consequences
