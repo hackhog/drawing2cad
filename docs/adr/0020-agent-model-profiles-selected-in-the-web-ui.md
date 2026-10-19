@@ -5,6 +5,7 @@ Date: 2026-10-18
 ## Status
 
 Proposed. Extends [ADR 0018](0018-agent-runner-in-the-web-backend.md).
+[ADR 0028](0028-configuration-store-with-encrypted-keys.md) replaces the storage in `agent-profiles.json` with a SQLite store and encrypted keys.
 
 ## Context
 
