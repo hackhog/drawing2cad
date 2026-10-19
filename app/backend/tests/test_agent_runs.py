@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import re
 import socket
 import threading
@@ -437,7 +438,8 @@ def test_ui_profiles_are_normalized_keep_their_key_and_persist(environment, tmp_
         assert client.put("/api/agent/active", json={"name": "OpenRouter"}).status_code == 200
         assert client.get("/api/capabilities").json()["agent_model"] == "vendor/n"
     stored = tmp_path / "data" / "agent-profiles.json"
-    assert stored.stat().st_mode & 0o077 == 0
+    if os.name == "posix":  # Windows has no POSIX file modes. The backend runs in its Linux container.
+        assert stored.stat().st_mode & 0o077 == 0
     with TestClient(api.create_app()) as client:
         assert client.get("/api/agent/profiles").json()["active"] == "OpenRouter"
         runner = client.app.state.services.runner
