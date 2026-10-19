@@ -33,10 +33,13 @@ A complete-service drawing has all of these items. Each item is a row of the cov
 3. **Sections.** Add each section that the source shows, and each section that an internal feature needs (ISO 128-3).
    A section shows the cutting line with arrows and letters in its source view, the complete section boundary, and hatching.
    A set of isolated lines is not a section.
-4. **Dimensions.** Show each printed source dimension at the geometry that it controls (ISO 129-1). Use the source units.
+4. **Dimensions.** Show each printed source dimension at the geometry that it controls (ISO 129-1).
+   The drawing contract supports millimeters only. For a source in other units, convert the value to mm, and keep the source value and unit in the coverage table.
+   Record the presentation in the source unit as `not_tested`.
    Do not repeat the same callout without a reason. Show thicknesses, rib widths, depths, and hole positions.
 5. **Manufacturing data.** Show threads, surface requirements, material, general tolerances, and geometrical tolerances that the source states.
-   Do not add a requirement that the source does not state. A missing requirement is a row with its recorded decision.
+   Show a requirement that is not in the source only when it is a recorded user decision. Mark it as a user decision, separate from source requirements.
+   Do not add other requirements. A missing requirement is a row with its recorded decision (see tolerances-and-changes.md).
 6. **Sheet.** Show the drawing border, the title block (ISO 7200 fields), the projection symbol, the units, the scales (ISO 5455), and the revision.
 7. **Assumptions.** Mark assumed or inferred geometry, for example assumed hole positions or drill tips. Keep it separate from source requirements and user decisions.
 
