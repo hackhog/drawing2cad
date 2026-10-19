@@ -7,7 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from drawing2cad_mcp.local_model_client import (
-    DOMAIN_SKILL_REFERENCES, Trace, authorize_call, drive, response_messages, skill_text, tool_catalog, validate_plan,
+    ALLOWED_TOOLS, DOMAIN_SKILL_REFERENCES, Trace, authorize_call, drive, response_messages, skill_references, skill_text,
+    tool_catalog, validate_plan,
 )
 
 
@@ -112,44 +113,106 @@ async def test_uploaded_source_prompt_requires_a_complete_drawing_before_release
     assert [tool["function"]["name"] for tool in requests[0]["tools"]] == ["drawing_review", "request_user_input"]
 
 
-def test_the_skill_text_embeds_every_reference(tmp_path):
-    (tmp_path / "references").mkdir()
-    (tmp_path / "SKILL.md").write_text("# Skill")
-    names = (*DOMAIN_SKILL_REFERENCES, "validation.md")
+STEP_TABLE = """# Skill
+
+## References for each step
+
+| Step | Tools | References |
+|---|---|---|
+| 1. Start | `drawing2cad_status` | [start.md](references/start.md) |
+| 2. Inspect | `pdf_info`, `pdf_render_page` | [start.md](references/start.md), [inspect.md](references/inspect.md) |
+
+## Other
+"""
+
+
+def write_skill(root, table=STEP_TABLE, names=("start.md", "inspect.md", "other.md")):
+    (root / "references").mkdir()
+    (root / "SKILL.md").write_text(table)
     for name in names:
-        (tmp_path / "references" / name).write_text(f"Rules of {name}")
-    (tmp_path / "references" / "notes.txt").write_text("Not a reference")
-    for domain in (False, True):
-        text = skill_text(tmp_path / "SKILL.md", domain=domain)
-        assert text.startswith("# Skill")
-        for name in names:
-            assert f'<reference path="references/{name}">\nRules of {name}\n</reference>' in text
-        assert "Not a reference" not in text
+        (root / "references" / name).write_text(f"Rules of {name}")
+    return root / "SKILL.md"
 
 
-def test_the_domain_skill_requires_the_drawing_references(tmp_path):
-    (tmp_path / "references").mkdir()
-    (tmp_path / "SKILL.md").write_text("# Skill")
-    (tmp_path / "references" / DOMAIN_SKILL_REFERENCES[0]).write_text("Rules")
-    assert skill_text(tmp_path / "SKILL.md", domain=False).count("<reference path=") == 1
+def test_the_skill_text_is_skill_md_and_the_domain_profile_requires_the_drawing_references(tmp_path):
+    skill = write_skill(tmp_path, "# Skill", (DOMAIN_SKILL_REFERENCES[0],))
+    assert skill_text(skill, domain=False) == "# Skill"
     with pytest.raises(ValueError, match=DOMAIN_SKILL_REFERENCES[1]):
-        skill_text(tmp_path / "SKILL.md", domain=True)
+        skill_text(skill, domain=True)
+    (tmp_path / "references" / DOMAIN_SKILL_REFERENCES[1]).write_text("Rules")
+    assert skill_text(skill, domain=True) == "# Skill"
 
 
-def test_the_skill_text_has_a_size_limit(tmp_path):
-    (tmp_path / "references").mkdir()
-    (tmp_path / "SKILL.md").write_text("# Skill")
-    (tmp_path / "references" / "large.md").write_text("x" * (256 * 1024))
+def test_skill_references_read_the_step_table(tmp_path):
+    references = skill_references(write_skill(tmp_path))
+    assert list(references.files) == ["SKILL.md", "references/inspect.md", "references/other.md", "references/start.md"]
+    assert references.initial() == ["references/start.md"]
+    assert references.for_tool("pdf_render_page") == ["references/start.md", "references/inspect.md"]
+    assert references.for_tool("part_create") == []
+    assert references.read({"path": "references/other.md"}) == "Rules of other.md"
+    for arguments in ({"path": "../SKILL.md"}, {"path": "/etc/passwd"}, {"path": "references/missing.md"}, {}, {"path": 1}):
+        with pytest.raises(ValueError):
+            references.read(arguments)
+
+
+def test_skill_references_reject_a_missing_file_in_the_table_and_large_skills(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    with pytest.raises(ValueError, match="references/inspect.md"):
+        skill_references(write_skill(tmp_path / "a", names=("start.md",)))
+    skill = write_skill(tmp_path / "b")
+    (tmp_path / "b" / "references" / "large.md").write_text("x" * (256 * 1024))
     with pytest.raises(ValueError, match="256 KiB"):
-        skill_text(tmp_path / "SKILL.md", domain=False)
+        skill_references(skill)
 
 
-def test_the_maintained_skill_is_embedded_completely():
+def test_the_maintained_skill_assigns_existing_references_to_its_steps():
     skill = Path(__file__).resolve().parents[2] / "skills" / "drawing2cad" / "SKILL.md"
-    text = skill_text(skill, domain=True)
-    assert "fully describe the required shape" in text and "Always use the complete skill" in text
-    for reference in sorted((skill.parent / "references").glob("*.md")):
-        assert f'<reference path="references/{reference.name}">' in text
+    references = skill_references(skill)
+    assigned = {path for _, paths in references.steps for path in paths}
+    assert assigned and assigned <= set(references.files)
+    assert "references/drawing-delivery.md" in references.for_tool("drawing_schema")
+    assert "references/verification-loop.md" in references.for_tool("build_from_description")
+    assert references.initial()
+    # Each reference is assigned to a step or named in the text for a topic.
+    text = references.files["SKILL.md"]
+    for path in references.files:
+        assert path == "SKILL.md" or path in assigned or f"]({path})" in text
+    # The step table names only tools of the bounded client, except tools that it does not permit yet.
+    named = {tool for tools, _ in references.steps for tool in tools}
+    assert named - ALLOWED_TOOLS <= {"model_projection_check"}
+
+
+@pytest.mark.asyncio
+async def test_drive_supplies_each_step_reference_once_and_skill_read_uses_no_budget(tmp_path):
+    (tmp_path / "skill").mkdir()
+    references = skill_references(write_skill(tmp_path / "skill"))
+    session = Session()
+    requests = []
+    responses = iter([
+        model_response([call("pdf_info", {"path": "/inputs/part.pdf"}), call("skill_read", {"path": "references/other.md"})]),
+        model_response([call("pdf_render_page", {"path": "/inputs/part.pdf"}), call("skill_read", {"path": "../x"})]),
+        model_response(text="Done."),
+    ])
+
+    def model(plan, payload, timeout):
+        requests.append(json.loads(json.dumps(payload["messages"])))
+        return next(responses)
+
+    result = await drive(session, catalog("pdf_info", "pdf_render_page"), plan(step_budget=2), "Skill", Trace(tmp_path),
+                         model_call=model, references=references)
+    assert result["tool_requests"] == 2 and result["skill_reads"] == 2 and result["status"] == "stopped_without_release"
+    assert [name for name, _ in session.calls] == ["pdf_info", "pdf_render_page"]
+    assert result["supplied_references"] == ["references/start.md", "references/inspect.md"]
+    first = requests[0]
+    assert "skill_read" in first[0]["content"] and first[2]["content"].startswith("Skill references for the first step")
+    assert "Rules of start.md" in first[2]["content"] and "Rules of inspect.md" not in first[2]["content"]
+    second = requests[1]
+    assert [m["content"] for m in second if m["role"] == "tool" and m.get("tool_name") == "skill_read"] == ["Rules of other.md"]
+    assert "Rules of inspect.md" in second[-1]["content"] and "Rules of start.md" not in second[-1]["content"]
+    third = requests[2]
+    assert sum("Rules of inspect.md" in str(m.get("content")) for m in third) == 1
+    assert any("Unknown skill file: ../x" in str(m.get("content")) for m in third if m["role"] == "tool")
 
 
 def test_images_and_truncation_are_explicit():
