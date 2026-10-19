@@ -334,6 +334,60 @@ def test_a_conversation_error_fails_the_run_even_with_a_built_part(environment):
         assert result["failed_phase"] == "drawing"
 
 
+def test_a_repeated_failed_request_fails_the_run_with_its_tool_field_and_count_without_a_part(environment):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        summary = {"status": "no_progress", "model_turns": 3, "tool_requests": 2, "mcp_calls": 1, "blocked_requests": 1,
+                   "no_progress": {"tool": "pdf_calibrate", "code": "INVALID_ARGUMENTS", "repeat_count": 2,
+                                   "target": "/references/0/source_region/2", "message": "1 is greater than the maximum of 1"}}
+        services.runner.finish(run["run_id"], summary)
+        result = client.get(f"/api/runs/{run['run_id']}").json()
+        assert result["error"]["code"] == "AGENT_NO_PROGRESS"
+        assert result["error"]["field"] == "/references/0/source_region/2"
+        assert "pdf_calibrate request 2 times (INVALID_ARGUMENTS" in result["error"]["message"]
+        assert result["iterations"]["mcp_calls"] == 1 and result["iterations"]["blocked_requests"] == 1
+
+
+@pytest.mark.parametrize("phase", ["model_inference", None])
+def test_an_exhausted_deadline_without_a_part_is_a_time_budget_result(environment, phase):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        summary = {"status": "time_budget_reached"}
+        if phase:
+            summary["time_budget"] = {"phase": phase, "message": "RuntimeError: Model endpoint did not answer: timed out"}
+        services.runner.finish(run["run_id"], summary)
+        error = services.jobs.get(run["run_id"])["error"]
+        assert error["code"] == "AGENT_TIME_BUDGET"
+        assert ("during model inference" in error["message"] and "did not answer" in error["message"]) == bool(phase)
+
+
+@pytest.mark.parametrize(("part", "expected"), [
+    ({"build": {"status": "pass"}, "release": None}, "AGENT_TIME_BUDGET"),
+    ({"build": {"status": "pass"}, "release": {"sha256": "a" * 64}}, None),
+])
+def test_an_exhausted_deadline_before_a_release_fails_the_run(environment, part, expected):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
+        original = services.backend.call
+        environment.setattr(services.backend, "call", lambda operation, **arguments:
+                            {"part": part} if operation == "part_read" else original(operation, **arguments))
+        services.runner.finish(run["run_id"], {"status": "time_budget_reached",
+                                               "time_budget": {"phase": "model_inference", "message": "timed out"}})
+        result = services.jobs.get(run["run_id"])
+        assert (result["error"] or {}).get("code") == expected
+        if expected:
+            assert "before the agent released the STEP model" in result["error"]["message"]
+        else:
+            assert result["job"]["status"] == "succeeded"
+
+
 def test_the_run_note_is_revisioned_and_keeps_the_agent_report(environment):
     with TestClient(api.create_app()) as client:
         services = client.app.state.services
@@ -413,8 +467,9 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
     assert run["failed_phase"] == "modeling" and "Report" not in run["error"]["message"]
     assert run["part"]["revision"] == 1 and [p["name"] for p in run["part"]["parameters"]] == ["length", "thickness"]
     assert run["agent_report"] == "Report: part created, not built."
-    # Two model turns: one with two tool requests, one with the final answer.
-    assert run["iterations"] == {"model_turns": 2, "tool_requests": 2, "step_budget": runner_module.LIMITS["step_budget"]}
+    # Two model turns: one with two tool requests, one with the final answer. Both requests reached the MCP.
+    assert run["iterations"] == {"model_turns": 2, "tool_requests": 2, "step_budget": runner_module.LIMITS["step_budget"],
+                                 "mcp_calls": 2, "blocked_requests": 0}
     assert run["review"]["release_state"] == "draft" and run["artifacts"] == []
     assert "summary.json" in files and "trace/trace.jsonl" in files
 

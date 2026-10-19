@@ -53,6 +53,13 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
   so the web UI shows no unreleased model. The 3D preview converts the released STEP to GLB for display only.
 - **Web run record:** a small record holds the job state, the agent trace, and the domain part run ID. It copies no domain data.
   One run executes at a time. A restart marks unfinished runs as failed (`RUN_INTERRUPTED`).
+- **Failed tool requests:** `drive()` returns each tool error to the model, with one short corrective instruction after
+  a deterministic failure. It compares requests by tool name and canonical arguments (key order and call IDs do not
+  count) and by the server state, which changes after each successful call that changes the part, its drawings, its
+  release, or its note. An identical request with the same server state is blocked before execution, and the run stops as `no_progress` (`AGENT_NO_PROGRESS` with the tool, the field,
+  and the repeat count). Transient errors, for example `WORKER_TIMEOUT`, and successful repeated calls are not blocked.
+  The client invents no replacement values; interpretation, assumptions, and corrections stay with the model.
+  A deadline that ends during model inference or a tool call gives `time_budget_reached` (`AGENT_TIME_BUDGET` when no STEP release exists; a built model stays readable).
 - **Configuration:** `DRAWING2CAD_AGENT_BASE_URL`, `DRAWING2CAD_AGENT_MODEL`, and `DRAWING2CAD_AGENT_API_KEY` at runtime
   (for example, from a `.env` file that is not in Git). Optional: `DRAWING2CAD_AGENT_API_KEY_HEADER` (`api-key` for Azure AI Foundry)
   and `DRAWING2CAD_AGENT_REASONING_EFFORT`. Without the three required values, the image builds and starts, and the UI reports runs as unavailable.
