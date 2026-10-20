@@ -218,3 +218,66 @@ def test_verification_runs_in_the_verified_sandbox(drawing, tmp_path):
     assert result["status"] == "pass", result
     assert result["sandbox"] and result["report"]["status"] == "needs_review"
     assert not [item for item in result["report"]["findings"] if item["status"] == "fail"]
+
+
+def layout_of(drawing):
+    return drawing_validate(drawing["spec"], drawing["description"], 1)["resolved"]["layout"]
+
+
+def test_extra_geometry_in_the_pdf_fails(drawing, tmp_path):
+    def circle(page, k):
+        page.draw_circle(pymupdf.Point(64 * k, (297 - 193) * k), 3 * k, color=(0, 0, 0), width=0.5)
+    data = mutate(drawing["pdf"], circle)
+    report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
+                 expected=expected_for(drawing, data))
+    assert any(item["feature"] == "top" for item in by_rule(report, "MODEL-05", "fail"))
+
+
+def test_critical_values_need_their_exact_number_and_qualifier():
+    from drawing2cad_mcp.pdf_verifier import text_matches
+
+    assert text_matches("Ø10", "-810", True) and text_matches("Ø10", "@10-", True) and text_matches("Ø10", "Ø10", True)
+    assert not text_matches("Ø10", "210", True) and not text_matches("Ø10", "10", True) and not text_matches("Ø10", "Ø10.5", True)
+    assert text_matches("R5", "R5", True) and not text_matches("R5", "5", True)
+
+
+def test_changed_frame_semantics_fail(drawing, tmp_path):
+    frames = {item["id"]: item for item in layout_of(drawing)["frames"]}
+    compartments = frames["bolt_position"]["layout"]["compartments"]
+    symbol = next(item for item in compartments if item["kind"] == "symbol")["rect"]
+    datum = next(item for item in compartments if item["kind"] == "datum")
+
+    def change(page, k):
+        # Replace the position symbol with a flatness-like stroke, and datum A with B.
+        white(page, k, [symbol[0] + 0.4, symbol[1] + 0.4, symbol[2] - 0.4, symbol[3] - 0.4])
+        page.draw_line(pymupdf.Point((symbol[0] + 1.5) * k, (297 - (symbol[1] + 2)) * k),
+                       pymupdf.Point((symbol[2] - 1.5) * k, (297 - (symbol[3] - 2)) * k), color=(0, 0, 0), width=0.6)
+        x0, y0, x1, y1 = datum["rect"]
+        white(page, k, [x0 + 0.4, y0 + 0.4, x1 - 0.4, y1 - 0.4])
+        page.insert_text(((x0 + 1.2) * k, (297 - (y0 + 1.6)) * k), "B", fontsize=9)
+    data = mutate(drawing["pdf"], change)
+    report = run(tmp_path, data, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
+    assert any(item["feature"] == "bolt_position" for item in by_rule(report, "GPS-05", "fail"))
+    assert any(item["feature"] == "bolt_position" for item in by_rule(report, "GPS-06", "fail"))
+
+
+def test_removed_dimension_lines_fail(drawing, tmp_path):
+    from drawing2cad_mcp.drawing_verification import _dimension_lines
+
+    resolved = drawing_validate(drawing["spec"], drawing["description"], 1)["resolved"]
+    top = next(view for view in resolved["views"] if view["id"] == "top")
+    hub = next(item for item in _dimension_lines(top) if item["id"] == "d_hub")
+    a, b = hub["segments"][0]
+
+    def erase(page, k):
+        white(page, k, [min(a[0], b[0]) - 0.8, min(a[1], b[1]) - 0.8, max(a[0], b[0]) + 0.8, max(a[1], b[1]) + 0.8])
+    data = mutate(drawing["pdf"], erase)
+    report = run(tmp_path, data, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
+    assert any(item["feature"] == "d_hub" for item in by_rule(report, "DIM-05", "fail"))
+
+
+def test_encrypted_pdf_fails_with_a_report(drawing, tmp_path):
+    with pymupdf.open(drawing["pdf"]) as document:
+        data = document.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw="owner", user_pw="user")
+    report = run(tmp_path, data, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
+    assert by_rule(report, "PDF-STRUCT-01", "fail") and report["status"] == "fail"

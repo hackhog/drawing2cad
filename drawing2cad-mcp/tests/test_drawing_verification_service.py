@@ -130,3 +130,14 @@ def test_a_new_build_makes_the_report_stale():
     assert status(stored, binding)["validity"] == "current"
     result = status(stored, {**binding, "candidate_sha256": "e" * 64})
     assert result["validity"] == "stale" and "candidate_sha256" in result["reason"]
+
+
+def test_changed_candidate_bytes_make_the_report_stale(domain):
+    service, _, _, _, _, pdf = prepare(domain)
+    call(service, "drawing_verify", artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])
+    cad = service._backend(CTX)[0]
+    built = cad._load(cad._directory("plate"))["build"]
+    candidate = cad._candidate(built["build"])
+    candidate.write_bytes(candidate.read_bytes() + b"\n")
+    read = service.call(CTX, "drawing_read", {"run_id": "plate"})
+    assert read["verification"]["validity"] == "stale" and "candidate_sha256" in read["verification"]["reason"]

@@ -33,7 +33,9 @@ THRESHOLDS = {
     "raster_pixels": 3,
     "text_similarity": 0.80,
     "max_ocr_regions": 250,
+    "extra_extent_mm": 3.0,           # Extent of a connected ink region in a view that nothing explains.
 }
+EXTRA_TOLERANCE_MM = 0.8
 SAMPLE_MM = 0.5
 PSM_SPARSE_TEXT = 11
 PSM_SINGLE_CHARACTER = 10
@@ -95,6 +97,24 @@ class Raster:
             column, row = int(round(x)), int(round(y))
             result.append(0 <= row < height and 0 <= column < width and bool(self.near[row, column]))
         return result
+
+    def unexplained(self, box, items, tolerance_mm) -> float:
+        """Area in mm² of ink in a box that is farther than tolerance from the given sheet primitives."""
+        from PIL import Image, ImageDraw
+
+        mask = Image.new("1", self.image.size, 0)
+        draw = ImageDraw.Draw(mask)
+        width = max(1, round(2 * tolerance_mm * self.dpi / 25.4))
+        for item in items:
+            points = [self.pixel(p) for p in sample(item, 0.2)]
+            if len(points) > 1:
+                draw.line(points, fill=1, width=width, joint="curve")
+        explained = self.numpy.asarray(mask, dtype=bool)
+        x0, y1 = self.pixel([box[0], box[1]])
+        x1, y0 = self.pixel([box[2], box[3]])
+        rows, columns = slice(max(0, int(y0)), max(0, int(y1))), slice(max(0, int(x0)), max(0, int(x1)))
+        stray = self.ink[rows, columns] & ~explained[rows, columns]
+        return float(stray.sum()) * (25.4 / self.dpi) ** 2
 
     def ink_fraction(self, box=None) -> float:
         if box is None:
@@ -181,22 +201,26 @@ def _normal(text: str) -> str:
 
 
 # Characters that Tesseract reads for the diameter sign. Only one such character directly before the value is accepted.
-DIAMETER_CONFUSIONS = "8029603@"
+# A digit that can be a real leading digit (for example 2 or 1) is not accepted.
+DIAMETER_CONFUSIONS = "8"
 
 
-def _has_number(token: str, found: list[str], diameter: bool) -> bool:
-    if token in found:
+def _has_number(token: str, found: list[str], observed: str, diameter: bool) -> bool:
+    """For a diameter, the sign must be present: either as Ø, or as one confusable character directly before the value."""
+    if not diameter:
+        return token in found
+    if any(len(item) == len(token) + 1 and item.endswith(token) and item[0] in DIAMETER_CONFUSIONS for item in found):
         return True
-    return diameter and any(len(item) == len(token) + 1 and item.endswith(token) and item[0] in DIAMETER_CONFUSIONS for item in found)
+    return token in found and re.search(r"[ØøΦφ⌀@]\s*" + re.escape(token) + r"(?![\d.])", observed) is not None
 
 
 def text_matches(expected: str, observed: str, critical: bool) -> bool:
     if critical:
         wanted = _numbers(expected)
-        letters = re.sub(r"[^A-Za-z]", "", re.sub(r"[ØR]", "", expected))
+        letters = re.sub(r"[^A-Za-z]", "", expected.replace("Ø", ""))
         found = _numbers(observed)
         diameter = "Ø" in expected
-        if wanted and not all(_has_number(token, found, diameter) for token in wanted):
+        if wanted and not all(_has_number(token, found, observed, diameter) for token in wanted):
             return False
         if letters and _normal(letters) not in _normal(observed):
             return False
@@ -273,7 +297,8 @@ def check_pdf(report: Report, path: Path, expected: dict, sheet: dict | None) ->
         return {"pages": 0, "page_size_mm": None}
     with document:
         if document.needs_pass or document.is_encrypted:
-            report.add("PDF-STRUCT-01", "fail", "critical", "The PDF is encrypted.")
+            report.add("PDF-STRUCT-01", "fail", "critical", "The PDF is encrypted. Its pages cannot be inspected.")
+            return {"pages": 0, "page_size_mm": None}
         count = document.page_count
         page = document[0] if count else None
         size = [page.rect.width * 25.4 / 72, page.rect.height * 25.4 / 72] if page else None
@@ -452,6 +477,105 @@ def _distance_to(point, item) -> float:
     return min(math.dist(point, p) for p in sample(item, 0.02))
 
 
+def check_dimension_lines(report: Report, raster: Raster, dimension_lines: list[dict]) -> None:
+    """The rendered dimension, extension, and leader lines must be where the bound drawing puts them."""
+    for item in dimension_lines:
+        points = [p for a, b in item["segments"] for p in sample({"type": "line", "start": a, "end": b}, 0.3)]
+        covered = raster.covered(points)
+        fraction = sum(covered) / len(covered)
+        region = _bounds([p for segment in item["segments"] for p in segment])
+        if fraction >= 0.8:
+            report.add("DIM-05", "pass", "info", f"Dimension {item['id']} shows its dimension and extension lines.", region=region,
+                       feature=item["id"], observed=round(fraction, 3), evidence=item["evidence"])
+        else:
+            report.add("DIM-05", "fail", "major", f"Dimension {item['id']} has missing or moved dimension, extension, or leader lines.",
+                       region=region, feature=item["id"], expected=">= 0.8", observed=round(fraction, 3), evidence=item["evidence"])
+
+
+def check_extra_ink(report: Report, raster: Raster, views: list[dict], derived: dict[str, dict], request: dict) -> None:
+    """Ink in a view that no model edge, declared primitive, dimension, label, or sheet item explains is extra content."""
+    from PIL import Image, ImageDraw
+
+    numpy = raster.numpy
+    mask = Image.new("1", raster.image.size, 0)
+    draw = ImageDraw.Draw(mask)
+    width = max(1, round(2 * EXTRA_TOLERANCE_MM * raster.dpi / 25.4))
+
+    def polyline(points):
+        pixels = [raster.pixel(p) for p in points]
+        if len(pixels) > 1:
+            draw.line(pixels, fill=1, width=width, joint="curve")
+
+    for view in views:
+        for item in view["geometry"] + (derived.get(view["id"]) or {}).get("geometry", []):
+            polyline([_sheet(view, p) for p in sample(item, 0.3)])
+    annotations = request.get("annotations") or {}
+    for a, b in annotations.get("lines", []):
+        polyline([a, b])
+    for polygon in annotations.get("polygons", []) + request.get("hatching", []):
+        if len(polygon) >= 3:
+            draw.polygon([raster.pixel(p) for p in polygon], fill=1, outline=1)
+            polyline(polygon + [polygon[0]])
+    explained = numpy.asarray(mask, dtype=bool)
+    for view in views:
+        if view["id"] not in derived:
+            continue
+        x0, y1 = raster.pixel([view["frame"][0], view["frame"][1]])
+        x1, y0 = raster.pixel([view["frame"][2], view["frame"][3]])
+        rows, columns = slice(max(0, int(y0)), max(0, int(y1))), slice(max(0, int(x0)), max(0, int(x1)))
+        stray = raster.ink[rows, columns] & ~explained[rows, columns]
+        area = float(stray.sum()) * (25.4 / raster.dpi) ** 2
+        component = _largest_component(stray, raster.dpi)
+        scale = 25.4 / raster.dpi
+        if component is None or component["extent_mm"] < THRESHOLDS["extra_extent_mm"]:
+            report.add("MODEL-05", "pass", "info", f"View {view['id']}: the rendered view has no content outside the model and the annotations.",
+                       region=view["frame"], feature=view["id"], observed={"unexplained_mm2": round(area, 3),
+                                                                          "largest_extent_mm": component["extent_mm"] if component else 0.0})
+            continue
+        left, top, right, bottom = component["box_px"]
+        left, right = float((left + columns.start) * scale), float((right + columns.start) * scale)
+        top, bottom = float((top + rows.start) * scale), float((bottom + rows.start) * scale)
+        report.add("MODEL-05", "fail", "major", f"View {view['id']}: the rendered view has content that the bound model and drawing do not explain.",
+                   region=[left, raster.height_mm - bottom, right, raster.height_mm - top], feature=view["id"],
+                   expected=f"no unexplained content of {THRESHOLDS['extra_extent_mm']} mm or more",
+                   observed={"unexplained_mm2": round(area, 3), "largest_extent_mm": component["extent_mm"]})
+
+
+def _largest_component(mask, dpi) -> dict | None:
+    """The largest connected region of a mask on a 0.5 mm grid, with its extent in mm and its pixel box."""
+    import numpy
+
+    cell = max(1, round(0.5 * dpi / 25.4))
+    height, width = mask.shape
+    rows, columns = -(-height // cell), -(-width // cell)
+    padded = numpy.zeros((rows * cell, columns * cell), dtype=bool)
+    padded[:height, :width] = mask
+    grid = padded.reshape(rows, cell, columns, cell).any(axis=(1, 3))
+    seen = numpy.zeros_like(grid)
+    best = None
+    for start in zip(*numpy.nonzero(grid)):
+        if seen[start]:
+            continue
+        stack, cells = [start], []
+        seen[start] = True
+        while stack:
+            r, c = stack.pop()
+            cells.append((r, c))
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < rows and 0 <= nc < columns and grid[nr, nc] and not seen[nr, nc]:
+                        seen[nr, nc] = True
+                        stack.append((nr, nc))
+        rs = [r for r, _ in cells]
+        cs = [c for _, c in cells]
+        extent = max(max(rs) - min(rs) + 1, max(cs) - min(cs) + 1) * cell * 25.4 / dpi
+        if best is None or extent > best["extent_mm"]:
+            best = {"extent_mm": round(float(extent), 3),
+                    "box_px": [int(min(cs)) * cell, int(min(rs)) * cell, (int(max(cs)) + 1) * cell, (int(max(rs)) + 1) * cell]}
+    return best
+
+
 def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]) -> None:
     """Anchors on the model, round values against the model, and round-feature coverage."""
     dimensioned = set()
@@ -504,6 +628,23 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
 
 def check_frames(report: Report, raster: Raster, frames: list[dict]) -> None:
     for frame in frames:
+        if frame.get("symbol"):
+            strokes = frame["symbol"]
+            items = ([{"type": "line", "start": a, "end": b} for a, b in strokes["lines"]]
+                     + [{"type": "circle", "center": c, "radius": r} for c, r in strokes["circles"]]
+                     + [{"type": "arc", "center": c, "radius": r, "start_angle": a, "end_angle": b} for c, r, a, b in strokes["arcs"]])
+            points = [p for item in items for p in sample(item, 0.2)]
+            fraction = sum(raster.covered(points)) / len(points) if points else 0.0
+            inner = frame["symbol_rect"]
+            inset = [inner[0] + 0.5, inner[1] + 0.5, inner[2] - 0.5, inner[3] - 0.5]
+            stray = raster.unexplained(inset, items, 0.35)
+            if fraction >= 0.85 and stray <= 0.6:
+                report.add("GPS-05", "pass", "info", f"Tolerance frame {frame['id']} shows the symbol of {frame['characteristic']}.",
+                           region=inner, feature=frame["id"], observed=round(fraction, 3))
+            else:
+                report.add("GPS-05", "fail", "major", f"Tolerance frame {frame['id']} does not show the symbol of {frame['characteristic']}.",
+                           region=inner, feature=frame["id"], expected=frame["characteristic"],
+                           observed={"symbol_coverage": round(fraction, 3), "unexplained_mm2": round(stray, 3)})
         ink = raster.ink_fraction(frame["rect"])
         if ink < 0.01:
             report.add("GPS-01", "fail", "major", f"Tolerance frame {frame['id']} is missing in the rendered PDF.", region=frame["rect"],
@@ -566,6 +707,9 @@ def verify(directory: Path, request: dict) -> dict:
         else:
             report.add("MODEL-01", "not_tested", "info", "No bound model candidate was supplied.")
         check_dimensions(report, views, derived)
+        check_dimension_lines(report, raster, request.get("dimension_lines", []))
+        if derived:
+            check_extra_ink(report, raster, views, derived, request)
         check_frames(report, raster, request.get("frames", []))
         ocr = Ocr()
         try:

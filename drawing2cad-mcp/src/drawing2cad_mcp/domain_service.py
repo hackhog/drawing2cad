@@ -683,8 +683,16 @@ class DomainService:
             except DomainError:
                 digest = "changed"
         built = derived_views.binding(state)
+        candidate = None
+        if built:
+            try:
+                # The stored candidate bytes, not only the recorded hash.
+                self._current_candidate(self._backend(ctx)[0], state, "the drawing verification")
+                candidate = built["candidate_sha256"]
+            except DomainError:
+                candidate = "changed"
         return {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
-                "candidate_sha256": built["candidate_sha256"] if built else None,
+                "candidate_sha256": candidate,
                 "drawing_sha256": drawing["drawing_sha256"], "pdf_sha256": digest}
 
     def _verify_drawing(self, ctx, cad, directory, state, args):
