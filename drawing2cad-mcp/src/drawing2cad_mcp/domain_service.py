@@ -661,7 +661,9 @@ class DomainService:
         verification = None
         if drawing and drawing.get("verification"):
             verification = drawing_verification.status(drawing["verification"], self._verification_binding(ctx, state, drawing))
+        acceptance = self._drawing_status(drawing, state, ctx)
         return {"run_id": run_id, "revision": state["revision"], "drawing": drawing, "verification": verification,
+                "acceptance": {key: acceptance.get(key) for key in ("status", "reason", "verification")},
                 "derived_views": derived_views.status(self._derivation(directory), state)}
 
     def _drawing_pdf(self, ctx, drawing):
@@ -691,7 +693,9 @@ class DomainService:
                 candidate = built["candidate_sha256"]
             except DomainError:
                 candidate = "changed"
+        sources = sorted(source["sha256"] for source in state["sources"] if source["role"] == "construction")
         return {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
+                "source_sha256s": sources, "profile": drawing_verification.PROFILE,
                 "candidate_sha256": candidate,
                 "drawing_sha256": drawing["drawing_sha256"], "pdf_sha256": digest}
 
@@ -843,10 +847,10 @@ class DomainService:
         return bool(release.get("artifact") and release.get("sha256") == build.get("candidate_sha256")
                     and release.get("description_revision") == state.get("revision"))
 
-    @staticmethod
-    def _drawing_status(drawing, state):
+    def _drawing_status(self, drawing, state, ctx=None):
         """Summarize the technical drawing for a release record.
-        States: accepted, unreviewed, rejected, failed, or missing (with a reason)."""
+        States: accepted, unverified, unreviewed, rejected, failed, or missing (with a reason).
+        accepted needs an accepted review of the current model and a current verification that passes the acceptance gate."""
         if not drawing:
             return {"status": "missing", "drawing_sha256": None, "artifacts": [],
                     "reason": "No technical drawing was rendered for the current part revision."}
@@ -855,24 +859,35 @@ class DomainService:
             report = drawing.get("report") or {}
             return {**summary, "status": "failed", "defects": deepcopy(report.get("defects", [])),
                     "reason": "The latest drawing render did not pass its checks. The artifacts are diagnostic files, not an accepted drawing."}
+        verification = None
+        if drawing.get("verification"):
+            current = self._verification_binding(ctx, state, drawing) if ctx is not None else None
+            verification = drawing_verification.status(drawing["verification"], current)
         review = drawing.get("review") or {}
+        decisions = review.get("verification_decisions") if review.get("verification_report_sha256") == (verification or {}).get("report_sha256") else []
+        gate = drawing_verification.gate(verification, decisions)
+        summary["verification"] = {"validity": (verification or {}).get("validity"), "status": (verification or {}).get("status"),
+                                   "report_sha256": (verification or {}).get("report_sha256"), "gate": gate}
         candidate = (state.get("build") or {}).get("candidate_sha256")
-        if review.get("decision") == "accepted" and review.get("candidate_sha256") == candidate:
-            return {**summary, "status": "accepted", "review": deepcopy(review)}
         if review.get("decision") == "rejected" and review.get("candidate_sha256") == candidate:
             return {**summary, "status": "rejected", "review": deepcopy(review),
                     "reason": "The drawing review rejected the drawing for the current model."}
+        if review.get("decision") == "accepted" and review.get("candidate_sha256") == candidate:
+            if gate["passed"] and review.get("verification_report_sha256") == verification["report_sha256"]:
+                return {**summary, "status": "accepted", "review": deepcopy(review)}
+            return {**summary, "status": "unverified", "review": deepcopy(review),
+                    "reason": gate["reason"] or "The review does not cover the current verification. Record the review again."}
         return {**summary, "status": "unreviewed",
                 "reason": "The drawing rendered and passed its checks, but it has no review for the current model."}
 
-    def _release_view(self, state, drawing):
+    def _release_view(self, state, drawing, ctx=None):
         """Return the release with the current drawing status. Hide a release that is not current."""
         release = state.get("release")
         if not release or not self._release_is_current(state):
             return None
         release = deepcopy(release)
         recorded = release.get("drawing") or {}
-        current = self._drawing_status(drawing, state)
+        current = self._drawing_status(drawing, state, ctx)
         release["drawing_current"] = (recorded.get("status") == current["status"]
                                       and recorded.get("drawing_sha256") == current["drawing_sha256"])
         return release
@@ -896,7 +911,7 @@ class DomainService:
             result = {"status": "pass", "part": deepcopy(state), "run_id": args["run_id"], "revision": state["revision"],
                       "call_count": state["call_count"], "step_budget": state["step_budget"]}
             result["drawing"] = self._drawing(directory, state)
-            result["part"]["release"] = self._release_view(result["part"], result["drawing"])
+            result["part"]["release"] = self._release_view(result["part"], result["drawing"], ctx)
         result["read_mode"] = "snapshot_during_active_operation"
         return result
 
@@ -978,7 +993,7 @@ class DomainService:
         if name == "export_step":
             # The model validation gates the release. The drawing status is recorded, not required.
             drawing = self._drawing(directory, state)
-            drawing_status = self._drawing_status(drawing, state)
+            drawing_status = self._drawing_status(drawing, state, ctx)
             for artifact in drawing_status["artifacts"]:
                 self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
             result = cad.call(name, args)
@@ -1008,7 +1023,7 @@ class DomainService:
         result = cad.call(name, args)
         if name == "part_read":
             result["drawing"] = self._drawing(directory, state)
-            result["part"]["release"] = self._release_view(result["part"], result["drawing"])
+            result["part"]["release"] = self._release_view(result["part"], result["drawing"], ctx)
         return result
 
     def _render(self, ctx, cad, directory, state, spec):
@@ -1105,9 +1120,19 @@ class DomainService:
             self.store.source_path(ctx, source["source_id"])
         for artifact in drawing["artifacts"]:
             self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
+        verification = drawing.get("verification") or {}
+        decisions = args.get("verification_decisions", [])
+        if decisions:
+            open_keys = {(item["rule_id"], item.get("feature")) for item in verification.get("findings", []) if item["status"] == "needs_review"}
+            unknown = [item for item in decisions if (item["rule_id"], item.get("feature")) not in open_keys]
+            if unknown:
+                raise DomainError("REVIEW_DECISION_INVALID",
+                                  "A verification decision must name a needs_review finding of the current verification: "
+                                  + ", ".join(f"{item['rule_id']}/{item.get('feature')}" for item in unknown[:5]) + ".")
         drawing["review"] = {**args, "scope": "identified_drawing_and_model_review_attestation",
                              "automatic_cad_equivalence": "not_tested",
-                             "candidate_sha256": (state.get("build") or {}).get("candidate_sha256")}
+                             "candidate_sha256": (state.get("build") or {}).get("candidate_sha256"),
+                             "verification_report_sha256": verification.get("report_sha256")}
         # A review does not invalidate a STEP release. Call export_step again to record the new drawing status.
         self._save_drawing(directory, drawing)
         return {"status": "pass", "drawing": drawing}
@@ -1153,7 +1178,7 @@ class DomainService:
             domain_events.append(json.loads(read_record(path)))
         drawing = self._drawing(directory, state)
         public_state = deepcopy(state)
-        public_state["release"] = self._release_view(public_state, drawing)
+        public_state["release"] = self._release_view(public_state, drawing, ctx)
         manifest = {"schema_version": "1.0", "package_version": __version__, "run": public_state,
                     "drawing": drawing, "notes": self._notes(ctx, state["run_id"]),
                     "scope": "Path-free application evidence. Target CAD and AP242 acceptance require separate tests.",

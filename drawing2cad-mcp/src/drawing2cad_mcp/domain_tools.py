@@ -125,8 +125,15 @@ _EXTRA = {
     "drawing_read": (_object(RUN), "Read current drawing state, artifact IDs, and review binding."),
     "drawing_review": (_object({**REVISION, "drawing_sha256": HASH, "reviewer": {"type": "string", "minLength": 1, "maxLength": 200},
                                 "reason": TEXT, "source_hashes": {"type": "array", "items": HASH, "minItems": 1, "uniqueItems": True},
-                                "decision": {"enum": ["accepted", "rejected"]}}),
-                       "Record an identified human or agent review of the exact drawing and part revision. Compare manufacturing notes, including draft and fillet requirements, with source evidence and model measurements. This attestation does not convert untested CAD equivalence into an automatic pass."),
+                                "decision": {"enum": ["accepted", "rejected"]},
+                                "verification_decisions": {"type": "array", "maxItems": 200, "items": _object({
+                                    "rule_id": {"type": "string", "pattern": "^[A-Z]+(-[A-Z]+)?-[0-9]{2}$"},
+                                    "feature": {"type": ["string", "null"], "maxLength": 128}, "reason": TEXT})}},
+                               ["run_id", "expected_revision", "drawing_sha256", "reviewer", "reason", "source_hashes", "decision"]),
+                       "Record an identified human or agent review of the exact drawing and part revision. Compare manufacturing notes, including draft and fillet requirements, with source evidence and model measurements. "
+                       "A drawing is accepted only when this review is accepted and the current drawing_verify result passes the acceptance gate. "
+                       "verification_decisions resolve needs_review findings of the current verification, each with a reason; they cannot resolve a fail or not_tested finding. "
+                       "This attestation does not convert untested CAD equivalence into an automatic pass."),
     "job_submit": (_object({"operation": {"enum": ["build_from_description", "build_code", "drawing_render", "export_step"]},
                             "arguments": {"type": "object"}, "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}}),
                    "Queue a durable CAD or drawing job. Validate ownership and revision at submission and execution. Reuse a key only for an identical request."),

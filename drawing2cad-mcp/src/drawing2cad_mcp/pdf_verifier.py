@@ -16,6 +16,34 @@ from pathlib import Path
 from typing import Any
 
 VERIFIER = "drawing2cad-pdf-verifier"
+# Rules that a complete-service drawing must pass. STYLE-01 is reported but is not part of the acceptance.
+# REVIEW-01 is the identified review, which drawing_review records.
+MANDATORY_RULES = (
+    "PDF-INTEGRITY-01", "PDF-STRUCT-01", "PDF-STRUCT-02", "PDF-STRUCT-03", "PDF-STRUCT-04", "PDF-BIND-01",
+    "RENDER-01", "RENDER-02", "RENDER-03", "RENDER-04", "VIEW-REQ-01", "VIEW-REQ-02", "ISO-01",
+    "MODEL-01", "MODEL-02", "MODEL-03", "MODEL-04", "MODEL-05", "DIM-01", "DIM-02", "DIM-03", "DIM-04", "DIM-05",
+    "UNITS-01", "REV-01", "REV-02", "TEXT-01", "TEXT-02", "TEXT-03", "TEXT-04", "TEXT-05", "SEC-01",
+    "GPS-01", "GPS-02", "GPS-03", "GPS-04", "GPS-05", "GPS-06", "GPS-07", "GPS-08", "GPS-09",
+)
+# A mandatory rule without a finding is not applicable only for these reasons. Any other missing rule is not tested.
+ABSENT_REASONS = {
+    "MODEL-02": "The drawing does not draw hidden edges.",
+    "DIM-04": "The drawing has no radius or diameter dimension in a true-size view.",
+    "REV-01": "A current validated build exists.",
+    "TEXT-01": "The title block has no other field with a value.",
+    "TEXT-03": "The drawing has no notes.",
+    "TEXT-04": "The drawing has no uncertainty markers.",
+    "TEXT-05": "The drawing has no other labels.",
+    "GPS-01": "The drawing has no tolerance frames.",
+    "GPS-02": "The drawing has no tolerance frames.",
+    "GPS-03": "No tolerance frame is outside the supported profile.",
+    "GPS-04": "The drawing has no unsupported GPS requirements.",
+    "GPS-05": "The drawing has no tolerance frames.",
+    "GPS-06": "No tolerance frame has a datum reference.",
+    "GPS-07": "No tolerance frame has a modifier.",
+    "GPS-08": "The drawing has no datum symbols.",
+    "GPS-09": "The drawing has no datum symbols.",
+}
 VERIFIER_VERSION = "1.0.0"
 REPORT_SCHEMA = "1.0"
 THRESHOLDS = {
@@ -312,6 +340,7 @@ def check_pdf(report: Report, path: Path, expected: dict, sheet: dict | None) ->
         if document.needs_pass or document.is_encrypted:
             report.add("PDF-STRUCT-01", "fail", "critical", "The PDF is encrypted. Its pages cannot be inspected.")
             return {"pages": 0, "page_size_mm": None}
+        report.add("PDF-STRUCT-01", "pass", "info", "The PDF opens without a password.")
         count = document.page_count
         page = document[0] if count else None
         size = [page.rect.width * 25.4 / 72, page.rect.height * 25.4 / 72] if page else None
@@ -416,6 +445,10 @@ def check_model(report: Report, raster: Raster, directory: Path, views: list[dic
     """Derive the views again from the bound STEP and compare them with the raster and the declared geometry."""
     from .view_derivation import derive
 
+    for view in views:
+        if not view.get("derivation_request"):
+            report.add("MODEL-01", "not_tested", "info", f"View {view['id']} has no projection, so the model cannot be compared with it.",
+                       region=view["frame"], feature=view["id"])
     requests = [view["derivation_request"] for view in views if view.get("derivation_request")]
     if not requests:
         return {}
@@ -812,6 +845,14 @@ def verify(directory: Path, request: dict) -> dict:
             ocr.close()
     for rule, reason in request.get("service_findings", []):
         report.add(rule["rule_id"], rule["status"], rule["severity"], reason, expected=rule.get("expected"), observed=rule.get("observed"))
+    present = {item["rule_id"] for item in report.findings}
+    for rule in MANDATORY_RULES:
+        if rule in present:
+            continue
+        if rule in ABSENT_REASONS and request["mode"] == "bound":
+            report.add(rule, "not_applicable", "info", ABSENT_REASONS[rule])
+        else:
+            report.add(rule, "not_tested", "info", "The verifier did not run this mandatory rule for this PDF.")
     report.add("STYLE-01", "not_tested", "info", "Line types and line widths are not tested in the raster.")
     report.add("REVIEW-01", "not_tested", "info", "An identified review is not part of this report. Record it with drawing_review.")
     artifacts = [preview(raster, report, directory / "verification-preview.png")] if raster is not None else []

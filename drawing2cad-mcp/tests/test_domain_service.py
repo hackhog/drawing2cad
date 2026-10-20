@@ -256,8 +256,10 @@ def test_release_records_the_drawing_status_and_requires_the_current_model(domai
     review(service, source, digest, "rejected")
     assert call(service, "export_step", coverage=coverage(source))["release"]["drawing"]["status"] == "rejected"
     review(service, source, digest)
-    accepted = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
-    assert accepted["status"] == "accepted" and accepted["review"]["decision"] == "accepted"
+    # An accepted review without a passed PDF verification does not accept a complete-service drawing.
+    reviewed = call(service, "export_step", coverage=coverage(source))["release"]["drawing"]
+    assert reviewed["status"] == "unverified" and reviewed["review"]["decision"] == "accepted"
+    assert "drawing_verify" in reviewed["reason"]
     # A rebuild invalidates the release and the drawing review.
     call(service, "build_from_description")
     assert service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"] is None
@@ -390,7 +392,7 @@ def test_release_survives_service_restart_and_a_new_review_marks_its_drawing_sta
         assert state["part"]["release"]["drawing_current"] is True
         review(other, source, drawing["drawing"]["drawing_sha256"], "rejected")
         release = other.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]
-        assert release["drawing"]["status"] == "accepted" and release["drawing_current"] is False
+        assert release["drawing"]["status"] == "unverified" and release["drawing_current"] is False
         assert artifact_bytes(other, released["release"]["artifact"])
         refreshed = other.call(CTX, "export_step", {"run_id": "plate", "expected_revision": 1, "coverage": coverage(source)})
         assert refreshed["release"]["drawing"]["status"] == "rejected"

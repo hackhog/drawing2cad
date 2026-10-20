@@ -21,11 +21,13 @@ const ROLE: Record<ArtifactRole, string> = {
   drawing_pdf: "Technical drawing (PDF)", drawing_diagnostic: "Drawing diagnostic (PDF)", drawing_dxf: "Technical drawing (DXF)", step: "3D model (STEP)",
   part_description: "Part description (JSON)", manifest: "Run manifest", trace: "MCP trace",
   events: "Domain events", report: "Review report (JSON)",
+  verification_report: "Drawing verification report (JSON)", verification_preview: "Drawing verification preview (PNG)",
 };
 
 // The STEP release records the drawing status. The drawing does not gate the release.
 const DRAWING_STATUS: Record<ReleaseDrawing["status"], string> = {
-  accepted: "Drawing reviewed and released.",
+  accepted: "Drawing reviewed, verified, and released.",
+  unverified: "Drawing reviewed, but its final PDF verification did not pass the acceptance gate.",
   unreviewed: "Drawing created, but not reviewed.",
   rejected: "Drawing rejected in review.",
   failed: "Drawing faulty. The diagnostic files belong to the release.",

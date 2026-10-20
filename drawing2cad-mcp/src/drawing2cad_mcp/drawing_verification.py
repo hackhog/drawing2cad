@@ -11,7 +11,7 @@ from typing import Any
 
 from . import sheet_layout
 from .adapters.poppler import DPI
-from .pdf_verifier import number_text
+from .pdf_verifier import MANDATORY_RULES, number_text
 
 PROFILE = "drawing2cad-verify-1"
 
@@ -288,11 +288,46 @@ def build_unbound_request(expected: dict, pages_rendered: int) -> dict[str, Any]
             "required": {"isometric": True, "section": True}, "views": [], "texts": [], "frames": [], "service_findings": []}
 
 
+MAX_RECORDED_FINDINGS = 300
+
+
 def record(report: dict, binding: dict, artifact_ids: list[str]) -> dict[str, Any]:
-    """The stored verification record of a drawing state."""
+    """The stored verification record of a drawing state. It keeps each mandatory finding that is not a pass."""
+    open_findings = [{key: item.get(key) for key in ("rule_id", "status", "severity", "message", "feature")}
+                     for item in report["findings"] if item["rule_id"] in MANDATORY_RULES and item["status"] != "pass"]
     return {"status": report["status"], "report_sha256": report.get("report_sha256"), "binding": binding,
             "artifact_ids": artifact_ids, "untested_rules": report.get("untested_rules", []),
-            "verifier_version": report.get("verifier_version")}
+            "verifier_version": report.get("verifier_version"), "profile": report.get("profile"),
+            "findings": open_findings[:MAX_RECORDED_FINDINGS], "findings_truncated": len(open_findings) > MAX_RECORDED_FINDINGS}
+
+
+def gate(verification: dict | None, decisions: list[dict] | None) -> dict[str, Any]:
+    """The acceptance gate of a complete-service drawing.
+
+    A current verification is necessary. A mandatory finding with fail or not_tested blocks. A needs_review finding blocks
+    unless the identified review decided it. A not_applicable finding needs a reason.
+    """
+    if verification is None:
+        return {"passed": False, "reason": "The drawing PDF has no verification. Call drawing_verify.", "blocking": []}
+    if verification.get("validity") != "current":
+        return {"passed": False, "reason": "The verification is stale: " + (verification.get("reason") or "a bound input changed."), "blocking": []}
+    if verification.get("profile") != PROFILE:
+        return {"passed": False, "reason": f"The verification used profile {verification.get('profile')}, not {PROFILE}.", "blocking": []}
+    if verification.get("findings_truncated"):
+        return {"passed": False, "reason": "The verification has more open findings than the record keeps.", "blocking": []}
+    decided = {(item["rule_id"], item.get("feature")) for item in decisions or []}
+    blocking, reviewed = [], []
+    for item in verification.get("findings", []):
+        key = (item["rule_id"], item.get("feature"))
+        if item["status"] in {"fail", "not_tested"}:
+            blocking.append(item)
+        elif item["status"] == "needs_review":
+            (reviewed if key in decided else blocking).append(item)
+        elif item["status"] == "not_applicable" and not item.get("message"):
+            blocking.append(item)
+    passed = not blocking
+    return {"passed": passed, "blocking": blocking[:50], "blocking_count": len(blocking), "reviewed": reviewed[:50],
+            "reason": None if passed else f"{len(blocking)} mandatory verification findings block the acceptance."}
 
 
 def status(record: dict | None, current: dict | None) -> dict[str, Any] | None:

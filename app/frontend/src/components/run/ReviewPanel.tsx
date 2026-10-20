@@ -1,7 +1,7 @@
 // Review data: release state, assumptions, uncertainty markers, and validation results.
 // `not_tested` is shown as such and never as a pass.
 import { StatusBadge } from "@/components/Status";
-import type { ReleaseState, Run, ValidationResult } from "@/lib/contract";
+import type { DrawingAcceptance, ReleaseState, Run, ValidationResult } from "@/lib/contract";
 import { fmt } from "@/lib/format";
 import { delivery } from "@/lib/release";
 import type { Tone } from "@/lib/status";
@@ -11,6 +11,14 @@ const RELEASE: Record<ReleaseState, [Tone, string]> = {
 };
 const CHECK: Record<ValidationResult["status"], [Tone, string]> = {
   pass: ["done", "passed"], fail: ["error", "failed"], not_tested: ["wait", "not tested"],
+};
+
+const ACCEPTANCE: Record<DrawingAcceptance["status"], [Tone, string]> = {
+  accepted: ["done", "accepted"], unverified: ["flag", "not verified"], unreviewed: ["wait", "not reviewed"],
+  rejected: ["error", "rejected"], failed: ["error", "faulty"], missing: ["wait", "missing"],
+};
+const FINDING: Record<string, [Tone, string]> = {
+  fail: ["error", "failed"], needs_review: ["flag", "needs review"], not_tested: ["wait", "not tested"], not_applicable: ["wait", "no reason"],
 };
 
 const region = (r: [number, number, number, number] | null) => r ? `x ${Math.round(r[0])} · y ${Math.round(r[1])}` : "no location";
@@ -27,6 +35,8 @@ export function ReviewPanel({ run }: { run: Run }) {
         <div className="flex items-center gap-2"><span className="font-semibold text-card-foreground">Release</span><StatusBadge tone={tone}>{label}</StatusBadge></div>
         {reasons.map((r) => <p key={r} className="text-xs text-muted-foreground">{r}</p>)}
       </section>
+
+      {review.drawing_acceptance && <AcceptanceSection acceptance={review.drawing_acceptance} />}
 
       {run.agent_report && (
         <section>
@@ -82,5 +92,39 @@ export function ReviewPanel({ run }: { run: Run }) {
         </ul>
       </section>
     </div>
+  );
+}
+
+/** The acceptance of the drawing. A blocking finding is shown with its own status; not_tested is never shown as a pass. */
+function AcceptanceSection({ acceptance }: { acceptance: DrawingAcceptance }) {
+  const [tone, label] = ACCEPTANCE[acceptance.status];
+  const verification = acceptance.verification;
+  return (
+    <section className="flex flex-col gap-1.5" aria-label="Drawing verification">
+      <div className="flex items-center gap-2"><span className="font-semibold text-card-foreground">Drawing</span><StatusBadge tone={tone}>{label}</StatusBadge></div>
+      {acceptance.reason && <p className="text-xs text-muted-foreground">{acceptance.reason}</p>}
+      {!verification && <p className="text-xs text-muted-foreground">The final PDF has no verification.</p>}
+      {verification && (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Verification {verification.status ?? "missing"} · {verification.validity === "current" ? "current" : "outdated"} ·
+            {" "}{verification.gate_passed ? "acceptance gate passed" : `${verification.blocking_count} blocking findings`}
+            {verification.reviewed_count ? ` · ${verification.reviewed_count} decided in review` : ""}
+          </p>
+          <ul className="flex flex-col gap-1">
+            {verification.blocking.map((item) => {
+              const [t, l] = FINDING[item.status] ?? ["wait", item.status];
+              return (
+                <li key={`${item.rule_id}-${item.feature ?? ""}`} className="flex items-center gap-2.5 rounded-md border px-2.5 py-1.5">
+                  <code className="w-24 text-[11px]">{item.rule_id}</code>
+                  <span className="flex-1 text-xs text-muted-foreground">{item.feature ? `${item.feature}: ` : ""}{item.message}</span>
+                  <StatusBadge tone={t}>{l}</StatusBadge>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </section>
   );
 }

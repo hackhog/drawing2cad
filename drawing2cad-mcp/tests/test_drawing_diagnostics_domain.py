@@ -67,7 +67,7 @@ def test_layout_diagnostics_are_bound_private_and_not_deliverable(domain):
     assert corrected["status"] == "pass"
     assert not corrected["drawing"].get("diagnostic_only", False)
     review(service, source, corrected["drawing"]["drawing_sha256"])
-    assert call(service, "export_step", coverage=coverage(source))["release"]["drawing"]["status"] == "accepted"
+    assert call(service, "export_step", coverage=coverage(source))["release"]["drawing"]["status"] == "unverified"
 
 
 @pytest.mark.parametrize("change", ["unknown", "coordinate", "scale", "dimension", "stale", "nan"])

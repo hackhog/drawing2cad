@@ -167,7 +167,9 @@ def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     released_ids = frozenset([(release.get("artifact") or {}).get("artifact_id")]
                              + [a["artifact_id"] for a in (release.get("drawing") or {}).get("artifacts", [])]) - {None}
     artifacts = (artifact_view(a, source["sha256"], released_ids) for a in listed)
-    return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release"))),
+    acceptance = backend.call("drawing_read", run_id=part_run).get("acceptance")
+    return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release")),
+                                                          acceptance=acceptance),
             "artifacts": [a for a in artifacts if a is not None]}
 
 

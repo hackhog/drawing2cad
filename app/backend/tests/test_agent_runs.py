@@ -628,3 +628,21 @@ def test_the_skill_version_comes_from_the_front_matter(tmp_path):
     assert runner.skill_version == "0.20.0"
     skill.write_text("# drawing2cad\n\n  version: 1\n")
     assert runner.skill_version is None
+
+
+def test_drawing_acceptance_and_verification_artifacts_are_shown_separately():
+    from drawing_demo.agent.mapping import acceptance_view, artifact_view
+
+    acceptance = {"status": "unverified", "reason": "1 mandatory verification findings block the acceptance.",
+                  "verification": {"validity": "current", "status": "fail",
+                                   "gate": {"passed": False, "blocking_count": 1, "reviewed": [],
+                                            "blocking": [{"rule_id": "MODEL-01", "status": "fail", "feature": "top", "message": "Missing edges."}]}}}
+    view = acceptance_view(acceptance)
+    assert view["status"] == "unverified" and view["verification"]["gate_passed"] is False
+    assert view["verification"]["blocking"] == [{"rule_id": "MODEL-01", "status": "fail", "feature": "top", "message": "Missing edges."}]
+    assert acceptance_view(None) is None
+    base = {"artifact_id": "art_" + "a" * 32, "filename": "f", "sha256": "b" * 64, "size_bytes": 1, "revision": 1}
+    report = artifact_view({**base, "role": "drawing_verification_report", "media_type": "application/json"}, "c" * 64)
+    preview = artifact_view({**base, "role": "drawing_verification_preview", "media_type": "image/png"}, "c" * 64)
+    diagnostic = artifact_view({**base, "role": "drawing_diagnostic_preview", "media_type": "application/pdf"}, "c" * 64)
+    assert (report["role"], preview["role"], diagnostic["role"]) == ("verification_report", "verification_preview", "drawing_diagnostic")
