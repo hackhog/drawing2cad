@@ -25,7 +25,9 @@ The PDF of the renderer contains text as outlines, so text extraction gives no t
     A missing or skipped page fails.
   - `verify_drawing_pdf` reads the PDF, the raster, and the bound STEP candidate. It calls Tesseract 5 through its C API (ctypes)
     with the Debian language data `eng` and `deu`.
-- The service checks the hash and the binding before the workers start. The expectations come from a new validation of the stored drawing,
+- The service checks the hash and the binding before the workers start. It writes one private snapshot of the PDF bytes. Both workers read this snapshot,
+  and the verifier checks that the raster comes from the bytes that it verifies.
+- `PDF-BIND-01` compares the complete metadata fields. `part_revision:10` does not match revision 1. The expectations come from a new validation of the stored drawing,
   not from the DXF and not from the entity list of the renderer.
 
 ### Layers and rules
@@ -36,19 +38,20 @@ the feature, the expected and observed values, and the evidence.
 | Layer | Rules |
 |---|---|
 | PDF integrity and binding | `PDF-INTEGRITY-01` hash, `PDF-STRUCT-01` to `-04` open, one page, no rotation, page box, `PDF-BIND-01` revision, description, and DXF hash in the metadata |
-| Raster | `RENDER-01` each page rendered at the fixed size, `RENDER-02` not blank, `RENDER-03` no content at the page edge |
+| Raster | `RENDER-01` each page rendered at the fixed size, `RENDER-02` not blank, `RENDER-03` no content at the page edge, `RENDER-04` the raster comes from the verified bytes |
 | Views | `VIEW-REQ-01` isometric view, `VIEW-REQ-02` section view, `ISO-01` isometric projection |
 | Model | `MODEL-01` visible, `MODEL-02` hidden, and `MODEL-03` section edges of the model projected again: each edge must be present in the raster; `MODEL-04` each declared primitive lies on a model edge; `MODEL-05` no ink in a view that the model, the declared geometry, the dimensions, the labels, and the sheet items do not explain |
-| Dimensions | `DIM-01` value read from the raster, `DIM-02` anchor on the model, `DIM-03` each round model feature has a dimension, `DIM-04` value agrees with the model, `DIM-05` dimension, extension, and leader lines present in the raster |
-| Sheet | `UNITS-01` units, `REV-02` part revision, `TEXT-01` title block fields, `TEXT-02` view labels, `SEC-01` section letters |
-| GPS | `GPS-01` frame present, `needs_review` outside the profile; `GPS-02` value; `GPS-03` REVIEW mark; `GPS-04` unsupported GPS lines; `GPS-05` characteristic symbol in the raster; `GPS-06` datum letters; `GPS-07` circled modifiers |
+| Dimensions | `DIM-01` value read from the raster, `DIM-02` anchor on the model, `DIM-03` each round model feature has a dimension, `DIM-04` value agrees with the model, `DIM-05` each dimension, extension, and leader line present in the raster (not tested for angular dimensions) |
+| Sheet | `UNITS-01` units, `REV-02` part revision, `TEXT-01` title block fields, `TEXT-02` view labels, `TEXT-03` notes, `TEXT-04` uncertainty markers, `TEXT-05` other labels, `SEC-01` section letters |
+| GPS | `GPS-01` frame present, `needs_review` outside the profile; `GPS-02` value; `GPS-03` REVIEW mark; `GPS-04` unsupported GPS lines; `GPS-05` characteristic symbol in the raster; `GPS-06` datum letters in frames; `GPS-07` modifier letters and their circles; `GPS-08` letters of the datum symbols; `GPS-09` datum triangle, leader, and square on the part |
 | Not tested | `STYLE-01` line types and widths, `REVIEW-01` identified review |
 
 ### Text recognition
 
 - OCR reads each expected text in its expected region. The verifier tries the expected text directions, because the renderer turns
   round-dimension values along their leaders. Text in a title block field or a frame compartment is read inside the cell borders.
-- A critical value (dimension, tolerance value, datum letter, modifier, units, revision, section letter, review mark) must contain each expected number exactly.
+- A critical value (dimension, tolerance value, datum letter, modifier, units, revision, section letter, review mark) must be exactly the expected value:
+  the same digits, decimal points, ratio signs, and separators, and no other ones. Its letters must be the expected letters.
   A diameter needs its sign: Ø, a non-digit substitute such as @ directly before the value, or the digit 8 directly before the value.
   A digit that can be a real leading digit (for example 2) is not accepted as the sign. A radius needs its letter R. An unreadable critical value fails.
   It never passes because the recognition gave no text.
@@ -75,6 +78,7 @@ the feature, the expected and observed values, and the evidence.
 - A view without a projection (DrawingSpec 1.0) has no model-bound coordinates. Its model rules are not run.
 - OCR thresholds are fixed values of this profile. A new font or a new text size can need new thresholds and a new profile revision.
 - `MODEL-05` uses a tolerance of 0.8 mm around the expected shapes and fails for a connected unexplained region of 3 mm or more.
+  In a hatched surface, only the hatch lines of the pattern (base point at the sheet origin, angle, spacing) are expected, with a tolerance of 0.35 mm.
   Smaller extra content in a view is not detected.
 
 ## Tests

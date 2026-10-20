@@ -36,6 +36,8 @@ THRESHOLDS = {
     "extra_extent_mm": 3.0,           # Extent of a connected ink region in a view that nothing explains.
 }
 EXTRA_TOLERANCE_MM = 0.8
+# Hatch lines are at exact positions. A narrow tolerance keeps extra content between them visible.
+HATCH_TOLERANCE_MM = 0.35
 SAMPLE_MM = 0.5
 PSM_SPARSE_TEXT = 11
 PSM_SINGLE_CHARACTER = 10
@@ -214,17 +216,28 @@ def _has_number(token: str, found: list[str], observed: str, diameter: bool) -> 
     return token in found and re.search(r"[ØøΦφ⌀@]\s*" + re.escape(token) + r"(?![\d.])", observed) is not None
 
 
+def _canonical(text: str) -> str:
+    """The value characters of a text: digits, decimal point, ratio sign, and list separators. Leader dashes at the ends are removed."""
+    text = re.sub(r"(?<=\d)[Oo]|[Oo](?=\d)", "0", text)
+    text = re.sub(r"(?<=\d)[lI|]|[lI|](?=\d)", "1", text)
+    return re.sub(r"[^0-9.:,±+]", "", text.replace(" ", "")).strip(".,")
+
+
 def text_matches(expected: str, observed: str, critical: bool) -> bool:
     if critical:
-        wanted = _numbers(expected)
-        letters = re.sub(r"[^A-Za-z]", "", expected.replace("Ø", ""))
-        found = _numbers(observed)
-        diameter = "Ø" in expected
-        if wanted and not all(_has_number(token, found, observed, diameter) for token in wanted):
+        # The value must be exactly the expected value: no other digit, sign, or separator. 1:10 is not 1:1, 0.1±0.9 is not 0.1.
+        value = _canonical(expected.replace("Ø", ""))
+        letters = re.sub(r"[^A-Za-z]", "", expected.replace("Ø", "")).lower()
+        found = _canonical(re.sub(r"^[^0-9A-Za-zØøΦφ⌀@]+|[^0-9A-Za-z]+$", "", observed.strip()))
+        if value:
+            if "Ø" in expected:
+                if not (found == "8" + value or (found == value and re.search(r"[ØøΦφ⌀@]\s*" + re.escape(value), observed))):
+                    return False
+            elif found != value:
+                return False
+        if letters and re.sub(r"[^a-z]", "", observed.lower()) != letters:
             return False
-        if letters and _normal(letters) not in _normal(observed):
-            return False
-        return bool(wanted or letters)
+        return bool(value or letters)
     a, b = _normal(expected), _normal(observed)
     if not a:
         return True
@@ -320,10 +333,12 @@ def check_pdf(report: Report, path: Path, expected: dict, sheet: dict | None) ->
                 report.add("PDF-STRUCT-04", "pass", "info", "The page box agrees with the sheet size.")
         if expected.get("part_revision") is not None:
             keywords = (document.metadata or {}).get("keywords") or ""
-            wanted = [f"part_revision:{expected['part_revision']}", f"description_sha256:{expected['description_sha256']}"]
+            fields = dict(item.strip().split(":", 1) for item in keywords.split(";") if ":" in item)
+            wanted = {"part_revision": str(expected["part_revision"]), "description_sha256": expected["description_sha256"]}
             if expected.get("dxf_sha256"):
-                wanted.append(f"dxf_sha256:{expected['dxf_sha256']}")
-            missing = [item for item in wanted if item not in keywords]
+                wanted["dxf_sha256"] = expected["dxf_sha256"]
+            # Compare complete field values: part_revision:10 is not part_revision:1.
+            missing = [f"{key}:{value}" for key, value in wanted.items() if fields.get(key, "").strip() != value]
             if missing:
                 report.add("PDF-BIND-01", "fail", "critical", "The PDF metadata does not name the bound revision, description, or DXF.",
                            expected=wanted, observed=keywords[:300])
@@ -480,9 +495,12 @@ def _distance_to(point, item) -> float:
 def check_dimension_lines(report: Report, raster: Raster, dimension_lines: list[dict]) -> None:
     """The rendered dimension, extension, and leader lines must be where the bound drawing puts them."""
     for item in dimension_lines:
-        points = [p for a, b in item["segments"] for p in sample({"type": "line", "start": a, "end": b}, 0.3)]
-        covered = raster.covered(points)
-        fraction = sum(covered) / len(covered)
+        if item.get("not_tested"):
+            report.add("DIM-05", "not_tested", "info", f"Dimension {item['id']}: {item['not_tested']}", feature=item["id"], evidence=item["evidence"])
+            continue
+        # Each segment on its own: a missing extension line cannot hide in a long dimension line.
+        fraction = min(sum(covered) / len(covered) for covered in
+                       (raster.covered(sample({"type": "line", "start": a, "end": b}, 0.3)) for a, b in item["segments"]))
         region = _bounds([p for segment in item["segments"] for p in segment])
         if fraction >= 0.8:
             report.add("DIM-05", "pass", "info", f"Dimension {item['id']} shows its dimension and extension lines.", region=region,
@@ -512,11 +530,11 @@ def check_extra_ink(report: Report, raster: Raster, views: list[dict], derived: 
     annotations = request.get("annotations") or {}
     for a, b in annotations.get("lines", []):
         polyline([a, b])
-    for polygon in annotations.get("polygons", []) + request.get("hatching", []):
+    for polygon in annotations.get("polygons", []):
         if len(polygon) >= 3:
             draw.polygon([raster.pixel(p) for p in polygon], fill=1, outline=1)
             polyline(polygon + [polygon[0]])
-    explained = numpy.asarray(mask, dtype=bool)
+    explained = numpy.asarray(mask, dtype=bool) | _hatch_lines(raster, request.get("hatching", []))
     for view in views:
         if view["id"] not in derived:
             continue
@@ -539,6 +557,44 @@ def check_extra_ink(report: Report, raster: Raster, views: list[dict], derived: 
                    region=[left, raster.height_mm - bottom, right, raster.height_mm - top], feature=view["id"],
                    expected=f"no unexplained content of {THRESHOLDS['extra_extent_mm']} mm or more",
                    observed={"unexplained_mm2": round(area, 3), "largest_extent_mm": component["extent_mm"]})
+
+
+def _hatch_lines(raster: Raster, hatching: list[dict]):
+    """The expected hatch lines inside each hatched surface, not the complete surface.
+
+    The renderer uses the pattern ANSI31 with its base point at the sheet origin, so the lines are p · n = k · spacing,
+    where n is the normal of the hatch direction. The surface is the even-odd area of its loops.
+    """
+    from PIL import Image, ImageDraw
+
+    numpy = raster.numpy
+    result = numpy.zeros(raster.ink.shape, dtype=bool)
+    width = max(1, round(2 * HATCH_TOLERANCE_MM * raster.dpi / 25.4))
+    for hatch in hatching:
+        area = numpy.zeros(raster.ink.shape, dtype=bool)
+        for loop in hatch["loops"]:
+            if len(loop) < 3:
+                continue
+            layer = Image.new("1", raster.image.size, 0)
+            ImageDraw.Draw(layer).polygon([raster.pixel(p) for p in loop], fill=1)
+            area ^= numpy.asarray(layer, dtype=bool)
+        points = [p for loop in hatch["loops"] for p in loop]
+        if not points:
+            continue
+        angle = math.radians(hatch["angle"])
+        direction = [math.cos(angle), math.sin(angle)]
+        normal = [-direction[1], direction[0]]
+        offsets = [p[0] * normal[0] + p[1] * normal[1] for p in points]
+        along = [p[0] * direction[0] + p[1] * direction[1] for p in points]
+        lines = Image.new("1", raster.image.size, 0)
+        draw = ImageDraw.Draw(lines)
+        for k in range(math.floor(min(offsets) / hatch["spacing"]) - 1, math.ceil(max(offsets) / hatch["spacing"]) + 2):
+            c = k * hatch["spacing"]
+            start = [c * normal[0] + (min(along) - 1) * direction[0], c * normal[1] + (min(along) - 1) * direction[1]]
+            end = [c * normal[0] + (max(along) + 1) * direction[0], c * normal[1] + (max(along) + 1) * direction[1]]
+            draw.line([raster.pixel(start), raster.pixel(end)], fill=1, width=width)
+        result |= area & numpy.asarray(lines, dtype=bool)
+    return result
 
 
 def _largest_component(mask, dpi) -> dict | None:
@@ -626,6 +682,27 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
             report.add("DIM-03", "pass", "info", f"View {view['id']}: each round feature of the bound model has a dimension.", feature=view["id"])
 
 
+def check_datums(report: Report, raster: Raster, datums: list[dict]) -> None:
+    """The datum symbols on the part: the triangle, the leader, and the square must be present. The letter is read by OCR."""
+    for datum in datums:
+        a, b = datum["leader"]
+        leader = sample({"type": "line", "start": a, "end": b}, 0.2) if math.dist(a, b) > 0.3 else []
+        x0, y0, x1, y1 = datum["box"]
+        square = [p for edge in (([x0, y0], [x1, y0]), ([x1, y0], [x1, y1]), ([x1, y1], [x0, y1]), ([x0, y1], [x0, y0]))
+                  for p in sample({"type": "line", "start": edge[0], "end": edge[1]}, 0.2)]
+        triangle = datum["triangle"]
+        centroid = [sum(p[0] for p in triangle) / 3, sum(p[1] for p in triangle) / 3]
+        shares = {"leader": sum(raster.covered(leader)) / len(leader) if leader else 1.0,
+                  "square": sum(raster.covered(square)) / len(square), "triangle": float(all(raster.covered([centroid])))}
+        if min(shares.values()) >= 0.85:
+            report.add("GPS-09", "pass", "info", f"Datum symbol {datum['letter']} is attached to its feature.", region=datum["box"],
+                       feature="datum_" + datum["letter"], observed={key: round(value, 3) for key, value in shares.items()})
+        else:
+            report.add("GPS-09", "fail", "major", f"Datum symbol {datum['letter']} is missing or not attached to its feature.",
+                       region=_bounds([*triangle, [x0, y0], [x1, y1]]), feature="datum_" + datum["letter"],
+                       expected=">= 0.85 for leader, square, and triangle", observed={key: round(value, 3) for key, value in shares.items()})
+
+
 def check_frames(report: Report, raster: Raster, frames: list[dict]) -> None:
     for frame in frames:
         if frame.get("symbol"):
@@ -638,6 +715,15 @@ def check_frames(report: Report, raster: Raster, frames: list[dict]) -> None:
             inner = frame["symbol_rect"]
             inset = [inner[0] + 0.5, inner[1] + 0.5, inner[2] - 0.5, inner[3] - 0.5]
             stray = raster.unexplained(inset, items, 0.35)
+            circles = [{"type": "circle", "center": item["center"], "radius": item["radius"]} for item in frame.get("modifier_circles", [])]
+            for circle in circles:
+                points = sample(circle, 0.2)
+                share = sum(raster.covered(points)) / len(points)
+                if share < 0.85:
+                    report.add("GPS-07", "fail", "major", f"Tolerance frame {frame['id']}: a modifier circle is missing.",
+                               region=[circle["center"][0] - circle["radius"], circle["center"][1] - circle["radius"],
+                                       circle["center"][0] + circle["radius"], circle["center"][1] + circle["radius"]],
+                               feature=frame["id"], expected=">= 0.85", observed=round(share, 3))
             if fraction >= 0.85 and stray <= 0.6:
                 report.add("GPS-05", "pass", "info", f"Tolerance frame {frame['id']} shows the symbol of {frame['characteristic']}.",
                            region=inner, feature=frame["id"], observed=round(fraction, 3))
@@ -688,6 +774,12 @@ def verify(directory: Path, request: dict) -> dict:
                                     if pdf["page_size_mm"] else None)
     tools = {"verifier": VERIFIER_VERSION}
     raster = None
+    digest = hashlib.sha256((directory / "input.pdf").read_bytes()).hexdigest()
+    if request.get("raster_pdf_sha256") and request["raster_pdf_sha256"] != digest:
+        report.add("RENDER-04", "fail", "critical", "The raster was made from other PDF bytes than the verified PDF.",
+                   expected=request["raster_pdf_sha256"], observed=digest)
+    elif request.get("raster_pdf_sha256"):
+        report.add("RENDER-04", "pass", "info", "The raster was made from the verified PDF bytes.", observed=digest)
     if size is not None and (directory / "input.png").is_file():
         raster = Raster(directory / "input.png", size["width"], size["height"], request["dpi"])
         check_raster(report, raster, request["pages_rendered"], pdf["pages"], size)
@@ -708,6 +800,7 @@ def verify(directory: Path, request: dict) -> dict:
             report.add("MODEL-01", "not_tested", "info", "No bound model candidate was supplied.")
         check_dimensions(report, views, derived)
         check_dimension_lines(report, raster, request.get("dimension_lines", []))
+        check_datums(report, raster, request.get("datums", []))
         if derived:
             check_extra_ink(report, raster, views, derived, request)
         check_frames(report, raster, request.get("frames", []))

@@ -730,6 +730,21 @@ class DomainService:
                 raise DomainError("SOURCE_HASH_MISMATCH", "The source differs from the expected hash.")
             path = self.store.source_path(ctx, args["source_id"])
             expected = {"pdf_sha256": sources[0]["sha256"], "part_revision": None, "description_sha256": None, "dxf_sha256": None}
+        # One private snapshot for both workers. The raster and the verified bytes are the same bytes.
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != expected["pdf_sha256"]:
+            raise DomainError("INTEGRITY_ERROR", "The stored PDF changed before the verification.")
+        snapshot = cad.runner.storage / ("verify-" + uuid4().hex + ".pdf")
+        cad.runner.storage.mkdir(parents=True, exist_ok=True)
+        with snapshot.open("xb") as stream:
+            stream.write(data)
+        try:
+            return self._verify_snapshot(ctx, cad, directory, state, drawing, report if drawing is not None else None,
+                                         candidate, expected, snapshot)
+        finally:
+            snapshot.unlink(missing_ok=True)
+
+    def _verify_snapshot(self, ctx, cad, directory, state, drawing, report, candidate, expected, path):
         rendered = cad.runner.run("render_pdf_poppler", input_pdf=path)
         pages = rendered.get("pages", []) if rendered.get("status") == "pass" else []
         image = None
@@ -744,6 +759,7 @@ class DomainService:
                                                      "No current validated build exists. The model comparison is not possible."))
         else:
             request = drawing_verification.build_unbound_request(expected, len(pages))
+        request["raster_pdf_sha256"] = expected["pdf_sha256"]
         if rendered.get("status") != "pass":
             request["service_findings"].append(({"rule_id": "RENDER-00", "status": "fail", "severity": "critical"},
                                                  "Poppler failed: " + str(self._public(rendered.get("error", {})).get("message", ""))))

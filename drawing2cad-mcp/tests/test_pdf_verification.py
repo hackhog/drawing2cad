@@ -38,7 +38,7 @@ def drawing(tmp_path_factory):
             "dxf_sha256": result["dxf_sha256"]}
 
 
-def run(tmp_path, pdf_bytes, *, step=None, spec=None, description=None, expected=None, unbound=False):
+def run(tmp_path, pdf_bytes, *, step=None, spec=None, description=None, expected=None, unbound=False, raster_sha=None):
     directory = tmp_path / "work"
     directory.mkdir(parents=True)
     (directory / "input.pdf").write_bytes(pdf_bytes)
@@ -55,6 +55,8 @@ def run(tmp_path, pdf_bytes, *, step=None, spec=None, description=None, expected
     else:
         resolved = drawing_validate(spec, description, 1)["resolved"]
         request = build_request(resolved, expected, len(pages) if rendered.returncode == 0 else 0)
+    if raster_sha is not None:
+        request["raster_pdf_sha256"] = raster_sha
     return verify(directory, request)["report"]
 
 
@@ -239,6 +241,8 @@ def test_critical_values_need_their_exact_number_and_qualifier():
     assert text_matches("Ø10", "-810", True) and text_matches("Ø10", "@10-", True) and text_matches("Ø10", "Ø10", True)
     assert not text_matches("Ø10", "210", True) and not text_matches("Ø10", "10", True) and not text_matches("Ø10", "Ø10.5", True)
     assert text_matches("R5", "R5", True) and not text_matches("R5", "5", True)
+    assert text_matches("1:1, 1:1.25", "1:1, 1:1.25", True) and not text_matches("1:1", "1:10", True)
+    assert not text_matches("0.1", "0.1 ± 0.9", True) and not text_matches("A", "AB", True)
 
 
 def test_changed_frame_semantics_fail(drawing, tmp_path):
@@ -266,7 +270,7 @@ def test_removed_dimension_lines_fail(drawing, tmp_path):
 
     resolved = drawing_validate(drawing["spec"], drawing["description"], 1)["resolved"]
     top = next(view for view in resolved["views"] if view["id"] == "top")
-    hub = next(item for item in _dimension_lines(top) if item["id"] == "d_hub")
+    hub = next(item for item in _dimension_lines(top, 2.5) if item["id"] == "d_hub")
     a, b = hub["segments"][0]
 
     def erase(page, k):
@@ -281,3 +285,81 @@ def test_encrypted_pdf_fails_with_a_report(drawing, tmp_path):
         data = document.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, owner_pw="owner", user_pw="user")
     report = run(tmp_path, data, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
     assert by_rule(report, "PDF-STRUCT-01", "fail") and report["status"] == "fail"
+
+
+def test_datum_symbols_and_modifier_circles_must_be_present(drawing, tmp_path):
+    layout = layout_of(drawing)
+    datum = layout["datums"][0]
+    frame = next(item for item in layout["frames"] if item["id"] == "bolt_position")
+    circle = next(c for item in frame["layout"]["compartments"] for c in item.get("circles", []))
+
+    def erase(page, k):
+        a, b = datum["leader"]
+        white(page, k, [min(a[0], b[0]) - 0.6, min(a[1], b[1]) - 0.6, max(a[0], b[0]) + 0.6, max(a[1], b[1]) + 0.6])
+        x0, y0, x1, y1 = datum["box"]
+        white(page, k, [x0 + 0.6, y0 + 0.6, x1 - 0.6, y1 - 0.6])
+        cx, cy = circle["center"]
+        page.draw_circle(pymupdf.Point(cx * k, (297 - cy) * k), circle["radius"] * k + 0.6, color=(1, 1, 1), width=2.2)
+    data = mutate(drawing["pdf"], erase)
+    report = run(tmp_path, data, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
+    assert by_rule(report, "GPS-09", "fail") and by_rule(report, "GPS-08", "fail") and by_rule(report, "GPS-07", "fail")
+
+
+def test_one_missing_extension_line_fails(drawing, tmp_path):
+    from drawing2cad_mcp.drawing_verification import _dimension_lines
+
+    resolved = drawing_validate(drawing["spec"], drawing["description"], 1)["resolved"]
+    front = next(view for view in resolved["views"] if view["id"] == "front")
+    height = next(item for item in _dimension_lines(front, 2.5) if item["id"] == "h_total")
+    a, b = height["segments"][0]
+
+    def erase(page, k):
+        white(page, k, [min(a[0], b[0]) - 0.6, min(a[1], b[1]) - 0.6, max(a[0], b[0]) + 0.6, max(a[1], b[1]) + 0.6])
+    data = mutate(drawing["pdf"], erase)
+    report = run(tmp_path, data, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
+    assert any(item["feature"] == "h_total" for item in by_rule(report, "DIM-05", "fail"))
+
+
+def test_extra_geometry_inside_a_hatched_surface_fails(drawing, tmp_path):
+    # The section shows the disc from x = 40..50 mm left of the bore; its cut surface is hatched (sheet x 240..250, y 80..92).
+    def circle(page, k):
+        page.draw_circle(pymupdf.Point(245 * k, (297 - 86) * k), 2.5 * k, color=(0, 0, 0), width=0.5)
+    data = mutate(drawing["pdf"], circle)
+    report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
+                 expected=expected_for(drawing, data))
+    assert any(item["feature"] == "section_a" for item in by_rule(report, "MODEL-05", "fail")), by_rule(report, "MODEL-05")
+
+
+def test_raster_of_other_bytes_and_prefix_revision_fail(drawing, tmp_path):
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path / "raster", data, spec=drawing["spec"], description=drawing["description"],
+                 expected=expected_for(drawing, data), raster_sha="0" * 64)
+    assert by_rule(report, "RENDER-04", "fail")
+
+    def keywords(document):
+        metadata = document.metadata
+        metadata["keywords"] = metadata["keywords"].replace("part_revision:1;", "part_revision:10;")
+        document.set_metadata(metadata)
+    with pymupdf.open(drawing["pdf"]) as document:
+        keywords(document)
+        changed = document.tobytes()
+    report = run(tmp_path / "meta", changed, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, changed))
+    assert by_rule(report, "PDF-BIND-01", "fail")
+
+
+def test_a_removed_note_fails(drawing, tmp_path):
+    spec = deepcopy(drawing["spec"])
+    spec["notes"] = [{"text": "Remove sharp edges", "position": [25, 30], "evidence_ids": ["drawing"]}]
+    description = drawing["description"]
+    out = tmp_path / "out"
+    out.mkdir()
+    result = render_drawing(spec, description, 1, out)
+    assert result["status"] == "pass", result["defects"][:4]
+    removed = mutate(out / "drawing.pdf", lambda page, k: white(page, k, [24, 28, 80, 35]))
+    expected = {"pdf_sha256": hashlib.sha256(removed).hexdigest(), "part_revision": 1, "description_sha256": spec["description_sha256"],
+                "dxf_sha256": result["dxf_sha256"]}
+    report = run(tmp_path, removed, spec=spec, description=description, expected=expected)
+    assert any(item["feature"] == "note_0" for item in by_rule(report, "TEXT-03", "fail"))
+    intact = (out / "drawing.pdf").read_bytes()
+    report = run(tmp_path / "intact", intact, spec=spec, description=description, expected={**expected, "pdf_sha256": hashlib.sha256(intact).hexdigest()})
+    assert by_rule(report, "TEXT-03", "pass")

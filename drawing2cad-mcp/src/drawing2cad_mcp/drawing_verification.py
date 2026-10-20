@@ -31,7 +31,7 @@ def _unit(vector):
     return [vector[0] / length, vector[1] / length]
 
 
-def _dimension_lines(view: dict) -> list[dict]:
+def _dimension_lines(view: dict, text_height: float) -> list[dict]:
     """Sheet segments that the dimension lines, extension lines, and leaders of a native dimension must show."""
     result = []
     for dimension in view["dimensions"]:
@@ -41,9 +41,18 @@ def _dimension_lines(view: dict) -> list[dict]:
             center = _sheet(view, dimension["center"])
             direction = _unit([label[0] - center[0], label[1] - center[1]])
             edge = [center[0] + direction[0] * dimension["radius"] * view["scale"], center[1] + direction[1] * dimension["radius"] * view["scale"]]
-            if math.dist(edge, label) > 4.0:
-                # The leader from the circle toward the value; the part next to the value can be covered by text.
-                segments.append([edge, [edge[0] + (label[0] - edge[0]) * 0.5, edge[1] + (label[1] - edge[1]) * 0.5]])
+            # The leader from the circle to the start of the value. The value is centered at the label point.
+            half_text = len(_dimension_text(dimension)) * text_height * 0.475 + 0.5
+            length = math.dist(edge, label) - half_text
+            if length > 1.0:
+                segments.append([edge, [edge[0] + direction[0] * length, edge[1] + direction[1] * length]])
+            else:
+                # A value close to the circle: at least the arrow at the circle.
+                segments.append([edge, [edge[0] + direction[0] * 1.0, edge[1] + direction[1] * 1.0]])
+        elif dimension["type"] == "angular":
+            result.append({"id": dimension["id"], "segments": [], "evidence": dimension["evidence_ids"],
+                           "not_tested": "The lines of angular dimensions are not tested in the raster."})
+            continue
         elif dimension["type"] == "linear":
             angle = math.radians(float(dimension.get("angle", 0.0)))
             direction = [math.cos(angle), math.sin(angle)]
@@ -118,10 +127,12 @@ def _frame_semantics(frame: dict) -> list[dict]:
     for index, compartment in enumerate(frame["layout"]["compartments"]):
         if compartment["kind"] == "datum":
             x0, y0, x1, y1 = compartment["rect"]
+            x1 -= 0.6
             if compartment["circles"]:
                 x1 = compartment["circles"][0]["center"][0] - compartment["circles"][0]["radius"] - 0.2
+            # Read inside the compartment borders. A border read as a letter must not change the value.
             texts.append({"rule": "GPS-06", "kind": "datum reference", "id": f"{frame['id']}_{index}", "text": compartment["text"],
-                          "box": [x0 + 0.4, y0 + 0.4, x1, y1 - 0.4], "center": [(x0 + x1) / 2, (y0 + y1) / 2], "angles": [0.0],
+                          "box": [x0 + 0.6, y0 + 0.6, x1, y1 - 0.6], "center": [(x0 + x1) / 2, (y0 + y1) / 2], "angles": [0.0],
                           "critical": True, "height": size, "feature": frame["id"], "evidence": frame["evidence_ids"]})
         for number, circle in enumerate(compartment.get("circles", [])):
             r = circle["radius"] * 0.72
@@ -189,11 +200,19 @@ def build_request(resolved: dict, expected: dict, pages_rendered: int) -> dict[s
         texts += _dimension_texts(view, height)
     layout = resolved.get("layout") or {}
     review_ids = set(layout.get("review_label_ids", []))
+    markers = {marker["id"] for marker in resolved.get("uncertainty_markers", [])}
+    # The values of native dimensions are read by DIM-01 in their text directions.
+    dimension_ids = {dimension["id"] for view in resolved["views"] for dimension in view["dimensions"]}
     for label in resolved["labels"]:
-        if label["id"].endswith("_label") or label["id"] in review_ids:
-            texts.append({"rule": "GPS-04" if label["id"] in review_ids else "TEXT-02", "kind": "label", "id": label["id"],
-                          "text": label["text"], "center": [(label["bounds"][0] + label["bounds"][2]) / 2, (label["bounds"][1] + label["bounds"][3]) / 2],
-                          "angles": [0.0], "critical": label["id"] in review_ids, "height": height})
+        if label["id"] in dimension_ids:
+            continue
+        # Every label is expected text: view labels, notes, uncertainty markers, sheet labels, and review lines.
+        identifier = label["id"]
+        rule = ("GPS-04" if identifier in review_ids else "TEXT-02" if identifier.endswith("_label") else "TEXT-03"
+                if identifier.startswith("note_") else "TEXT-04" if identifier in markers else "TEXT-05")
+        texts.append({"rule": rule, "kind": "label", "id": identifier, "text": label["text"],
+                      "center": [(label["bounds"][0] + label["bounds"][2]) / 2, (label["bounds"][1] + label["bounds"][3]) / 2],
+                      "angles": [0.0], "critical": identifier in review_ids, "height": height, "feature": identifier})
     block = layout.get("title_block")
     if block:
         rules = {"units": ("UNITS-01", True), "part_revision": ("REV-02", True), "scale": ("TEXT-01", True)}
@@ -212,15 +231,17 @@ def build_request(resolved: dict, expected: dict, pages_rendered: int) -> dict[s
         frame_layout = frame["layout"]
         symbol = next(item for item in frame_layout["compartments"] if item["kind"] == "symbol")
         frames.append({"id": frame["id"], "rect": frame_layout["rect"], "status": frame["status"], "symbol_rect": symbol["rect"],
-                       "symbol": sheet_layout.symbol_strokes(symbol["symbol"], symbol["rect"]), "characteristic": frame["characteristic"]})
+                       "symbol": sheet_layout.symbol_strokes(symbol["symbol"], symbol["rect"]), "characteristic": frame["characteristic"],
+                       "modifier_circles": [circle for item in frame_layout["compartments"] for circle in item.get("circles", [])]})
         texts += _frame_semantics(frame)
         value = next(item for item in frame_layout["compartments"] if item["kind"] == "value")
         size = frame_layout["text_height"]
         x0, y0, x1, y1 = value["rect"]
+        x1 -= 0.6
         if value["circles"]:
             # Read the value without the circled modifiers.
             x1 = value["circles"][0]["center"][0] - value["circles"][0]["radius"] - 0.2
-        box = [x0 + 0.4, y0 + 0.4, x1, y1 - 0.4]
+        box = [x0 + 0.6, y0 + 0.6, x1, y1 - 0.6]
         texts.append({"rule": "GPS-02", "kind": "tolerance value", "id": frame["id"], "text": value["text"], "box": box,
                       "center": [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2], "angles": [0.0], "critical": True, "height": size,
                       "feature": frame["id"], "evidence": frame["evidence_ids"]})
@@ -233,24 +254,32 @@ def build_request(resolved: dict, expected: dict, pages_rendered: int) -> dict[s
             texts.append({"rule": "SEC-01", "kind": "section letter", "id": f"{section['view_id']}_{index}", "text": section["letter"],
                           "center": end["letter_center"], "angles": [0.0], "critical": True, "height": height,
                           "feature": section["view_id"]})
-    dimension_lines = [item for view in resolved["views"] for item in _dimension_lines(view)]
+    datums = []
+    for datum in layout.get("datums", []):
+        datums.append({"letter": datum["letter"], "box": datum["box"], "triangle": datum["triangle"], "leader": datum["leader"]})
+        x0, y0, x1, y1 = datum["box"]
+        texts.append({"rule": "GPS-08", "kind": "datum symbol", "id": "datum_" + datum["letter"], "text": datum["letter"],
+                      "box": [x0 + 0.4, y0 + 0.4, x1 - 0.4, y1 - 0.4], "center": [(x0 + x1) / 2, (y0 + y1) / 2], "angles": [0.0],
+                      "critical": True, "height": height, "feature": "datum_" + datum["letter"], "evidence": datum["evidence_ids"]})
+    dimension_lines = [item for view in resolved["views"] for item in _dimension_lines(view, height)]
     return {"mode": "bound", "profile": PROFILE, "dpi": DPI, "expected": expected, "sheet": sheet, "pages_rendered": pages_rendered,
             "required": {"isometric": True, "section": True}, "views": views, "texts": texts, "frames": frames,
-            "dimension_lines": dimension_lines, "annotations": _annotations(resolved, texts, dimension_lines),
+            "dimension_lines": dimension_lines, "datums": datums, "annotations": _annotations(resolved, texts, dimension_lines),
             "hatching": _hatch_polygons(resolved), "service_findings": []}
 
 
-def _hatch_polygons(resolved: dict) -> list[list[list[float]]]:
-    """Sheet polygons of the hatched cut surfaces. Their hatch lines are expected ink."""
+def _hatch_polygons(resolved: dict) -> list[dict]:
+    """The hatched cut surfaces: their sheet loops and the pattern angle and spacing. Only their hatch lines are expected ink."""
     from .drafting import _hatch_loops
 
-    polygons = []
+    hatching = []
     for view in resolved["views"]:
         by_id = {item["id"]: item for item in view["geometry"]}
         for hatch in view.get("hatching") or []:
             items = [by_id[ref] for ref in hatch["boundary_primitive_ids"] if ref in by_id]
-            polygons += _hatch_loops(items, lambda p, v=view: _sheet(v, p), view["scale"])
-    return polygons
+            hatching.append({"loops": _hatch_loops(items, lambda p, v=view: _sheet(v, p), view["scale"]),
+                             "angle": hatch["angle"], "spacing": hatch["spacing"]})
+    return hatching
 
 
 def build_unbound_request(expected: dict, pages_rendered: int) -> dict[str, Any]:
