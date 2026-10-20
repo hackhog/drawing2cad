@@ -922,8 +922,10 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
     height = drawing.sheet.text_height
     by_id = {view["id"]: view for view in views}
     boxes: list[tuple[str, list[float]]] = []
-    # Leaders and arrows: (owner, start, end). They must not cross a label or another sheet item.
-    segments: list[tuple[str, list[float], list[float]]] = []
+    # Leaders, arrows, and cutting lines: (owner, exempt ids, start, end). They must not cross a label or another sheet item.
+    segments: list[tuple[str, set, list[float], list[float]]] = []
+    # Arrow heads and datum triangles: (owner, exempt ids, bounds). They must not overlap a label or another sheet item.
+    mark_boxes: list[tuple[str, set, list[float]]] = []
     layout: dict[str, Any] = {"title_block": None, "border": None, "frames": [], "datums": [], "sections": [], "review_label_ids": []}
 
     if sheet_layout.has_title_block(data):
@@ -962,7 +964,14 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
                                  "leader": sheet_layout.leader(frame_layout, target), "characteristic": frame["characteristic"],
                                  "evidence_ids": frame["evidence_ids"], "feature_ids": frame["feature_ids"]})
         boxes.append((frame["id"], box))
-        segments.append((frame["id"], *layout["frames"][-1]["leader"]))
+        start, end = layout["frames"][-1]["leader"]
+        head = sheet_layout.arrow_head(start, end)
+        if head is None or math.dist(start, end) < 3.0:
+            fail("sheet_overlap", frame["id"], "The tolerance frame covers or nearly touches its feature point. Move the frame away from the feature.",
+                 bounds=box, target=end)
+        else:
+            segments.append((frame["id"], {frame["id"]}, start, end))
+            mark_boxes.append((frame["id"], {frame["id"]}, sheet_layout.bounds(head)))
     for datum in data["datums"]:
         view = by_id.get(datum["view_id"])
         primitive = next((p for p in view["geometry"] if p["id"] == datum["primitive_id"]), None) if view else None
@@ -971,8 +980,10 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
         symbol = sheet_layout.datum_layout(datum, view, primitive, height)
         layout["datums"].append({"letter": datum["letter"], "evidence_ids": datum["evidence_ids"],
                                  "feature_ids": datum["feature_ids"], **symbol})
-        boxes.append(("datum_" + datum["letter"], symbol["box"]))
-        segments.append(("datum_" + datum["letter"], *symbol["leader"]))
+        owner = "datum_" + datum["letter"]
+        boxes.append((owner, symbol["box"]))
+        segments.append((owner, {owner}, *symbol["leader"]))
+        mark_boxes.append((owner, {owner}, sheet_layout.bounds(symbol["triangle"])))
     for view in drawing.views:
         plane = view.cutting_plane
         source = by_id.get(plane.source_view_id) if plane else None
@@ -985,9 +996,11 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
         if marks is None:
             continue
         layout["sections"].append({"view_id": view.id, "evidence_ids": plane.evidence_ids, **marks})
+        own = {f"{view.id}_letter_{index}" for index in range(len(marks["ends"]))}
+        segments.append((f"{view.id}_cutting_line", own, *marks["line"]))
         for index, end in enumerate(marks["ends"]):
             boxes.append((f"{view.id}_letter_{index}", end["letter_box"]))
-            segments.append((f"{view.id}_arrow_{index}", end["shaft"][0], end["head"][0]))
+            segments.append((f"{view.id}_arrow_{index}", own, end["shaft"][0], end["head"][0]))
     for line in sheet_layout.review_lines(data, height):
         label(line["id"], line["text"], line["position"])
         layout["review_label_ids"].append(line["id"])
@@ -1008,14 +1021,18 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
             if _overlap(box, item["bounds"]):
                 fail("sheet_overlap", identifier, f"The sheet item overlaps label {item['id']}.", bounds=box,
                      other_id=item["id"], other_bounds=item["bounds"])
-    for owner, start, end in segments:
-        for identifier, box in boxes + [(item["id"], item["bounds"]) for item in labels]:
+    others = boxes + [(item["id"], item["bounds"]) for item in labels]
+    for owner, exempt, start, end in segments:
+        for identifier, box in others:
             # A leader starts at the edge of its own item and ends at its feature. Only a crossing of another item is a defect.
-            if identifier == owner or (owner.endswith(("_arrow_0", "_arrow_1")) and identifier.startswith(owner.rsplit("_arrow_", 1)[0])):
-                continue
-            if _segment_crosses_box(start, end, box):
-                fail("sheet_overlap", owner, f"The leader crosses {identifier}. Move the frame, the datum symbol, or the label.",
+            if identifier not in exempt and _segment_crosses_box(start, end, box):
+                fail("sheet_overlap", owner, f"The line of {owner} crosses {identifier}. Move the sheet item or the label.",
                      leader=[start, end], other_id=identifier, other_bounds=box)
+    for owner, exempt, mark in mark_boxes:
+        for identifier, box in others:
+            if identifier not in exempt and _overlap(mark, box):
+                fail("sheet_overlap", owner, f"The arrow head or datum triangle of {owner} overlaps {identifier}.",
+                     bounds=mark, other_id=identifier, other_bounds=box)
     for index, note in enumerate(drawing.notes):
         if GPS_TEXT.search(note.text):
             findings.append({"code": "gps_free_text", "id": f"note_{index}", "status": "needs_review",

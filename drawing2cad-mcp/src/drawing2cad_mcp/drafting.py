@@ -218,14 +218,9 @@ def _render_sheet_items(modelspace, layout: dict, sheet: dict, evidence) -> list
                 text(item["letter"], item["center"], layer, frame_layout["text_height"] * 0.8, centered=True)
         start, target = frame["leader"]
         modelspace.add_line(start, target, dxfattribs={"layer": layer})
-        direction = [target[0] - start[0], target[1] - start[1]]
-        length = math.hypot(*direction)
-        if length > 1e-6:
-            unit = [direction[0] / length, direction[1] / length]
-            normal = [-unit[1], unit[0]]
-            base = [target[0] - unit[0] * 2.5, target[1] - unit[1] * 2.5]
-            solid([target, [base[0] + normal[0] * 0.8, base[1] + normal[1] * 0.8],
-                   [base[0] - normal[0] * 0.8, base[1] - normal[1] * 0.8]], layer)
+        head = sheet_layout.arrow_head(start, target)
+        if head is not None:
+            solid(head, layer)
         if frame.get("review"):
             text(frame["review"]["text"], frame["review"]["position"], "UNCERTAINTY")
     for datum in layout.get("datums", []):

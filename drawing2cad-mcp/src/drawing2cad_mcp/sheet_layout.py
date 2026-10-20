@@ -63,8 +63,8 @@ def _number(value: float) -> str:
 
 
 def exact_text(value: float) -> bool:
-    """True when the value text shows the value without rounding."""
-    return abs(float(_number(value)) - value) <= 1e-12
+    """True when the value text shows exactly the value. A positive value never becomes 0."""
+    return float(_number(value)) == value
 
 
 def has_title_block(drawing: dict) -> bool:
@@ -146,21 +146,31 @@ def border(sheet: dict, zone_grid: bool) -> dict[str, Any]:
             "label_height": min(2.5, margin * 0.5)}
 
 
-def anchor_point(primitive: dict, view: dict) -> list[float]:
-    """The sheet point on a primitive that a tolerance frame leader or a datum triangle uses."""
+def _anchor(primitive: dict) -> tuple[list[float], list[float]]:
+    """A local point on a primitive and the unit tangent of the primitive at that point."""
     if primitive["type"] == "line":
         local = [(primitive["start"][i] + primitive["end"][i]) / 2 for i in (0, 1)]
+        tangent = [primitive["end"][i] - primitive["start"][i] for i in (0, 1)]
     elif primitive["type"] in {"circle", "arc"}:
-        angle = 90.0 if primitive["type"] == "circle" else (
-            primitive["start_angle"] + ((primitive["end_angle"] - primitive["start_angle"]) % 360) / 2)
-        local = [primitive["center"][0] + primitive["radius"] * math.cos(math.radians(angle)),
-                 primitive["center"][1] + primitive["radius"] * math.sin(math.radians(angle))]
+        angle = math.radians(90.0 if primitive["type"] == "circle" else (
+            primitive["start_angle"] + ((primitive["end_angle"] - primitive["start_angle"]) % 360) / 2))
+        local = [primitive["center"][0] + primitive["radius"] * math.cos(angle),
+                 primitive["center"][1] + primitive["radius"] * math.sin(angle)]
+        tangent = [-math.sin(angle), math.cos(angle)]
     else:
         # A point on the ellipse at the middle of its parameter range.
         angle = math.radians((primitive["start_parameter"] + primitive["end_parameter"]) / 2)
         major = primitive["major_axis"]
         minor = [-major[1] * primitive["ratio"], major[0] * primitive["ratio"]]
         local = [primitive["center"][i] + math.cos(angle) * major[i] + math.sin(angle) * minor[i] for i in (0, 1)]
+        tangent = [-math.sin(angle) * major[i] + math.cos(angle) * minor[i] for i in (0, 1)]
+    length = math.hypot(*tangent) or 1.0
+    return local, [tangent[0] / length, tangent[1] / length]
+
+
+def anchor_point(primitive: dict, view: dict) -> list[float]:
+    """The sheet point on a primitive that a tolerance frame leader or a datum triangle uses."""
+    local = _anchor(primitive)[0]
     return [view["origin"][i] + view["scale"] * local[i] for i in (0, 1)]
 
 
@@ -267,13 +277,14 @@ def datum_layout(datum: dict, view: dict, primitive: dict, text_height: float) -
         x, y = anchor[0] - size / 2, anchor[1] + 4.0
     box = [x, y, x + size, y + size]
     center = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]
-    direction = [center[0] - anchor[0], center[1] - anchor[1]]
-    length = math.hypot(*direction) or 1.0
-    unit = [direction[0] / length, direction[1] / length]
-    normal = [-unit[1], unit[0]]
-    triangle = [[anchor[0] + normal[0] * 1.5, anchor[1] + normal[1] * 1.5], [anchor[0] - normal[0] * 1.5, anchor[1] - normal[1] * 1.5],
-                [anchor[0] + unit[0] * 2.6, anchor[1] + unit[1] * 2.6]]
-    entry = _box_entry(box, anchor)
+    # The base of the triangle lies along the feature; the apex points to the side of the square.
+    tangent = _anchor(primitive)[1]
+    normal = [-tangent[1], tangent[0]]
+    if (center[0] - anchor[0]) * normal[0] + (center[1] - anchor[1]) * normal[1] < 0:
+        normal = [-normal[0], -normal[1]]
+    triangle = [[anchor[0] + tangent[0] * 1.5, anchor[1] + tangent[1] * 1.5], [anchor[0] - tangent[0] * 1.5, anchor[1] - tangent[1] * 1.5],
+                [anchor[0] + normal[0] * 2.6, anchor[1] + normal[1] * 2.6]]
+    entry = _box_entry(box, triangle[2])
     return {"box": box, "triangle": triangle, "leader": [triangle[2], entry],
             "text_position": [box[0] + (size - text_width(datum["letter"], text_height, FIELD_TEXT_FACTOR)) / 2,
                               box[1] + (size - text_height) / 2]}
@@ -282,6 +293,23 @@ def datum_layout(datum: dict, view: dict, primitive: dict, text_height: float) -
 def _box_entry(box, point):
     """The point on the edge of a box that is nearest to a point outside it."""
     return [min(max(point[0], box[0]), box[2]), min(max(point[1], box[1]), box[3])]
+
+
+def arrow_head(start: list[float], target: list[float], length: float = 2.5, half_width: float = 0.8) -> list[list[float]] | None:
+    """Filled arrow head at target, in the direction from start to target. None for a leader without length."""
+    direction = [target[0] - start[0], target[1] - start[1]]
+    size = math.hypot(*direction)
+    if size <= 1e-6:
+        return None
+    unit = [direction[0] / size, direction[1] / size]
+    normal = [-unit[1], unit[0]]
+    base = [target[0] - unit[0] * length, target[1] - unit[1] * length]
+    return [list(target), [base[0] + normal[0] * half_width, base[1] + normal[1] * half_width],
+            [base[0] - normal[0] * half_width, base[1] - normal[1] * half_width]]
+
+
+def bounds(points) -> list[float]:
+    return [min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points)]
 
 
 def leader(layout: dict, target: list[float]) -> list[list[float]]:

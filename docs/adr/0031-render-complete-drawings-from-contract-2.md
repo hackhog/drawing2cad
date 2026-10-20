@@ -35,7 +35,8 @@ or a tolerance frame could not be delivered.
   A 2.0 drawing with a title block does not repeat the title and the units as free labels.
 - Tolerance frames (ISO 1101): a compartment for the characteristic symbol, the value with Ø or SØ and the modifiers, and one compartment
   for each datum reference. The symbols are lines, circles, and arcs, not font characters. A leader with an arrow head goes to the feature.
-- Datum symbols (ISO 5459): a filled triangle with its base on the feature, a leader from its apex, and a square with the letter. `position` is optional.
+- Datum symbols (ISO 5459): a filled triangle with its base along the feature tangent, a leader from its apex, and a square with the letter.
+  `position` is optional. The apex points to the side of the square.
 - A leader ends on its primitive: the middle of a line, the top of a circle, the middle of an arc, or the middle of the parameter range of an ellipse.
 - Theoretically exact dimensions: native DXF dimensions with a frame around the value (negative DIMGAP).
 
@@ -52,10 +53,12 @@ or a tolerance frame could not be delivered.
 - The title block must fit inside the margin, and no view frame may overlap it (`sheet_overlap`).
   Each field value must fit its field (`title_block_text`).
 - Tolerance frames, datum squares, section letters, and the review list must stay inside the margin and must not overlap each other or a label (`sheet_overlap`).
-  The leaders of frames and datums and the section arrows must not cross another sheet item or a label.
-- A tolerance value is shown with at most 6 decimal places. A value that needs more places fails, so the drawing never shows a rounded value.
-- A section needs the projection of its source view for its marks. Without it, the drawing fails with `section_marks`.
+  The leaders of frames and datums, the cutting line, and the section arrows must not cross another sheet item or a label.
+  Arrow heads and datum triangles must not overlap another sheet item or a label. A frame must not cover its own feature point.
   These defects are layout defects and give diagnostic artifacts.
+- A tolerance value is shown with at most 6 decimal places. A value that the text cannot show exactly fails, so the drawing never shows a rounded value.
+- A section needs the projection of its source view for its marks. Without it, the drawing fails with `section_marks`.
+  This defect is missing data, not a layout defect, so it gives no diagnostic artifacts.
 - The border and its zone labels are in the margin. The margin check of the other entities excludes them.
 
 ### One revision for DXF and PDF

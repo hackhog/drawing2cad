@@ -186,4 +186,29 @@ def test_leader_through_a_note_fails(tmp_path):
     # The flatness leader runs from the frame at the right to the top face of the disc. Put a note on its path.
     spec["notes"] = [{"text": "Note", "position": [130, 92.5], "evidence_ids": ["drawing"]}]
     defects = drawing_validate(spec, description, 1)["defects"]
-    assert any(d["code"] == "sheet_overlap" and "leader crosses" in d["message"] for d in defects), defects[:4]
+    assert any(d["code"] == "sheet_overlap" and "crosses note_0" in d["message"] for d in defects), defects[:4]
+
+
+def test_tiny_tolerance_values_are_rejected(tmp_path):
+    description, spec = flange_drawing(tmp_path)
+    spec["tolerance_frames"][0]["value"] = 4e-13
+    assert any(d["code"] == "gps_frame" for d in drawing_validate(spec, description, 1)["defects"])
+
+
+def test_datum_triangle_base_follows_the_feature():
+    from drawing2cad_mcp.sheet_layout import datum_layout
+
+    view = {"origin": [0, 0], "scale": 1.0}
+    line = {"type": "line", "start": [0, 0], "end": [20, 0]}
+    symbol = datum_layout({"letter": "A", "position": [25, 10]}, view, line, 2.5)
+    base = symbol["triangle"][:2]
+    assert abs(base[0][1]) < 1e-9 and abs(base[1][1]) < 1e-9  # Both base corners are on the line.
+    assert symbol["triangle"][2][1] > 0                          # The apex points to the side of the square.
+
+
+def test_frame_on_its_feature_and_arrow_heads_on_labels_fail(tmp_path):
+    description, spec = flange_drawing(tmp_path)
+    # Move the position frame onto its bolt hole: the frame covers its feature point.
+    spec["tolerance_frames"][1]["position"] = [24, 24]
+    defects = drawing_validate(spec, description, 1)["defects"]
+    assert any(d["code"] == "sheet_overlap" and "covers" in d["message"] for d in defects), defects[:4]
