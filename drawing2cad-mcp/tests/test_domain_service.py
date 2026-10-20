@@ -20,7 +20,7 @@ from drawing2cad_mcp.domain_store import AccessContext, DomainError
 from drawing2cad_mcp.domain_tools import DOMAIN_SCHEMAS
 from drawing2cad_mcp.drawing_contract import description_digest
 from drawing2cad_mcp.drafting import render_drawing
-from drawing2cad_mcp.pdf import PdfError
+from drawing2cad_mcp.pdf import PdfError, PdfProcessError
 from test_cad_service import FakeRunner, coverage
 from test_drafting import drawing_fixture
 
@@ -82,7 +82,7 @@ def test_pdf_failure_logs_redacted_diagnostic_and_returns_safe_recovery(domain, 
     private_path = str(service.store.root / "private.pdf")
 
     def fail(*args, **kwargs):
-        raise PdfError(f"Vector analysis failed: unsupported glyph at {private_path}")
+        raise PdfProcessError(f"Vector analysis failed: unsupported glyph at {private_path}")
 
     monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", fail)
     with pytest.raises(DomainError) as caught:
@@ -93,6 +93,24 @@ def test_pdf_failure_logs_redacted_diagnostic_and_returns_safe_recovery(domain, 
     assert private_path not in caplog.text
     assert "unsupported glyph" not in caught.value.message
     assert "PDF image tools" in caught.value.next_action
+
+
+def test_written_pdf_error_reaches_the_agent_without_private_paths(domain, monkeypatch, caplog):
+    service, source, _, _, _ = domain
+    private_path = str(service.store.root / "private.pdf")
+
+    def fail(*args, **kwargs):
+        raise PdfError(f"stroke_kinds requires include_strokes=true for {private_path}.")
+
+    monkeypatch.setattr(service._backend(CTX)[1], "extract_drawing", fail)
+    with pytest.raises(DomainError) as caught:
+        service.call(CTX, "drawing_extract", {"source_id": source["source_id"]})
+    assert caught.value.code == "PDF_PREPARATION_FAILED"
+    assert "stroke_kinds requires include_strokes=true" in caught.value.message
+    assert private_path not in caught.value.message
+    assert "[private storage]" in caught.value.message
+    assert "Correct the arguments" in caught.value.next_action
+    assert private_path not in caplog.text
 
 
 def call(service, name, **args):
