@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, ValidationError, field_validator
@@ -13,9 +14,10 @@ from .drawing_contract_v2 import (
     GPS_PROFILE_ID, TITLE_BLOCK_MANDATORY, Border, CuttingPlane, Datum, Derivation, Ellipse, Hatching, Projection, TitleBlock,
     ToleranceFrame, UnsupportedGps, ellipse_bounds, frame_review, gps_profile, projection_defects,
 )
+from . import sheet_layout
 from .part_schema import ClosedModel, EvidenceIds, Identifier, Number, _references, parse_description
 
-# Version 1.0 stays the default until the renderer supports the content of version 2.0.
+# Version 1.0 stays the default, so that existing clients keep their schema.
 DRAWING_SCHEMA_VERSION = "1.0"
 DRAWING_SCHEMA_VERSION_2 = "2.0"
 DRAWING_SCHEMA_VERSIONS = (DRAWING_SCHEMA_VERSION, DRAWING_SCHEMA_VERSION_2)
@@ -191,8 +193,8 @@ def drawing_schema(schema_version: str = DRAWING_SCHEMA_VERSION) -> dict[str, An
                 "content": ["isometric view with a projection matrix", "parallel projection of other views", "ellipse",
                             "cutting plane and hatching", "title block (ISO 7200)", "border", "projection symbol",
                             "datums", "tolerance frames", "theoretically exact dimensions", "unsupported GPS requirements"],
-                "rendering": "drawing_render rejects ellipses, hatching, cutting planes, sheet data, and GPS data until the renderer supports them. "
-                             "drawing_validate checks them.",
+                "rendering": "drawing_render draws all 2.0 content. The title block (180 mm x 32 mm) is at the bottom-right corner inside the margin; "
+                             "keep view frames off it. Frames outside the GPS profile get a red REVIEW mark. Unsupported GPS items are listed above the title block.",
                 "isometry": "kind isometric needs a projection with view_direction along a body diagonal, equal projected axis lengths, "
                             "and 120 degrees between the projected axes. A label or an orientation does not create a projection.",
                 "gps_profile": gps_profile()}} if version_2 else {}),
@@ -392,8 +394,10 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
                  label_bounds=box, allowed_bounds=list(bounds), **({"view_transform": transform} if transform else {}))
         labels.append({"id": identifier, "text": text, "position": list(position), "bounds": box, "centered": centered})
 
-    label("sheet_title", drawing.title, (sheet.margin + 2, sheet.margin + 3))
-    label("sheet_units", f"Units: mm | Part revision: {revision}", (sheet.margin + 2, sheet.margin + 9))
+    # A 2.0 title block shows the title, the units, and the part revision. Do not repeat them.
+    if not (version_2 and sheet_layout.has_title_block(drawing.model_dump())):
+        label("sheet_title", drawing.title, (sheet.margin + 2, sheet.margin + 3))
+        label("sheet_units", f"Units: mm | Part revision: {revision}", (sheet.margin + 2, sheet.margin + 9))
     for view in drawing.views:
         unique(view.id)
         frame = list(view.frame)
@@ -422,7 +426,8 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
 
         view_transform = _view_transform(view.id, view.origin, view.scale)
 
-        label(view.id + "_label", f"{view.label} | Scale {view.scale:g}:1", (frame[0] + 2, frame[3] - 4), frame)
+        scale_text = sheet_layout.scale_text([view.scale]) if version_2 else f"{view.scale:g}:1"
+        label(view.id + "_label", f"{view.label} | Scale {scale_text}", (frame[0] + 2, frame[3] - 4), frame)
         if view.section_note:
             label(view.id + "_section", view.section_note, (frame[0] + 2, frame[1] + 3), frame)
         geometry = {}
@@ -627,6 +632,7 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
             if (not covered
                     and (view["id"], primitive["id"]) not in marked_primitives):
                 fail("unmarked_radius", primitive["id"], "A round primitive needs a radius or diameter dimension for the same circular feature and evidence in this view, or a visible uncertainty marker.")
+    layout = _sheet_layout(drawing, views, labels, gps_frames, label, fail, findings, usable) if version_2 else None
     for index, first in enumerate(labels):
         for second in labels[index + 1:]:
             if _overlap(first["bounds"], second["bounds"]):
@@ -640,7 +646,8 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
                     and _segment_crosses_box(*ends, other["bounds"])):
                 fail("leader_overlap", marker["id"], f"The marker leader crosses label {other['id']}. Move the marker label.",
                      leader=[marker["position"], marker["target"]], other_id=other["id"], other_bounds=other["bounds"])
-    layout_codes = {"label_overlap", "label_clipping", "geometry_clipping", "view_overlap", "leader_overlap"}
+    layout_codes = {"label_overlap", "label_clipping", "geometry_clipping", "view_overlap", "leader_overlap",
+                    "sheet_overlap", "title_block_text"}
     isometric = [v for v in drawing.views if v.kind == "isometric"]
     version_checks = {
         "isometric_projection": ("fail" if any(d["code"] in {"projection", "projection_missing"} and d["id"] in {v.id for v in isometric}
@@ -656,7 +663,7 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
             "diagnostic_eligible": bool(defects) and all(item["code"] in layout_codes for item in defects),
             "total_defects": len(defects), "defects_truncated": len(defects) > 100,
             "description_sha256": drawing.description_sha256, "part_revision": drawing.part_revision,
-            "resolved": {**drawing.model_dump(), "views": views, "labels": labels, "uncertainty_markers": markers},
+            "resolved": {**drawing.model_dump(), "views": views, "labels": labels, "uncertainty_markers": markers, "layout": layout},
             "checks": {"binding": "fail" if any(d["code"] == "stale_binding" for d in defects) else "pass",
                        "declaration_and_layout": "fail" if defects else "pass", "source_accuracy": "not_tested",
                        "cad_equivalence": "not_tested", "projection_completeness": "not_tested", **version_checks},
@@ -664,21 +671,9 @@ def drawing_validate(spec: dict[str, Any], description: dict[str, Any], revision
 
 
 def _render_support(drawing: DrawingSpec) -> dict[str, Any]:
-    """Content that the renderer cannot render yet. drawing_render rejects a drawing with such content."""
-    unsupported = []
-    for view in drawing.views:
-        if any(isinstance(g, Ellipse) for g in view.geometry):
-            unsupported.append(f"views[{view.id}]: ellipse")
-        if view.cutting_plane is not None or view.hatching:
-            unsupported.append(f"views[{view.id}]: cutting plane or hatching")
-        if any(d.theoretically_exact for d in view.dimensions):
-            unsupported.append(f"views[{view.id}]: theoretically exact dimension")
-    for name in ("title_block", "border", "projection_symbol"):
-        if getattr(drawing, name) is not None:
-            unsupported.append(name)
-    for name in ("datums", "tolerance_frames", "unsupported_gps"):
-        if getattr(drawing, name):
-            unsupported.append(name)
+    """Content that the renderer cannot render. drawing_render rejects a drawing with such content."""
+    # The renderer draws all content of schema 2.0. The gate stays for content of later versions.
+    unsupported: list[str] = []
     return {"renderable": not unsupported, "unsupported": unsupported}
 
 
@@ -911,3 +906,135 @@ def _check_trace(view_id: str, plane, projection, fail, findings) -> None:
     scale = math.hypot(*projected) * math.hypot(*line)
     if scale > 1e-12 and abs(projected[0] * line[0] + projected[1] * line[1]) / scale > 1e-6:
         fail("cutting_plane", view_id, "The cutting line is not parallel to the trace of the cutting plane in the source view.")
+
+
+# Free text that looks like a geometrical tolerance. A note does not replace a structured tolerance frame.
+GPS_TEXT = re.compile(r"[\u23e4\u23e5\u25cb\u232d\u2225\u27c2\u2220\u2316\u25ce\u2197\u2330\u2312\u2313\u232f]"
+                      r"|\b(flatness|straightness|roundness|cylindricity|parallelism|perpendicularity|angularity|position"
+                      r"|coaxiality|concentricity|symmetry|run-?out|profile)\b[^\n]*\d", re.IGNORECASE)
+
+
+def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], gps_frames: list[dict], label, fail, findings,
+                  usable) -> dict[str, Any]:
+    """Lay out the 2.0 sheet items and check them against the views, the labels, and each other."""
+    data = drawing.model_dump()
+    sheet = data["sheet"]
+    height = drawing.sheet.text_height
+    by_id = {view["id"]: view for view in views}
+    boxes: list[tuple[str, list[float]]] = []
+    # Leaders, arrows, and cutting lines: (owner, exempt ids, start, end). They must not cross a label or another sheet item.
+    segments: list[tuple[str, set, list[float], list[float]]] = []
+    # Arrow heads and datum triangles: (owner, exempt ids, bounds). They must not overlap a label or another sheet item.
+    mark_boxes: list[tuple[str, set, list[float]]] = []
+    layout: dict[str, Any] = {"title_block": None, "border": None, "frames": [], "datums": [], "sections": [], "review_label_ids": []}
+
+    if sheet_layout.has_title_block(data):
+        rect = sheet_layout.title_block_rect(sheet)
+        if not _inside(rect, usable):
+            fail("sheet_overlap", "title_block", "The sheet is too small for the title block.", bounds=rect, allowed_bounds=usable)
+        cells = sheet_layout.title_block_cells(data, views)
+        for cell in cells:
+            if (cell["value"] is not None and sheet_layout.text_width(cell["value"], cell["value_height"], sheet_layout.FIELD_TEXT_FACTOR)
+                    > cell["rect"][2] - cell["rect"][0] - 1.6):
+                fail("title_block_text", cell["field"], f"The value of {cell['field']} is too long for its title block field. Shorten it.")
+        symbol_cell = next(cell for cell in cells if cell["field"] == "projection_symbol")
+        layout["title_block"] = {"rect": rect, "cells": cells,
+                                 "projection_symbol": sheet_layout.projection_symbol(drawing.projection_symbol, symbol_cell["rect"])
+                                 if drawing.projection_symbol else None}
+        boxes.append(("title_block", rect))
+    if drawing.border is not None:
+        layout["border"] = sheet_layout.border(sheet, drawing.border.zone_grid)
+
+    status = {frame["id"]: frame["status"] for frame in gps_frames}
+    for frame in data["tolerance_frames"]:
+        view = by_id.get(frame["view_id"])
+        primitive = next((p for p in view["geometry"] if p["id"] == frame["primitive_id"]), None) if view else None
+        if primitive is None:
+            continue
+        frame_layout = sheet_layout.frame_layout(frame, view, height)
+        target = sheet_layout.anchor_point(primitive, view)
+        frame_status = status.get(frame["id"], "fail")
+        box = list(frame_layout["rect"])
+        review = None
+        if frame_status != "pass":
+            # A frame outside the supported profile gets a visible review mark. It is not shown as a supported frame.
+            review = {"text": "REVIEW", "position": [box[2] + 1.0, box[1] + (box[3] - box[1] - height) / 2]}
+            box[2] += 1.0 + sheet_layout.text_width("REVIEW", height)
+        layout["frames"].append({"id": frame["id"], "status": frame_status, "layout": frame_layout, "review": review,
+                                 "leader": sheet_layout.leader(frame_layout, target), "characteristic": frame["characteristic"],
+                                 "evidence_ids": frame["evidence_ids"], "feature_ids": frame["feature_ids"]})
+        boxes.append((frame["id"], box))
+        start, end = layout["frames"][-1]["leader"]
+        head = sheet_layout.arrow_head(start, end)
+        if head is None or math.dist(start, end) < 3.0:
+            fail("sheet_overlap", frame["id"], "The tolerance frame covers or nearly touches its feature point. Move the frame away from the feature.",
+                 bounds=box, target=end)
+        else:
+            segments.append((frame["id"], {frame["id"]}, start, end))
+            mark_boxes.append((frame["id"], {frame["id"]}, sheet_layout.bounds(head)))
+    for datum in data["datums"]:
+        view = by_id.get(datum["view_id"])
+        primitive = next((p for p in view["geometry"] if p["id"] == datum["primitive_id"]), None) if view else None
+        if primitive is None:
+            continue
+        symbol = sheet_layout.datum_layout(datum, view, primitive, height)
+        layout["datums"].append({"letter": datum["letter"], "evidence_ids": datum["evidence_ids"],
+                                 "feature_ids": datum["feature_ids"], **symbol})
+        owner = "datum_" + datum["letter"]
+        boxes.append((owner, symbol["box"]))
+        segments.append((owner, {owner}, *symbol["leader"]))
+        mark_boxes.append((owner, {owner}, sheet_layout.bounds(symbol["triangle"])))
+    for view in drawing.views:
+        plane = view.cutting_plane
+        source = by_id.get(plane.source_view_id) if plane else None
+        if source is None or view.projection is None:
+            continue
+        if not source.get("projection"):
+            fail("section_marks", view.id, "The source view needs a projection to show the cutting line, the arrows, and the letters.")
+            continue
+        marks = sheet_layout.section_marks(plane.model_dump(), source, view.projection.view_direction, height)
+        if marks is None:
+            continue
+        layout["sections"].append({"view_id": view.id, "evidence_ids": plane.evidence_ids, **marks})
+        own = {f"{view.id}_letter_{index}" for index in range(len(marks["ends"]))}
+        segments.append((f"{view.id}_cutting_line", own, *marks["line"]))
+        for index, end in enumerate(marks["ends"]):
+            boxes.append((f"{view.id}_letter_{index}", end["letter_box"]))
+            segments.append((f"{view.id}_arrow_{index}", own, end["shaft"][0], end["head"][0]))
+    for line in sheet_layout.review_lines(data, height):
+        label(line["id"], line["text"], line["position"])
+        layout["review_label_ids"].append(line["id"])
+
+    for identifier, box in boxes:
+        if identifier != "title_block" and not _inside(box, usable):
+            fail("sheet_overlap", identifier, "A sheet item exceeds the sheet margin.", bounds=box, allowed_bounds=usable)
+    title = next((box for identifier, box in boxes if identifier == "title_block"), None)
+    if title is not None:
+        for view in views:
+            if _overlap(view["frame"], title):
+                fail("sheet_overlap", view["id"], "The view frame overlaps the title block.", frame=view["frame"], other_bounds=title)
+    for index, (identifier, box) in enumerate(boxes):
+        for other, other_box in boxes[index + 1:]:
+            if _overlap(box, other_box):
+                fail("sheet_overlap", identifier, f"The sheet item overlaps {other}.", bounds=box, other_id=other, other_bounds=other_box)
+        for item in labels:
+            if _overlap(box, item["bounds"]):
+                fail("sheet_overlap", identifier, f"The sheet item overlaps label {item['id']}.", bounds=box,
+                     other_id=item["id"], other_bounds=item["bounds"])
+    others = boxes + [(item["id"], item["bounds"]) for item in labels]
+    for owner, exempt, start, end in segments:
+        for identifier, box in others:
+            # A leader starts at the edge of its own item and ends at its feature. Only a crossing of another item is a defect.
+            if identifier not in exempt and _segment_crosses_box(start, end, box):
+                fail("sheet_overlap", owner, f"The line of {owner} crosses {identifier}. Move the sheet item or the label.",
+                     leader=[start, end], other_id=identifier, other_bounds=box)
+    for owner, exempt, mark in mark_boxes:
+        for identifier, box in others:
+            if identifier not in exempt and _overlap(mark, box):
+                fail("sheet_overlap", owner, f"The arrow head or datum triangle of {owner} overlaps {identifier}.",
+                     bounds=mark, other_id=identifier, other_bounds=box)
+    for index, note in enumerate(drawing.notes):
+        if GPS_TEXT.search(note.text):
+            findings.append({"code": "gps_free_text", "id": f"note_{index}", "status": "needs_review",
+                             "message": "The note looks like a geometrical tolerance. Use tolerance_frames, or record it in unsupported_gps."})
+    return layout

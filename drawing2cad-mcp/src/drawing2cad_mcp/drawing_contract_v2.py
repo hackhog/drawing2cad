@@ -1,7 +1,7 @@
 """Declarations and rules of drawing contract 2.0: projections, isometric views, ellipses, sections, sheet data, and GPS.
 
 Drawing contract 2.0 adds structured data for complete technical drawings. This module defines the data and its checks.
-It does not derive views from a model and does not render. The renderer rejects 2.0 content that it cannot render.
+It does not derive views from a model and does not render. sheet_layout.py and drafting.py lay out and render the content.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field
 
 from .part_schema import ClosedModel, EvidenceIds, Identifier, Number
+from .sheet_layout import VALUE_DECIMALS, exact_text
 
 Text = Annotated[str, Field(min_length=1, max_length=180, pattern=r"^[^\x00-\x1f\x7f\\]+$")]
 Vector3 = tuple[Number, Number, Number]
@@ -108,6 +109,8 @@ class Datum(ClosedModel):
     feature_ids: Annotated[list[Identifier], Field(min_length=1, max_length=20)]
     view_id: Identifier
     primitive_id: Identifier
+    position: tuple[Number, Number] | None = Field(
+        default=None, description=LOCAL_POINT + " Lower-left corner of the datum square. Default: 4 mm above the feature point.")
     evidence_ids: EvidenceIds
 
 
@@ -269,6 +272,8 @@ def frame_review(frame: ToleranceFrame) -> tuple[list[str], list[str]]:
         defects.append("Datum references must be distinct: a datum letter occurs more than once.")
     if len(frame.modifiers) != len(set(frame.modifiers)):
         defects.append("A modifier occurs more than once.")
+    if not exact_text(frame.value):
+        defects.append(f"The tolerance value has more than {VALUE_DECIMALS} decimal places. The drawing cannot show it exactly.")
     if frame.value == 0 and not {"M", "L"} & set(frame.modifiers):
         defects.append("A tolerance value of 0 needs the modifier M or L.")
     if {"M", "L"} <= set(frame.modifiers):

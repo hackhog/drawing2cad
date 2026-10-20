@@ -282,7 +282,7 @@
       "title": "Web delivery and acceptance follow-up",
       "items": [
         "Web routes and agent runs share one service instance",
-        "Derived views and sections; ellipses and hatching do not render yet",
+        "Derived views, sections, title block, and GPS frames render",
         "Drawing review follows the current model build",
         "Resource acceptance remains deferred until milestones finish"
       ]

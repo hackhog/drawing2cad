@@ -74,7 +74,7 @@ It does not give drawing geometry.
 ## Consequences
 
 - Isometric views and sections come from the solid. The agent does not calculate them.
-- The renderer cannot draw ellipses, cutting planes, or hatching yet (ADR 0029). Until it can, a drawing with derived isometric views or sections validates but does not render.
+- [ADR 0031](0031-render-complete-drawings-from-contract-2.md) renders the ellipses, cutting planes, and hatching of derived views.
 - All derived primitives of a view get the same feature and evidence references. A finer assignment to features is not part of this decision.
 - The derivation does not check the plane origin against the source view position, because the projection has no translation.
   The derivation sets the cutting line from the origin, so the two agree for a derived view.

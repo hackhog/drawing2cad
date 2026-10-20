@@ -66,19 +66,18 @@ Report the open rows in the final report and in `drawing_review`.
 
 The tools cannot yet supply each required item. Do not hide a limit with a work-around.
 
-- DrawingSpec 2.0 (`drawing_schema` with `schema_version: "2.0"`) declares isometric projections, sections with cutting planes and hatching,
-  ellipses, sheet data, datums, and tolerance frames. `drawing_validate` checks them. `drawing_render` rejects ellipses, cutting planes, hatching,
-  theoretically exact dimensions, sheet data, and GPS data with `render_unsupported`.
-  Use 2.0 validation to check the declarations. Render the delivered drawing with content that the renderer supports.
+- Use DrawingSpec 2.0 (`drawing_schema` with `schema_version: "2.0"`) for a complete-service drawing. It declares isometric projections,
+  sections with cutting planes and hatching, ellipses, the title block, the border, the projection symbol, datums, and tolerance frames.
+  `drawing_render` draws all of them. Keep the view frames off the title block at the bottom-right corner.
 - Use `drawing_derive_views` for orthographic, isometric, and section views of the validated build. Do not calculate view geometry by hand.
   Refer to each derived view with `derivation` in DrawingSpec 2.0, and add the frame, origin, scale, label, and dimensions.
   Derive the views again after each model change. A stale derivation fails with `derivation_stale`.
 - A view with `orientation: "custom"` is not an isometric view. Do not draw hand-calculated isometric lines and call them an isometric view.
-- Derived isometric views contain ellipses, and derived sections contain cutting planes and hatching. The renderer rejects this content.
-  Validate these views, and record the isometric and section rows as `not_tested` for rendering until the renderer supports them.
-- The renderer draws a sheet title, not a complete border and title block. Record the border, title-block, and projection-symbol rows as `not_tested`.
-- The renderer does not draw tolerance frames or datums. Show a source GPS requirement as a note with its literal text,
-  and record its row as `needs_review`. A note does not establish GPS semantics. A 2.0 validation pass of the frame is evidence for the declaration only.
+- Record each title block field from the source or as a user decision. An empty field is a `needs_review` finding.
+- Record each source GPS requirement as a tolerance frame or a datum when the GPS profile supports it.
+  Otherwise record it in `unsupported_gps`: the drawing shows it with a red REVIEW mark, and its row stays `needs_review`.
+  Do not write a tolerance as a note. A note that looks like a tolerance gets the finding `gps_free_text`.
+  A validation pass of a frame is evidence for the declaration only, not for ISO conformity.
 - No tool verifies the final PDF bytes independently. Record final-PDF verification as `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.
