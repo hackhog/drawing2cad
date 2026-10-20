@@ -132,6 +132,7 @@ They do not prove modeled helical flanks or semantic thread PMI in STEP.
 This section applies to the domain profile. The local-path metric skips drawing tools.
 
 Read `drawing_schema` and prepare DrawingSpec 1.0 with the current `part_revision` and `description_sha256` from `part_read`.
+After a passed build, `drawing_derive_views` derives orthographic, isometric, and section views. A 2.0 view refers to one with `derivation`.
 DrawingSpec 2.0 adds declarations that `drawing_validate` checks. `drawing_render` renders projections and isometric views with line, circle, and arc geometry.
 It rejects ellipses, cutting planes, hatching, theoretically exact dimensions, sheet data, and GPS data (see drawing-delivery.md).
 Supply 2D views, line/circle/arc geometry, feature and evidence references, dimensions, notes, and uncertainty markers.

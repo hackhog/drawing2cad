@@ -65,6 +65,15 @@ class CuttingPlane(ClosedModel):
     evidence_ids: EvidenceIds
 
 
+class Derivation(ClosedModel):
+    """A reference to a view that drawing_derive_views derived from the validated model."""
+    derivation_sha256: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    view_id: Identifier
+    feature_ids: Annotated[list[Identifier], Field(min_length=1, max_length=100)] = Field(
+        description="Part features that the derived primitives show.")
+    evidence_ids: EvidenceIds
+
+
 class Hatching(ClosedModel):
     boundary_primitive_ids: Annotated[list[Identifier], Field(min_length=1, max_length=100)] = Field(
         description="Primitives of this section view that make the closed boundary of the cut surface.")

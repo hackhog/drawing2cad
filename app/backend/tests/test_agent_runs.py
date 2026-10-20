@@ -56,6 +56,7 @@ def test_phase_follows_the_tool_sequence():
     assert phase_for("export_step", "drawing") == "validating"
     assert phase_for("part_export_review", "modeling") == "modeling"
     assert phase_for("model_projection_check", "modeling") == "modeling"
+    assert phase_for("drawing_derive_views", "modeling") == "drawing"
     assert phase_for("cad_worker_probe", "modeling") == "modeling"
     assert phase_for("part_schema", "analyzing") == "analyzing"
 

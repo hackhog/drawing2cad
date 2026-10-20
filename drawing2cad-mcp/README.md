@@ -212,6 +212,8 @@ Manufacturing-tolerance data do not prove semantic tolerance PMI in STEP.
 
 Read `drawing_schema`. DrawingSpec 1.0 binds the sheet to `part_revision` and the canonical `description_sha256` returned by the part service.
 DrawingSpec 2.0 (`drawing_schema` with `schema_version: "2.0"`) adds projections, isometric views, ellipses, sections, sheet data, and a bounded GPS profile.
+`drawing_derive_views` derives orthographic, isometric, and section views from the validated build in the restricted worker.
+A 2.0 view refers to a derived view with `derivation`. The service adds the derived geometry and rejects a stale derivation.
 `drawing_validate` checks this content. `drawing_render` rejects it with `render_unsupported` until the renderer supports it.
 Supply views with line, circle, and arc geometry, evidence and feature references, dimensions, notes, and uncertainty markers.
 Coordinates can reference named part parameters with a factor and offset. A model edit requires a newly bound drawing specification and rendering.

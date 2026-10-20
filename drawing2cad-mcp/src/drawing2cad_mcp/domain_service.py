@@ -30,6 +30,7 @@ from .cad_tools import CAD_SCHEMAS
 from .domain_jobs import JobCancelled, JobFailed, JobService
 from .domain_store import AccessContext, DomainError, DomainStore
 from .domain_tools import DOMAIN_SCHEMAS
+from . import derived_views
 from .drawing_contract import DRAWING_SCHEMA_VERSION, drawing_schema, drawing_validate, render_gate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import MAX_STROKE_LIMIT, PdfError, PdfService
@@ -266,7 +267,7 @@ class DomainService:
                     return cad.call(name, args)
             return cad.call(name, args)
         if name in {"build_from_description", "build_code", "drawing_render", "export_step", "part_render_pmi",
-                    "model_projection_check"}:
+                    "model_projection_check", "drawing_derive_views"}:
             with self._cad_slots:
                 return self._run_call(ctx, name, args)
         return self._run_call(ctx, name, args)
@@ -626,6 +627,64 @@ class DomainService:
     def _save_drawing(self, directory, drawing):
         CadService._atomic(self._drawing_path(directory), _json(drawing))
 
+    @staticmethod
+    def _derivation_path(directory):
+        return directory / "derived-views-state.json"
+
+    def _derivation(self, directory):
+        path = self._derivation_path(directory)
+        self.store._check_path(path)
+        if not path.is_file():
+            return None
+        if path.stat().st_size > 16 * 1024 * 1024:
+            raise DomainError("DERIVATION_STATE_INVALID", "The stored view derivation exceeds its limit.")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _validate_drawing(self, directory, state, spec):
+        """Put derived views into the drawing, then validate it. Return the report and the expanded drawing."""
+        expanded, failure = derived_views.expand(spec, self._derivation(directory), state)
+        if failure is not None:
+            return failure, spec
+        return drawing_validate(expanded, state["description"], state["revision"]), expanded
+
+    def _current_candidate(self, cad, state, purpose):
+        built = state.get("build") or {}
+        if derived_views.binding(state) is None:
+            raise DomainError("VALIDATED_BUILD_REQUIRED", f"Build and validate the current part before {purpose}.")
+        candidate = cad._candidate(built["build"])
+        if str(candidate) != built.get("candidate_path") or hashlib.sha256(candidate.read_bytes()).hexdigest() != built["candidate_sha256"]:
+            raise DomainError("CANDIDATE_CHANGED", "The current build candidate differs from its record.")
+        return candidate
+
+    def _derive_views(self, ctx, cad, directory, state, args):
+        """Derive drawing views from the validated build in the restricted worker and store the derivation."""
+        if not self.settings.cad.enabled:
+            raise DomainError("CAD_DISABLED", "Enable the restricted worker before view derivation.")
+        try:
+            views = derived_views.normalize_requests(args["views"])
+        except ValueError as error:
+            raise DomainError("INVALID_VIEW", str(error)) from None
+        candidate = self._current_candidate(cad, state, "view derivation")
+        bound = derived_views.binding(state)
+        result = cad.runner.run("derive_views", input_step=candidate, views=views)
+        report = {"status": result.get("status", "fail"), "run_id": state["run_id"], "revision": state["revision"],
+                  "binding": bound, "artifacts": []}
+        if result.get("status") != "pass" or not isinstance(result.get("views"), list):
+            report.update(status="fail", error=self._public(result.get("error", {"code": "DERIVATION_FAILED"})))
+            return report
+        derived = result["views"]
+        if [view.get("id") for view in derived] != [view["id"] for view in views]:
+            raise DomainError("INVALID_WORKER_RESULT", "The derived views do not match the request.")
+        record = {"binding": bound, "views": derived}
+        record["derivation_sha256"] = _digest(record)
+        CadService._atomic(self._derivation_path(directory), _json(record))
+        public, omitted = derived_views.public_views(derived)
+        report.update(derivation_sha256=record["derivation_sha256"], views=public, geometry_omitted=omitted,
+                      usage="Refer to a view in DrawingSpec 2.0 with derivation: {derivation_sha256, view_id, feature_ids, evidence_ids}.")
+        report["artifacts"].append(self._register_json(ctx, directory, record, "derived-views.json", "derived_views",
+                                                       state["run_id"], state["revision"]))
+        return report
+
     def _register_json(self, ctx, directory, value, filename, role, run_id, revision):
         path = directory / (uuid4().hex + "-" + filename)
         CadService._atomic(path, _json(self._public(value)))
@@ -700,9 +759,10 @@ class DomainService:
             return self._notes(ctx, args["run_id"])
         state = self._state(cad, directory, args.get("expected_revision"))
         if name == "drawing_read":
-            result = {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state)}
+            result = {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state),
+                      "derived_views": derived_views.status(self._derivation(directory), state)}
         elif name == "drawing_validate":
-            result = drawing_validate(args["drawing_spec"], state["description"], state["revision"])
+            result = self._validate_drawing(directory, state, args["drawing_spec"])[0]
             result.pop("resolved", None)
         else:
             result = {"status": "pass", "part": deepcopy(state), "run_id": args["run_id"], "revision": state["revision"],
@@ -768,11 +828,14 @@ class DomainService:
         if name == "notes_update":
             return getattr(self.store, name)(ctx, **args)
         if name == "drawing_read":
-            return {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state)}
+            return {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state),
+                    "derived_views": derived_views.status(self._derivation(directory), state)}
         if name == "drawing_validate":
-            report = drawing_validate(args["drawing_spec"], state["description"], state["revision"])
+            report = self._validate_drawing(directory, state, args["drawing_spec"])[0]
             report.pop("resolved", None)
             return report
+        if name == "drawing_derive_views":
+            return self._derive_views(ctx, cad, directory, state, args)
         if name == "drawing_render":
             return self._render(ctx, cad, directory, state, args["drawing_spec"])
         if name == "part_render_pmi":
@@ -822,7 +885,8 @@ class DomainService:
     def _render(self, ctx, cad, directory, state, spec):
         if not self.settings.cad.enabled:
             raise DomainError("CAD_DISABLED", "Enable the restricted worker before drawing creation.")
-        report = render_gate(drawing_validate(spec, state["description"], state["revision"]))
+        report, spec = self._validate_drawing(directory, state, spec)
+        report = render_gate(report)
         if report["status"] != "pass" and not report.get("diagnostic_eligible"):
             report.pop("resolved", None)
             return report
