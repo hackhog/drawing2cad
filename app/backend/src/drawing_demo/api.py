@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Respons
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .agent.mapping import artifact_view, part_view, review_view
+from .agent.mapping import acceptance_view, artifact_view, part_view, review_view
 from .agent.model import check_connection
 from .agent.profiles import ProfileStore, Provider
 from .agent.runner import AgentRunner
@@ -167,9 +167,7 @@ def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     released_ids = frozenset([(release.get("artifact") or {}).get("artifact_id")]
                              + [a["artifact_id"] for a in (release.get("drawing") or {}).get("artifacts", [])]) - {None}
     artifacts = (artifact_view(a, source["sha256"], released_ids) for a in listed)
-    acceptance = backend.call("drawing_read", run_id=part_run).get("acceptance")
-    return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release")),
-                                                          acceptance=acceptance),
+    return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release"))),
             "artifacts": [a for a in artifacts if a is not None]}
 
 
@@ -196,7 +194,12 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     view["agent_report"] = agent_report(services, record)
     if record["part_run_id"] is None:
         return view
-    return {**view, **services.result(record)}
+    result = services.result(record)
+    # The acceptance changes with reviews and verifications. Read it each time; the cached result does not hold it.
+    if result.get("review") is not None:
+        acceptance = services.backend.call("drawing_read", run_id=record["part_run_id"]).get("acceptance")
+        result = {**result, "review": {**result["review"], "drawing_acceptance": acceptance_view(acceptance)}}
+    return {**view, **result}
 
 
 def services(request: Request) -> Services:

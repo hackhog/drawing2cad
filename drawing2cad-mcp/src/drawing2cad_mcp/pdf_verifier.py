@@ -703,6 +703,7 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
                 report.add("DIM-02", "fail", "major", f"Dimension {dimension['id']} has an anchor that is not on an edge of the bound model.",
                            feature=dimension["id"], expected=f"<= {THRESHOLDS['anchor_mm']} mm", observed=[round(d, 4) for d in distances],
                            evidence=dimension["evidence_ids"])
+    round_views = model_views = 0
     for view in views:
         model = derived.get(view["id"])
         if model is None or view["kind"] != "orthographic":
@@ -714,6 +715,10 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
                            region=view["frame"], feature=view["id"], expected=f"diameter {number_text(2 * radius)}", observed=None)
         if radii and all(radius in dimensioned for radius in radii):
             report.add("DIM-03", "pass", "info", f"View {view['id']}: each round feature of the bound model has a dimension.", feature=view["id"])
+        round_views += bool(radii)
+        model_views += 1
+    if model_views and not round_views:
+        report.add("DIM-03", "not_applicable", "info", "The bound model shows no round feature in an orthographic view.")
 
 
 def check_datums(report: Report, raster: Raster, datums: list[dict]) -> None:

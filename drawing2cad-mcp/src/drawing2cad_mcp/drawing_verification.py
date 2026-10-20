@@ -295,9 +295,10 @@ def record(report: dict, binding: dict, artifact_ids: list[str]) -> dict[str, An
     """The stored verification record of a drawing state. It keeps each mandatory finding that is not a pass."""
     open_findings = [{key: item.get(key) for key in ("rule_id", "status", "severity", "message", "feature")}
                      for item in report["findings"] if item["rule_id"] in MANDATORY_RULES and item["status"] != "pass"]
+    covered = sorted({item["rule_id"] for item in report["findings"] if item["rule_id"] in MANDATORY_RULES})
     return {"status": report["status"], "report_sha256": report.get("report_sha256"), "binding": binding,
             "artifact_ids": artifact_ids, "untested_rules": report.get("untested_rules", []),
-            "verifier_version": report.get("verifier_version"), "profile": report.get("profile"),
+            "verifier_version": report.get("verifier_version"), "profile": report.get("profile"), "covered_rules": covered,
             "findings": open_findings[:MAX_RECORDED_FINDINGS], "findings_truncated": len(open_findings) > MAX_RECORDED_FINDINGS}
 
 
@@ -315,6 +316,11 @@ def gate(verification: dict | None, decisions: list[dict] | None) -> dict[str, A
         return {"passed": False, "reason": f"The verification used profile {verification.get('profile')}, not {PROFILE}.", "blocking": []}
     if verification.get("findings_truncated"):
         return {"passed": False, "reason": "The verification has more open findings than the record keeps.", "blocking": []}
+    missing = sorted(set(MANDATORY_RULES) - set(verification.get("covered_rules", [])))
+    if missing:
+        return {"passed": False, "reason": "The verification report has no result for the mandatory rules " + ", ".join(missing[:10]) + ".",
+                "blocking": [{"rule_id": rule, "status": "not_tested", "feature": None, "message": "No result in the report."}
+                             for rule in missing[:50]], "blocking_count": len(missing)}
     decided = {(item["rule_id"], item.get("feature")) for item in decisions or []}
     blocking, reviewed = [], []
     for item in verification.get("findings", []):
@@ -338,6 +344,9 @@ def status(record: dict | None, current: dict | None) -> dict[str, Any] | None:
     """current or stale. A changed PDF, drawing, part revision, or build makes an earlier report stale."""
     if record is None:
         return None
+    invalid = sorted(key for key in ("pdf_sha256", "candidate_sha256") if record["binding"].get(key) == "changed")
+    if invalid:
+        return {**record, "validity": "stale", "reason": "The verification was recorded for a changed input: " + ", ".join(invalid) + "."}
     if current is None:
         return {**record, "validity": "stale", "reason": "The drawing or its PDF changed after the verification."}
     changed = sorted(key for key, value in record["binding"].items() if current.get(key) != value)

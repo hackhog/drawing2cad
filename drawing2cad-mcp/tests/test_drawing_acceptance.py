@@ -91,7 +91,7 @@ def test_a_new_verification_needs_a_new_review(domain):
 
 def test_the_gate_needs_a_current_verification_of_the_profile():
     findings = [{"rule_id": "GPS-03", "status": "not_applicable", "message": "No frame is outside the profile.", "feature": None}]
-    base = {"validity": "current", "profile": "drawing2cad-verify-1", "findings": findings}
+    base = {"validity": "current", "profile": "drawing2cad-verify-1", "findings": findings, "covered_rules": list(MANDATORY_RULES)}
     assert gate(base, [])["passed"]
     assert not gate(None, [])["passed"]
     assert not gate({**base, "validity": "stale", "reason": "pdf_sha256"}, [])["passed"]
@@ -100,7 +100,7 @@ def test_the_gate_needs_a_current_verification_of_the_profile():
 
 
 def test_a_failed_report_blocks_also_without_a_mandatory_failure():
-    base = {"validity": "current", "profile": "drawing2cad-verify-1", "findings": [], "status": "fail"}
+    base = {"validity": "current", "profile": "drawing2cad-verify-1", "findings": [], "status": "fail", "covered_rules": list(MANDATORY_RULES)}
     result = gate(base, [])
     assert not result["passed"] and result["blocking"][0]["rule_id"] == "REPORT"
     assert "TEXT-LIMIT" in MANDATORY_RULES
@@ -134,3 +134,49 @@ def test_repeated_reads_reuse_the_verified_file_hashes(domain, monkeypatch, tmp_
     # A changed file has another size or ctime, so the service hashes it again.
     path.write_bytes(b"changed content!!")
     assert not service._file_has(path, digest)
+
+
+def test_a_report_without_a_mandatory_rule_does_not_pass():
+    base = {"validity": "current", "profile": "drawing2cad-verify-1", "findings": [], "status": "pass",
+            "covered_rules": [rule for rule in MANDATORY_RULES if rule != "UNITS-01"]}
+    result = gate(base, [])
+    assert not result["passed"] and [item["rule_id"] for item in result["blocking"]] == ["UNITS-01"]
+
+
+def test_a_record_of_a_changed_input_is_never_current():
+    from drawing2cad_mcp.drawing_verification import status
+
+    binding = {"pdf_sha256": "a" * 64, "candidate_sha256": "changed"}
+    assert status({"binding": binding}, dict(binding))["validity"] == "stale"
+
+
+def test_an_input_change_during_the_verification_gives_no_record(domain):
+    service, source, _, _, runner, pdf = prepare(domain)
+    runner.findings = passing()
+    cad = service._backend(CTX)[0]
+    built = cad._load(cad._directory("plate"))["build"]
+    candidate = cad._candidate(built["build"])
+    runner.during = lambda: candidate.write_bytes(candidate.read_bytes() + b"changed")
+    with pytest.raises(DomainError) as error:
+        call(service, "drawing_verify", artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])
+    assert error.value.code == "VERIFICATION_INPUT_CHANGED"
+    assert service.call(CTX, "drawing_read", {"run_id": "plate"})["verification"] is None
+
+
+def test_a_new_report_makes_the_recorded_release_drawing_outdated(domain):
+    service, source, _, _, runner, pdf = prepare(domain)
+    blocked = [item if item["rule_id"] != "MODEL-01" else {**item, "status": "fail"} for item in passing()]
+    assert verify_and_review(service, source, runner, pdf, blocked, status="fail")["status"] == "unverified"
+    runner.findings = [item if item["rule_id"] != "DIM-01" else {**item, "status": "fail"} for item in passing()]
+    call(service, "drawing_verify", artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])
+    assert service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]["drawing_current"] is False
+
+
+def test_dim_03_is_not_applicable_without_round_features():
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimensions
+
+    report = Report()
+    view = {"id": "front", "kind": "orthographic", "dimensions": [], "scale": 1.0}
+    model = {"geometry": [{"type": "line", "style": "visible", "start": [0, 0], "end": [10, 0], "id": "l"}]}
+    check_dimensions(report, [view], {"front": model})
+    assert [(item["rule_id"], item["status"]) for item in report.findings] == [("DIM-03", "not_applicable")]

@@ -708,7 +708,8 @@ class DomainService:
         except OSError:
             return False
         key = (str(path), info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, digest)
-        cache = self.__dict__.setdefault("_verified_files", {})
+        # On Windows, st_ctime is the creation time, not the time of the last change. Do not cache there.
+        cache = self.__dict__.setdefault("_verified_files", {}) if os.name != "nt" else {}
         if key in cache:
             return cache[key]
         if size is not None and info.st_size != size:
@@ -777,6 +778,7 @@ class DomainService:
             snapshot.unlink(missing_ok=True)
 
     def _verify_snapshot(self, ctx, cad, directory, state, drawing, report, candidate, expected, path):
+        before = self._verification_binding(ctx, state, drawing) if drawing is not None else None
         rendered = cad.runner.run("render_pdf_poppler", input_pdf=path)
         pages = rendered.get("pages", []) if rendered.get("status") == "pass" else []
         image = None
@@ -809,8 +811,11 @@ class DomainService:
         body = result["report"]
         body["report_sha256"] = next(item["sha256"] for item in artifacts if item["role"] == "drawing_verification_report")
         if drawing is not None:
-            drawing["verification"] = drawing_verification.record(body, self._verification_binding(ctx, state, drawing),
-                                                                  [item["artifact_id"] for item in artifacts])
+            # The inputs must not change while the workers run. A changed input gives no record.
+            after = self._verification_binding(ctx, state, drawing)
+            if after != before:
+                raise DomainError("VERIFICATION_INPUT_CHANGED", "A bound input changed during the verification. Verify the drawing again.")
+            drawing["verification"] = drawing_verification.record(body, before, [item["artifact_id"] for item in artifacts])
             self._save_drawing(directory, drawing)
         open_findings = [item for item in body["findings"] if item["status"] in {"fail", "needs_review"}]
         return {"status": body["status"], "run_id": state["run_id"], "revision": state["revision"], "mode": body["mode"],
@@ -917,8 +922,14 @@ class DomainService:
         release = deepcopy(release)
         recorded = release.get("drawing") or {}
         current = self._drawing_status(drawing, state, ctx)
+        def evidence(item):
+            verification = item.get("verification") or {}
+            review = item.get("review") or {}
+            return (verification.get("report_sha256"), verification.get("validity"), (verification.get("gate") or {}).get("passed"),
+                    review.get("decision"), review.get("reviewer"), review.get("verification_report_sha256"))
         release["drawing_current"] = (recorded.get("status") == current["status"]
-                                      and recorded.get("drawing_sha256") == current["drawing_sha256"])
+                                      and recorded.get("drawing_sha256") == current["drawing_sha256"]
+                                      and evidence(recorded) == evidence(current))
         return release
 
     def _snapshot_read(self, ctx, name, args):

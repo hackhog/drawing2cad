@@ -52,7 +52,13 @@ and the web UI (`ReviewPanel.tsx`, `ArtifactsPanel.tsx`).
   the drawing hash, and the stored PDF bytes. A change of any of them makes the record stale, and the drawing is not accepted.
 - A new verification with another report needs a new review. A review covers only the report that it names.
 - A missing or changed build candidate makes the record stale. It does not make the read fail.
-- A read computes the binding once. The service reuses a verified file hash while the inode, size, mtime, and ctime of the file stay the same.
+- A read computes the binding once. On Linux, the service reuses a verified file hash while the inode, size, mtime, and ctime of the file stay the same.
+  It does not cache on Windows, where ctime is the creation time.
+- The service computes the binding before and after the verification workers. A change during the verification gives no record
+  (`VERIFICATION_INPUT_CHANGED`). A record with a changed input is never current.
+- The record keeps the mandatory rules that the report covers. A report without a result for a mandatory rule does not pass the gate.
+- `release.drawing_current` also compares the verification report, its validity and gate, and the review.
+- The web backend reads the acceptance for each request. The cached run result does not keep it.
 
 ### Release and interface
 

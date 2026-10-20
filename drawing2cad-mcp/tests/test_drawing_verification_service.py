@@ -30,6 +30,8 @@ class VerifyingRunner(DrawingRunner):
                     "worker": {"worker_id": directory.name, "work_dir": str(directory)}}
         if operation == "verify_drawing_pdf":
             self.calls.append(operation)
+            if getattr(self, "during", None):
+                self.during()
             self.requests.append({"request": verification, "pdf": hashlib.sha256(input_pdf.read_bytes()).hexdigest(),
                                   "step": kwargs.get("input_step") is not None, "image": input_image is not None})
             directory = self.storage / uuid4().hex
