@@ -133,6 +133,7 @@ This section applies to the domain profile. The local-path metric skips drawing 
 
 Read `drawing_schema` and prepare DrawingSpec 1.0 with the current `part_revision` and `description_sha256` from `part_read`.
 After a passed build, `drawing_derive_views` derives orthographic, isometric, and section views. A 2.0 view refers to one with `derivation`.
+After `drawing_render`, `drawing_verify` checks the stored PDF bytes against the bound model with a Poppler raster and OCR.
 DrawingSpec 2.0 adds isometric views, sections, the title block, the border, and GPS data. `drawing_validate` checks them, and `drawing_render` draws them
 (see drawing-delivery.md).
 Supply 2D views, line/circle/arc geometry, feature and evidence references, dimensions, notes, and uncertainty markers.

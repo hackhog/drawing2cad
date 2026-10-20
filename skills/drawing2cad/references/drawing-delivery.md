@@ -78,7 +78,10 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
   Otherwise record it in `unsupported_gps`: the drawing shows it with a red REVIEW mark, and its row stays `needs_review`.
   Do not write a tolerance as a note. A note that looks like a tolerance gets the finding `gps_free_text`.
   A validation pass of a frame is evidence for the declaration only, not for ISO conformity.
-- No tool verifies the final PDF bytes independently. Record final-PDF verification as `not_tested`.
+- Call `drawing_verify` with the PDF artifact of the final drawing and its SHA-256. It checks the stored PDF bytes against the bound model.
+  Record its status in the coverage table. A `fail` finding blocks delivery; correct the drawing, render it, and verify it again.
+  `needs_review` findings and the listed untested rules stay open rows. A stale verification (`drawing_read`) is not evidence.
+- Verify a supplied source drawing with `source_id` only as an inspection aid. Without a binding, the model rules are `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.
 It must not claim a complete technical drawing or conformity with the ISO standards above.

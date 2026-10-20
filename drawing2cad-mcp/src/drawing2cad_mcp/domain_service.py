@@ -30,7 +30,7 @@ from .cad_tools import CAD_SCHEMAS
 from .domain_jobs import JobCancelled, JobFailed, JobService
 from .domain_store import AccessContext, DomainError, DomainStore
 from .domain_tools import DOMAIN_SCHEMAS
-from . import derived_views
+from . import derived_views, drawing_verification
 from .drawing_contract import DRAWING_SCHEMA_VERSION, drawing_schema, drawing_validate, render_gate
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import MAX_STROKE_LIMIT, PdfError, PdfService
@@ -267,7 +267,7 @@ class DomainService:
                     return cad.call(name, args)
             return cad.call(name, args)
         if name in {"build_from_description", "build_code", "drawing_render", "export_step", "part_render_pmi",
-                    "model_projection_check", "drawing_derive_views"}:
+                    "model_projection_check", "drawing_derive_views", "drawing_verify"}:
             with self._cad_slots:
                 return self._run_call(ctx, name, args)
         return self._run_call(ctx, name, args)
@@ -656,6 +656,111 @@ class DomainService:
             raise DomainError("CANDIDATE_CHANGED", "The current build candidate differs from its record.")
         return candidate
 
+    def _drawing_read(self, ctx, directory, state, run_id):
+        drawing = self._drawing(directory, state)
+        verification = None
+        if drawing and drawing.get("verification"):
+            verification = drawing_verification.status(drawing["verification"], self._verification_binding(ctx, state, drawing))
+        return {"run_id": run_id, "revision": state["revision"], "drawing": drawing, "verification": verification,
+                "derived_views": derived_views.status(self._derivation(directory), state)}
+
+    def _drawing_pdf(self, ctx, drawing):
+        """The metadata and the stored path of the PDF of a rendered drawing, or None."""
+        for item in drawing.get("artifacts", []):
+            if item.get("media_type") == "application/pdf" and item.get("role") == "technical_drawing":
+                return item, self.store._path(ctx, "artifacts", item["artifact_id"])
+        return None
+
+    def _verification_binding(self, ctx, state, drawing):
+        """The binding that a verification report needs to stay current."""
+        pdf = self._drawing_pdf(ctx, drawing)
+        digest = None
+        if pdf is not None:
+            metadata, path = pdf
+            try:
+                self.store._verify(path, metadata["size_bytes"], metadata["sha256"])
+                digest = metadata["sha256"]
+            except DomainError:
+                digest = "changed"
+        built = derived_views.binding(state)
+        return {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
+                "candidate_sha256": built["candidate_sha256"] if built else None,
+                "drawing_sha256": drawing["drawing_sha256"], "pdf_sha256": digest}
+
+    def _verify_drawing(self, ctx, cad, directory, state, args):
+        """Verify the stored PDF bytes of the current drawing, or a construction source without a binding."""
+        if not self.settings.cad.enabled:
+            raise DomainError("CAD_DISABLED", "Enable the restricted worker before the drawing verification.")
+        if ("artifact_id" in args) == ("source_id" in args):
+            raise DomainError("INVALID_ARGUMENT", "Give either artifact_id or source_id.")
+        drawing = None
+        candidate = None
+        if "artifact_id" in args:
+            metadata = self.store.artifact_get(ctx, args["artifact_id"])
+            if metadata["sha256"] != args["expected_sha256"]:
+                raise DomainError("ARTIFACT_HASH_MISMATCH", "The artifact differs from the expected hash.")
+            drawing = self._drawing(directory, state)
+            pdf = self._drawing_pdf(ctx, drawing) if drawing and drawing.get("status") == "pass" else None
+            if pdf is None or pdf[0]["artifact_id"] != args["artifact_id"]:
+                raise DomainError("STALE_DRAWING", "The artifact is not the PDF of the current drawing. Render the drawing again.")
+            path = pdf[1]
+            self.store._verify(path, metadata["size_bytes"], metadata["sha256"])
+            report = drawing_validate(drawing["spec"], state["description"], state["revision"])
+            if report["status"] != "pass":
+                raise DomainError("STALE_DRAWING", "The stored drawing does not validate against the current part.")
+            try:
+                candidate = self._current_candidate(cad, state, "the drawing verification")
+            except DomainError:
+                candidate = None
+            expected = {"pdf_sha256": metadata["sha256"], "part_revision": state["revision"],
+                        "description_sha256": state["description_sha256"], "dxf_sha256": (drawing.get("report") or {}).get("dxf_sha256")}
+        else:
+            sources = [item for item in state["sources"] if item["source_id"] == args["source_id"]]
+            if not sources:
+                raise DomainError("SOURCE_NOT_IN_RUN", "Use a source of this run.")
+            if sources[0]["sha256"] != args["expected_sha256"]:
+                raise DomainError("SOURCE_HASH_MISMATCH", "The source differs from the expected hash.")
+            path = self.store.source_path(ctx, args["source_id"])
+            expected = {"pdf_sha256": sources[0]["sha256"], "part_revision": None, "description_sha256": None, "dxf_sha256": None}
+        rendered = cad.runner.run("render_pdf_poppler", input_pdf=path)
+        pages = rendered.get("pages", []) if rendered.get("status") == "pass" else []
+        image = None
+        if pages:
+            image = Path(pages[0]["path"])
+            if not image.is_relative_to(cad.runner.storage) or image.resolve() != image or not image.is_file():
+                raise DomainError("INVALID_WORKER_ARTIFACT", "The renderer page is outside its worker directory.")
+        if drawing is not None:
+            request = drawing_verification.build_request(report["resolved"], expected, len(pages))
+            if candidate is None:
+                request["service_findings"].append(({"rule_id": "REV-01", "status": "fail", "severity": "major"},
+                                                     "No current validated build exists. The model comparison is not possible."))
+        else:
+            request = drawing_verification.build_unbound_request(expected, len(pages))
+        if rendered.get("status") != "pass":
+            request["service_findings"].append(({"rule_id": "RENDER-00", "status": "fail", "severity": "critical"},
+                                                 "Poppler failed: " + str(self._public(rendered.get("error", {})).get("message", ""))))
+        result = cad.runner.run("verify_drawing_pdf", input_pdf=path, input_image=image, input_step=candidate,
+                                verification=request, timeout=max(self.settings.cad.timeout_seconds, 240))
+        if result.get("status") != "pass" or not isinstance(result.get("report"), dict):
+            return {"status": "fail", "run_id": state["run_id"], "revision": state["revision"],
+                    "error": self._public(result.get("error", {"code": "VERIFICATION_FAILED"}))}
+        files = self._drawing_worker_files(cad, result, tuple(
+            item for item in (("verification-report.json", "application/json", "drawing_verification_report"),
+                              ("verification-preview.png", "image/png", "drawing_verification_preview"))
+            if any(artifact.get("name") == item[0] for artifact in result.get("artifacts", []))))
+        artifacts = [self.store.artifact_register(ctx, path_, role, state["run_id"], state["revision"], media, path_.name)
+                     for path_, media, role in files]
+        body = result["report"]
+        body["report_sha256"] = next(item["sha256"] for item in artifacts if item["role"] == "drawing_verification_report")
+        if drawing is not None:
+            drawing["verification"] = drawing_verification.record(body, self._verification_binding(ctx, state, drawing),
+                                                                  [item["artifact_id"] for item in artifacts])
+            self._save_drawing(directory, drawing)
+        open_findings = [item for item in body["findings"] if item["status"] in {"fail", "needs_review"}]
+        return {"status": body["status"], "run_id": state["run_id"], "revision": state["revision"], "mode": body["mode"],
+                "binding": body["binding"], "untested_rules": body["untested_rules"], "findings": open_findings[:60],
+                "findings_truncated": len(open_findings) > 60, "artifacts": artifacts, "scope": body["scope"]}
+
     def _derive_views(self, ctx, cad, directory, state, args):
         """Derive drawing views from the validated build in the restricted worker and store the derivation."""
         if not self.settings.cad.enabled:
@@ -759,8 +864,7 @@ class DomainService:
             return self._notes(ctx, args["run_id"])
         state = self._state(cad, directory, args.get("expected_revision"))
         if name == "drawing_read":
-            result = {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state),
-                      "derived_views": derived_views.status(self._derivation(directory), state)}
+            result = self._drawing_read(ctx, directory, state, args["run_id"])
         elif name == "drawing_validate":
             result = self._validate_drawing(directory, state, args["drawing_spec"])[0]
             result.pop("resolved", None)
@@ -828,14 +932,15 @@ class DomainService:
         if name == "notes_update":
             return getattr(self.store, name)(ctx, **args)
         if name == "drawing_read":
-            return {"run_id": args["run_id"], "revision": state["revision"], "drawing": self._drawing(directory, state),
-                    "derived_views": derived_views.status(self._derivation(directory), state)}
+            return self._drawing_read(ctx, directory, state, args["run_id"])
         if name == "drawing_validate":
             report = self._validate_drawing(directory, state, args["drawing_spec"])[0]
             report.pop("resolved", None)
             return report
         if name == "drawing_derive_views":
             return self._derive_views(ctx, cad, directory, state, args)
+        if name == "drawing_verify":
+            return self._verify_drawing(ctx, cad, directory, state, args)
         if name == "drawing_render":
             return self._render(ctx, cad, directory, state, args["drawing_spec"])
         if name == "part_render_pmi":

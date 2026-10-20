@@ -30,7 +30,8 @@ ALLOWED_TOOLS = frozenset({
     "part_create", "part_read", "part_update", "create_base_body", "add_hole", "add_pocket",
     "add_cut", "add_chamfer", "add_fillet", "build_from_description", "export_step", "part_export_review",
     # The domain profile adds drawing delivery and run notes. The local-path profile does not list these tools.
-    "drawing_schema", "drawing_derive_views", "drawing_validate", "drawing_render", "drawing_read", "drawing_review", "artifact_preview",
+    "drawing_schema", "drawing_derive_views", "drawing_validate", "drawing_render", "drawing_verify", "drawing_read", "drawing_review",
+    "artifact_preview",
     "notes_read", "notes_update",
     # The projection check reads the validated build and one source. It registers artifacts but keeps the part and release.
     "model_projection_check",
@@ -318,7 +319,7 @@ TRANSIENT_ERROR_CODES = frozenset({"WORKER_TIMEOUT", "WORKER_CRASH", "JOB_INTERR
 # Tools that change server state that later requests can depend on: the part, its drawings, its release, and its note.
 # A successful call changes the state that the repeated-failure check compares. Drawing calls do not invalidate a
 # release, so this set is larger than MUTATION_TOOLS.
-STATE_CHANGING_TOOLS = MUTATION_TOOLS | frozenset({"drawing_derive_views", "drawing_render", "drawing_review", "export_step",
+STATE_CHANGING_TOOLS = MUTATION_TOOLS | frozenset({"drawing_derive_views", "drawing_render", "drawing_verify", "drawing_review", "export_step",
                                                    "part_export_review", "notes_update"})
 # A model call or tool call that fails this close to the run deadline used the remaining time.
 DEADLINE_MARGIN_SECONDS = 1.0
