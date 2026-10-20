@@ -118,12 +118,13 @@ class _Converter:
                 a, b = _ccw(_angle(center, start), _angle(center, end), _angle(center, middle))
                 return [self.add({"type": "arc", "center": _round(center), "radius": round(radius, 6),
                                   "start_angle": round(a, 6), "end_angle": round(b, 6), "style": style}, prefix)]
-        if kind == GeomAbs_Ellipse and not planar_3d:
+        if kind == GeomAbs_Ellipse:
+            # to_2d has no translation, so it also maps the major axis vector. A section face is perpendicular to the view.
             ellipse = adaptor.Ellipse()
             location = ellipse.Location()
             axis = ellipse.XAxis().Direction()
             center = to_2d((location.X(), location.Y(), location.Z()))
-            major = [axis.X() * ellipse.MajorRadius() * scale, axis.Y() * ellipse.MajorRadius() * scale]
+            major = to_2d((axis.X() * ellipse.MajorRadius(), axis.Y() * ellipse.MajorRadius(), axis.Z() * ellipse.MajorRadius()))
             a = math.hypot(*major)
             ratio = ellipse.MinorRadius() / ellipse.MajorRadius()
             if a > MIN_EDGE_MM and ratio > 1e-6:
@@ -150,10 +151,16 @@ class _Converter:
 
         The error is measured again between the points, so the report does not depend on the sampling alone.
         """
-        from OCP.GCPnts import GCPnts_UniformDeflection
+        from OCP.GCPnts import GCPnts_QuasiUniformDeflection, GCPnts_UniformDeflection
+        from OCP.GeomAbs import GeomAbs_C0, GeomAbs_C2
 
         # Half of the tolerance is for the sampling and half for the simplification. The error is then measured.
-        sampler = GCPnts_UniformDeflection(adaptor, CURVE_TOLERANCE_MM / 2 / max(scale, 1e-9), first, last)
+        deflection = CURVE_TOLERANCE_MM / 2 / max(scale, 1e-9)
+        # The uniform deflection algorithm needs C2 continuity. Other curves use the quasi-uniform algorithm for C0.
+        if int(adaptor.Continuity().value) >= int(GeomAbs_C2.value):
+            sampler = GCPnts_UniformDeflection(adaptor, deflection, first, last)
+        else:
+            sampler = GCPnts_QuasiUniformDeflection(adaptor, deflection, first, last, GeomAbs_C0)
         if not sampler.IsDone() or sampler.NbPoints() < 2:
             raise ValueError(f"View {self.view_id}: a curve cannot be approximated.")
         if sampler.NbPoints() > MAX_CURVE_SAMPLES:
@@ -167,6 +174,8 @@ class _Converter:
         if error > CURVE_TOLERANCE_MM:
             kept = points
             error = max(_polyline_distance(point, kept) for point in checks)
+        if error > CURVE_TOLERANCE_MM:
+            raise _TooComplex(self.view_id, f"A curve cannot be approximated within {CURVE_TOLERANCE_MM} mm (measured {error:.4f} mm).")
         items = [item for item in (self.line(kept[i], kept[i + 1], style, prefix) for i in range(len(kept) - 1)) if item]
         if items:
             self.approximations.append({"primitive_ids": [item["id"] for item in items], "max_error_mm": round(error, 6),
@@ -340,15 +349,20 @@ def _section(shape, view: dict, projector: _Projector, converter: _Converter) ->
         kept = Compound(list(kept)) if kept else None
     if kept is None or not kept.faces():
         raise ValueError(f"View {view['id']}: the cutting plane does not cut the part.")
-    hatching = []
-    for face in kept.faces():
+
+    def on_plane(face):
         if face.geom_type.name != "PLANE":
-            continue
+            return False
         normal = face.normal_at()
         center = face.center()
-        if abs(abs(_dot((normal.X, normal.Y, normal.Z), projector.view)) - 1) > 1e-9:
-            continue
-        if abs(_dot([center.X - origin[0], center.Y - origin[1], center.Z - origin[2]], projector.view)) > 1e-6:
+        return (abs(abs(_dot((normal.X, normal.Y, normal.Z), projector.view)) - 1) <= 1e-9
+                and abs(_dot([center.X - origin[0], center.Y - origin[1], center.Z - origin[2]], projector.view)) <= 1e-6)
+
+    # A face of the part that was already on the plane is not a cut surface. Only the split creates cut surfaces.
+    existing = [face for face in shape.faces() if on_plane(face)]
+    hatching = []
+    for face in kept.faces():
+        if not on_plane(face) or any(old.distance_to(face.center()) <= 1e-6 for old in existing):
             continue
         ids = []
         for edge in face.edges():

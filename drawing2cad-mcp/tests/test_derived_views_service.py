@@ -181,3 +181,10 @@ def test_repeated_references_and_large_expansions_fail_before_copying(monkeypatc
     monkeypatch.setattr(derived_views, "MAX_EXPANDED_PRIMITIVES", 1)
     monkeypatch.setattr(derived_views, "deepcopy", lambda value: pytest.fail("The expansion copied before the limit check."))
     assert derived_views.expand(spec, record, state)[1]["defects"][0]["code"] == "derivation_invalid"
+
+
+def test_malformed_schema_version_and_geometry_fail_without_an_exception():
+    derived_views, state, record, spec, _ = expansion_case()
+    assert derived_views.expand({**spec, "schema_version": []}, record, state)[1]["schema_version"] is None
+    spec["views"][0]["geometry"] = {"type": "line"}
+    assert derived_views.expand(spec, record, state)[1]["defects"][0]["code"] == "derivation_invalid"

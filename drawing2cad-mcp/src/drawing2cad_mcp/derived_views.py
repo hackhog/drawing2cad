@@ -28,7 +28,9 @@ MAX_EXPANDED_PRIMITIVES = 3600
 class SectionRequest(ClosedModel):
     letter: Annotated[str, Field(pattern=r"^[A-Z]$")]
     origin: Vector3 = Field(description="A model point on the cutting plane, in mm.")
-    normal: Vector3 = Field(description="Normal of the cutting plane. The section view looks along it.")
+    normal: Vector3 = Field(description=(
+        "Normal of the cutting plane. view_direction points from the part toward the viewer: "
+        "+normal for positive_normal, -normal for negative_normal."))
     viewing_side: Literal["positive_normal", "negative_normal"] = Field(
         description="positive_normal: the viewer is on the positive side of the normal. The material between the viewer and the plane is removed.")
     source_view_id: Identifier = Field(description="Another requested view that shows the cutting line. It must show the plane as a line.")
@@ -137,7 +139,8 @@ def status(record: dict | None, state: dict) -> dict[str, Any] | None:
 
 def _failure(spec: dict, view_id: str, code: str, message: str) -> dict[str, Any]:
     declared = spec.get("schema_version")
-    return {"status": "fail", "diagnostic_eligible": False, "schema_version": declared if declared in {"1.0", "2.0"} else None,
+    known = isinstance(declared, str) and declared in {"1.0", "2.0"}
+    return {"status": "fail", "diagnostic_eligible": False, "schema_version": declared if known else None,
             "findings": [], "render_support": None, "defects": [{"code": code, "id": view_id, "message": message}]}
 
 
@@ -167,6 +170,8 @@ def expand(spec: Any, record: dict | None, state: dict) -> tuple[Any, dict | Non
         if reference.view_id in names:
             return spec, _failure(spec, identifier, "derivation_invalid", "Each derived view can occur only once in a drawing.")
         names[reference.view_id] = identifier
+        if "geometry" in view and not isinstance(view["geometry"], list):
+            return spec, _failure(spec, identifier, "derivation_invalid", "geometry of a derived view must be a list of your own primitives.")
         total += len(views.get(reference.view_id, {}).get("geometry", []))
     if total > MAX_EXPANDED_PRIMITIVES:
         return spec, _failure(spec, "drawing", "derivation_invalid",

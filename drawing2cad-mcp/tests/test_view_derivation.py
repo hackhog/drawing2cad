@@ -244,3 +244,28 @@ def test_hatching_limits_of_the_contract(tmp_path, monkeypatch):
                                  "source_view_id": "top"}}
     result = derive(candidate(flange(), tmp_path / "model"), normalize_requests([TOP, section]))
     assert result["status"] == "fail" and result["error"]["code"] == "VIEW_TOO_COMPLEX"
+
+
+def test_oblique_section_keeps_exact_ellipses(tmp_path):
+    """A section at 45 degrees through a cylinder cuts an ellipse."""
+    description = sample_description()
+    description["features"] = [{"id": "rod", "type": "cylinder", "operation": "base", "diameter": 20, "height": 40, "evidence_ids": ["drawing"]}]
+    description["measurements"] = [{"id": "overall", "kind": "bbox", "basis": "printed_dimension", "expected": [20, 20, 40], "evidence_ids": ["drawing"]}]
+    section = {"id": "cut", "kind": "section", "up": [0, 1, 0],
+               "cutting_plane": {"letter": "C", "origin": [0, 0, 20], "normal": [1, 0, 1], "viewing_side": "positive_normal",
+                                 "source_view_id": "front"}}
+    result = derive(candidate(description, tmp_path / "model"), normalize_requests([FRONT, section]))
+    assert result["status"] == "pass", result
+    boundary = [item for item in result["views"][1]["geometry"] if item["style"] == "section"]
+    assert [item["type"] for item in boundary] == ["ellipse"]
+    ellipse = boundary[0]
+    assert math.hypot(*ellipse["major_axis"]) == pytest.approx(10 * math.sqrt(2), abs=1e-6)
+    assert ellipse["ratio"] == pytest.approx(1 / math.sqrt(2), abs=1e-6)
+
+
+def test_existing_face_on_the_plane_is_not_a_cut_surface(tmp_path):
+    section = {"id": "cut", "kind": "section", "up": [0, 1, 0],
+               "cutting_plane": {"letter": "D", "origin": [0, 0, 10], "normal": [0, 0, 1], "viewing_side": "positive_normal",
+                                 "source_view_id": "front"}}
+    result = derive(candidate(asymmetric_block(), tmp_path / "model"), normalize_requests([FRONT, section]))
+    assert result["status"] == "fail" and "cut surface" in result["error"]["message"]

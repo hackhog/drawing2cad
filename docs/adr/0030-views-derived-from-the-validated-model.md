@@ -31,7 +31,8 @@ It does not give drawing geometry.
 - The service calculates the projection matrix with the rules of ADR 0029 and checks it before the worker starts.
   An isometric request with a direction that is not a body diagonal fails as dimetric or trimetric.
   A perspective request fails, because the drawing views need a parallel projection. A request cannot supply its own matrix.
-- A section request has a cutting plane (letter, origin, normal, viewing side, source view). The section looks along the normal.
+- A section request has a cutting plane (letter, origin, normal, viewing side, source view). The view direction points from the part
+  toward the viewer: it is the normal for `positive_normal` and minus the normal for `negative_normal`.
   The source view must be another requested view that shows the plane as a line.
 
 ### Output
@@ -40,9 +41,11 @@ It does not give drawing geometry.
 - Each view is a DrawingSpec 2.0 view draft without evidence and feature references:
   - visible edges, and hidden edges (default for orthographic views only),
   - center lines of cylinder axes in the view plane, and center marks of axes along the view direction (not in isometric views),
-  - lines, circles, arcs, and ellipses from the exact curve type, with `approximation_error` 0 for an ellipse,
+  - lines, circles, arcs, and ellipses from the exact curve type, also on cut surfaces, with `approximation_error` 0 for an ellipse,
   - other curves as polylines with an error of at most 0.01 mm: deflection-controlled sampling (0.005 mm) and a simplification (0.005 mm).
+    Curves below C2 continuity use the quasi-uniform deflection algorithm.
     The worker measures the error at each sample and at 15 points between each pair of samples. Above 0.01 mm, it keeps all samples.
+    If the error is then still above 0.01 mm, the view fails with `VIEW_TOO_COMPLEX`.
     The view records the measured maximum error and the affected primitives.
 - A section removes the material between the viewer and the plane. It gives the cut surfaces as `section` primitives,
   one closed hatching boundary for each cut surface, and the visible edges behind the plane without hidden edges.
@@ -50,6 +53,7 @@ It does not give drawing geometry.
 - A view has at most 300 primitives, a curve at most 2,000 points, a cut surface at most 100 boundary primitives, and a section at most 20 cut surfaces,
   as DrawingSpec 2.0 permits. A view that exceeds a limit fails with `VIEW_TOO_COMPLEX`.
 - When the kept material has more than one piece, the section uses all pieces.
+- A face of the part that was already on the cutting plane is not a cut surface. A plane that only touches the part fails.
 - The tool result omits geometry when it exceeds 60,000 characters. The JSON artifact `derived-views.json` contains all of it.
 
 ### Binding and stale views
