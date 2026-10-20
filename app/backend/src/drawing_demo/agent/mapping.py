@@ -14,7 +14,7 @@ PHASE_BY_TOOL = {
     # part_schema and part_read only read; they keep the current phase like the status and probe calls.
     "part_validate": "modeling", "part_create": "modeling", "part_update": "modeling", "create_base_body": "modeling", "add_hole": "modeling", "add_pocket": "modeling",
     "add_cut": "modeling", "add_chamfer": "modeling", "add_fillet": "modeling", "build_from_description": "modeling",
-    "drawing_schema": "drawing", "drawing_derive_views": "drawing", "drawing_validate": "drawing", "drawing_render": "drawing", "drawing_review": "drawing",
+    "drawing_schema": "drawing", "drawing_derive_views": "drawing", "drawing_verify": "drawing", "drawing_validate": "drawing", "drawing_render": "drawing", "drawing_review": "drawing",
     "artifact_preview": "drawing",
     # part_export_review only exports the current state; it keeps the phase, so a failed build stays in "modeling".
     # model_projection_check only reads the validated build and does not gate the release; it keeps the phase.

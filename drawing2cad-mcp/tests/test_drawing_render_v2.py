@@ -20,8 +20,8 @@ SECTION = {"id": "section_a", "kind": "section", "up": [0, 0, 1],
                              "source_view_id": "top"}}
 
 
-def flange_drawing(tmp_path):
-    description = flange()
+def flange_drawing(tmp_path, description=None):
+    description = description or flange()
     step = candidate(description, tmp_path / "model")
     derived = derive(step, normalize_requests([TOP, FRONT, ISO, SECTION]))
     assert derived["status"] == "pass", derived
@@ -49,14 +49,15 @@ def flange_drawing(tmp_path):
                       diameter("d_bore", circle("top", 15), 30, [8, -64])]
     for index, (center, label) in enumerate(zip(bolts, ([40, 40], [-66, 30], [-66, -34], [40, -42]))):
         top_dimensions.append(diameter(f"d_bolt{index + 1}", circle("top", 5, center), 10, label))
-    bore = next(item for item in views["front"]["geometry"] if item["type"] == "line" and item["style"] == "hidden"
-                and abs(item["start"][0] + 15) < 1e-6 and abs(abs(item["end"][1] - item["start"][1]) - 32) < 1e-6)
     bottom = next(item for item in views["front"]["geometry"] if item["type"] == "line" and item["style"] == "visible"
                   and abs(item["start"][1]) < 1e-6 and abs(item["end"][1]) < 1e-6)
     top_face = next(item for item in views["front"]["geometry"] if item["type"] == "line" and item["style"] == "visible"
                     and abs(item["start"][1] - 12) < 1e-6 and abs(item["end"][1] - 12) < 1e-6)
-    front_dimensions = [{"id": "h_total", "type": "linear", "axis": "vertical", "p1": {"primitive": bore["id"], "point": "start"},
-                         "p2": {"primitive": bore["id"], "point": "end"}, "expected": 32, "label_position": [-72, 16],
+    hub_top = next(item for item in views["front"]["geometry"] if item["type"] == "line" and item["style"] == "visible"
+                   and abs(item["start"][1] - 32) < 1e-6 and abs(item["end"][1] - 32) < 1e-6)
+    # The overall height: from the bottom face to the hub face.
+    front_dimensions = [{"id": "h_total", "type": "linear", "axis": "vertical", "p1": {"primitive": bottom["id"], "point": "start"},
+                         "p2": {"primitive": hub_top["id"], "point": "start"}, "expected": 32, "label_position": [-72, 16],
                          "evidence_ids": ["drawing"]}]
 
     def view(identifier, label, kind, origin, frame, scale, dimensions=()):

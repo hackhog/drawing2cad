@@ -17,6 +17,22 @@ import uuid
 from .sandbox import available
 
 
+def _poppler_pages(directory: Path) -> dict:
+    """The PNG pages that pdftoppm wrote. A missing or unreadable page is a failure, never a pass."""
+    pages = sorted(directory.glob("page-*.png"), key=lambda path: int(path.stem.rsplit("-", 1)[1]))
+    if not pages:
+        return {"status": "fail", "error": {"code": "RENDER_INCOMPLETE", "message": "The PDF renderer wrote no page."}}
+    numbers = [int(path.stem.rsplit("-", 1)[1]) for path in pages]
+    if numbers != list(range(1, len(pages) + 1)):
+        return {"status": "fail", "error": {"code": "RENDER_INCOMPLETE", "message": "The PDF renderer skipped a page."}}
+    return {"status": "pass", "pages": [{"page": number, "path": str(path), "bytes": path.stat().st_size}
+                                        for number, path in zip(numbers, pages)]}
+
+
+# Operations that replace the worker with a fixed program. The parent reads their files.
+RAW_OPERATIONS = {"render_pdf_poppler": _poppler_pages}
+
+
 @dataclass(frozen=True)
 class WorkerLimits:
     timeout_seconds: float = 90
@@ -42,7 +58,8 @@ class WorkerRunner:
             timeout: float | None = None, memory_mb: int | None = None,
             export_profile: str = "ap214", pmi: dict | None = None,
             parameter_changes: dict | None = None, input_pdf: Path | None = None,
-            page: int | None = None, views: list | None = None) -> dict:
+            page: int | None = None, views: list | None = None, input_image: Path | None = None,
+            verification: dict | None = None) -> dict:
         capability = available()
         if not capability["available"]:
             return {"status": "fail", "error": {"code": "SANDBOX_UNAVAILABLE", "message": capability["reason"]}}
@@ -61,6 +78,11 @@ class WorkerRunner:
             if len(data) > 64 * 1024 * 1024:
                 return {"status": "fail", "error": {"code": "PDF_TOO_LARGE", "message": "The source PDF exceeds 64 MiB."}}
             (directory / "input.pdf").write_bytes(data)
+        if input_image is not None:
+            data = input_image.read_bytes()
+            if len(data) > 64 * 1024 * 1024:
+                return {"status": "fail", "error": {"code": "IMAGE_TOO_LARGE", "message": "The raster image exceeds 64 MiB."}}
+            (directory / "input.png").write_bytes(data)
         deadline_seconds = timeout if timeout is not None else self.limits.timeout_seconds
         request = {"operation": operation, "work_dir": str(directory), "description": description,
                    "memory_mb": memory_mb if memory_mb is not None else self.limits.memory_mb,
@@ -68,7 +90,7 @@ class WorkerRunner:
                    "concurrent_workers": self.limits.concurrent_workers,
                    "drawing_spec": drawing_spec, "revision": revision,
                    "export_profile": export_profile, "pmi": pmi,
-                   "parameter_changes": parameter_changes, "page": page, "views": views}
+                   "parameter_changes": parameter_changes, "page": page, "views": views, "verification": verification}
         if operation == "probe":
             forbidden = self.storage / (directory.name + "-outside.txt")
             forbidden.write_text("unchanged", encoding="utf-8")
@@ -141,6 +163,9 @@ class WorkerRunner:
             result = {"status": "fail", "error": {"code": reason, "message": "The worker exceeded its configured limit."}}
         elif process.returncode != 0:
             result = {"status": "fail", "error": {"code": "WORKER_CRASH", "message": f"Worker exited with code {process.returncode}."}}
+        elif operation in RAW_OPERATIONS:
+            # The worker replaced itself with a fixed program. Its files, not its output, are the result.
+            result = RAW_OPERATIONS[operation](directory)
         else:
             messages = [line[len("D2C_RESULT:"):] for line in stdout.splitlines() if line.startswith("D2C_RESULT:")]
             try:

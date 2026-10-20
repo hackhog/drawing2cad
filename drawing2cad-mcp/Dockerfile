@@ -23,6 +23,7 @@ RUN python -m venv /opt/poetry \
     && python -m venv /opt/venv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils libseccomp2 libstdc++6 libgl1 libglu1-mesa libxrender1 libxext6 fonts-dejavu-core \
+    libtesseract5 tesseract-ocr-eng tesseract-ocr-deu \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=stepcode-build /build/bin/reader_sdai_ap242 /usr/local/bin/drawing2cad-stepcode
 COPY --from=stepcode-build /stepcode/COPYING /stepcode/AUTHORS /stepcode/INTENT.md /usr/local/share/licenses/stepcode/

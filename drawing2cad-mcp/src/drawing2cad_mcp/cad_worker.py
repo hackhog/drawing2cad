@@ -78,6 +78,13 @@ def execute(request: dict) -> dict:
     elif operation == "derive_views":
         from .view_derivation import derive
         result = derive(directory / "input.step", request["views"])
+    elif operation == "render_pdf_poppler":
+        from .adapters.poppler import exec_pdftoppm
+        exec_pdftoppm(directory, scope)
+        raise RuntimeError("The PDF renderer did not replace its restricted worker.")
+    elif operation == "verify_drawing_pdf":
+        from .pdf_verifier import verify
+        result = verify(directory, request["verification"])
     elif operation == "projection_check":
         from .projection import check
         result = check(directory / "input.step", directory / "input.pdf", request["page"], request["views"], directory)

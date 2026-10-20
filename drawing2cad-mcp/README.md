@@ -214,6 +214,8 @@ Read `drawing_schema`. DrawingSpec 1.0 binds the sheet to `part_revision` and th
 DrawingSpec 2.0 (`drawing_schema` with `schema_version: "2.0"`) adds projections, isometric views, ellipses, sections, sheet data, and a bounded GPS profile.
 `drawing_derive_views` derives orthographic, isometric, and section views from the validated build in the restricted worker.
 A 2.0 view refers to a derived view with `derivation`. The service adds the derived geometry and rejects a stale derivation.
+`drawing_verify` verifies the stored PDF bytes in restricted workers: Poppler renders the pages, the bound model is projected again,
+and Tesseract (C API, `eng` and `deu`) reads the dimensions, frames, and title block. The report and an annotated preview are artifacts.
 `drawing_validate` checks this content, and `drawing_render` draws it: ellipses, hatching, section marks, border, title block,
 projection symbol, tolerance frames, datum symbols, and review marks for content outside the GPS profile.
 Supply views with line, circle, and arc geometry, evidence and feature references, dimensions, notes, and uncertainty markers.

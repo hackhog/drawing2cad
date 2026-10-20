@@ -61,6 +61,13 @@ DERIVED_VIEW = _object({
 }, ["id", "kind", "up"])
 
 _EXTRA = {
+    "drawing_verify": (_object({**REVISION, "artifact_id": ID, "source_id": ID, "expected_sha256": HASH},
+                               ["run_id", "expected_revision", "expected_sha256"]),
+        "Verify stored PDF bytes in restricted workers: PDF structure and binding, a Poppler raster at 300 dpi, the bound model projected again, "
+        "the isometric projection, dimensions and their anchors, tolerance frames, and texts read with OCR (Tesseract). "
+        "Give artifact_id for the PDF of the current drawing, or source_id for a supplied PDF without a binding. "
+        "Return a versioned report with rule IDs and an annotated preview. An unreadable critical value fails. "
+        "A changed PDF, drawing, revision, or build makes the report stale. A pass is a result of the supported profile, not ISO conformity."),
     "drawing_derive_views": (_object({**REVISION, "views": {"type": "array", "items": DERIVED_VIEW, "minItems": 1, "maxItems": 8}}),
         "Derive orthographic, isometric, and section views from the current validated build in the restricted worker. "
         "Return DrawingSpec 2.0 view drafts: projection matrix, visible and hidden edges, center lines, circles, arcs, ellipses, "

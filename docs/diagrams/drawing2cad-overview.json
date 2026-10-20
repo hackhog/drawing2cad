@@ -274,7 +274,8 @@
         "Landlock, seccomp, finite resources, and timeouts",
         "No CAD GUI, FreeCAD proxy, or Docker socket",
         "Fresh STEP import validates the AP214 candidate",
-        "Supplied 2D views become native DXF dimensions and PDF"
+        "Supplied 2D views become native DXF dimensions and PDF",
+        "Poppler and Tesseract verify the final PDF bytes"
       ]
     },
     {
