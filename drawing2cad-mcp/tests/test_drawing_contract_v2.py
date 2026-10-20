@@ -278,8 +278,9 @@ def test_cutting_line_must_follow_the_plane_trace():
     spec["views"][3]["cutting_plane"]["normal"] = [0, 1, 0]
     spec["views"][3]["projection"] = section_view()["projection"]
     result = drawing_validate(spec, description, 1)
-    assert result["status"] == "pass", result["defects"]
+    # Without the source projection, the trace needs review and the section marks cannot be drawn.
     assert "section_trace" in {f["code"] for f in result["findings"]}
+    assert [d["code"] for d in result["defects"]] == ["section_marks"]
 
 
 def test_zero_tolerance_needs_material_condition():

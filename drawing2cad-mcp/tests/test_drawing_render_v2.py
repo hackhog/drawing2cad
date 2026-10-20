@@ -160,3 +160,30 @@ def test_view_on_the_title_block_and_long_values_fail(tmp_path):
     spec["title_block"]["legal_owner"] = "A very long legal owner name that does not fit"
     codes = {item["code"] for item in drawing_validate(spec, description, 1)["defects"]}
     assert {"sheet_overlap", "title_block_text"} <= codes
+
+
+def test_projection_symbols_put_the_end_view_beside_the_correct_cone_end():
+    from drawing2cad_mcp.sheet_layout import projection_symbol
+
+    for kind, end_view_right in (("first_angle", True), ("third_angle", False)):
+        symbol = projection_symbol(kind, [0, 0, 30, 8])
+        cone = symbol["cone"]
+        small_end_x, large_end_x = cone[0][0], cone[1][0]
+        assert abs(cone[0][1] - cone[3][1]) < abs(cone[1][1] - cone[2][1])  # The small end is on the left.
+        assert (symbol["circle_center"][0] > large_end_x) is end_view_right
+        assert (symbol["circle_center"][0] < small_end_x) is not end_view_right
+
+
+def test_tolerance_values_are_never_rounded(tmp_path):
+    description, spec = flange_drawing(tmp_path)
+    spec["tolerance_frames"][0]["value"] = 0.0000004
+    report = drawing_validate(spec, description, 1)
+    assert any(d["code"] == "gps_frame" and "decimal places" in d["message"] for d in report["defects"])
+
+
+def test_leader_through_a_note_fails(tmp_path):
+    description, spec = flange_drawing(tmp_path)
+    # The flatness leader runs from the frame at the right to the top face of the disc. Put a note on its path.
+    spec["notes"] = [{"text": "Note", "position": [130, 92.5], "evidence_ids": ["drawing"]}]
+    defects = drawing_validate(spec, description, 1)["defects"]
+    assert any(d["code"] == "sheet_overlap" and "leader crosses" in d["message"] for d in defects), defects[:4]

@@ -195,7 +195,7 @@ def _render_sheet_items(modelspace, layout: dict, sheet: dict, evidence) -> list
             modelspace.add_line(*end["thick"], dxfattribs={"layer": "CUTTING_THICK"})
             modelspace.add_line(*end["shaft"], dxfattribs={"layer": "CUTTING_THICK"})
             solid(end["head"], "CUTTING_THICK")
-            text(section["letter"], end["letter_position"], "ANNOTATIONS")
+            text(section["letter"], end["letter_center"], "ANNOTATIONS", centered=True)
     for frame in layout.get("frames", []):
         layer = "GPS" if frame["status"] == "pass" else "GPS_REVIEW"
         frame_layout = frame["layout"]

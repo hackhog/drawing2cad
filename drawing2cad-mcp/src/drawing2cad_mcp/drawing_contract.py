@@ -922,6 +922,8 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
     height = drawing.sheet.text_height
     by_id = {view["id"]: view for view in views}
     boxes: list[tuple[str, list[float]]] = []
+    # Leaders and arrows: (owner, start, end). They must not cross a label or another sheet item.
+    segments: list[tuple[str, list[float], list[float]]] = []
     layout: dict[str, Any] = {"title_block": None, "border": None, "frames": [], "datums": [], "sections": [], "review_label_ids": []}
 
     if sheet_layout.has_title_block(data):
@@ -960,6 +962,7 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
                                  "leader": sheet_layout.leader(frame_layout, target), "characteristic": frame["characteristic"],
                                  "evidence_ids": frame["evidence_ids"], "feature_ids": frame["feature_ids"]})
         boxes.append((frame["id"], box))
+        segments.append((frame["id"], *layout["frames"][-1]["leader"]))
     for datum in data["datums"]:
         view = by_id.get(datum["view_id"])
         primitive = next((p for p in view["geometry"] if p["id"] == datum["primitive_id"]), None) if view else None
@@ -969,18 +972,22 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
         layout["datums"].append({"letter": datum["letter"], "evidence_ids": datum["evidence_ids"],
                                  "feature_ids": datum["feature_ids"], **symbol})
         boxes.append(("datum_" + datum["letter"], symbol["box"]))
+        segments.append(("datum_" + datum["letter"], *symbol["leader"]))
     for view in drawing.views:
         plane = view.cutting_plane
         source = by_id.get(plane.source_view_id) if plane else None
-        if source is None or not source.get("projection") or view.projection is None:
+        if source is None or view.projection is None:
+            continue
+        if not source.get("projection"):
+            fail("section_marks", view.id, "The source view needs a projection to show the cutting line, the arrows, and the letters.")
             continue
         marks = sheet_layout.section_marks(plane.model_dump(), source, view.projection.view_direction, height)
         if marks is None:
             continue
         layout["sections"].append({"view_id": view.id, "evidence_ids": plane.evidence_ids, **marks})
         for index, end in enumerate(marks["ends"]):
-            x, y = end["letter_position"]
-            boxes.append((f"{view.id}_letter_{index}", [x - height * 0.5, y, x + height * 0.5, y + height]))
+            boxes.append((f"{view.id}_letter_{index}", end["letter_box"]))
+            segments.append((f"{view.id}_arrow_{index}", end["shaft"][0], end["head"][0]))
     for line in sheet_layout.review_lines(data, height):
         label(line["id"], line["text"], line["position"])
         layout["review_label_ids"].append(line["id"])
@@ -1001,6 +1008,14 @@ def _sheet_layout(drawing: DrawingSpec, views: list[dict], labels: list[dict], g
             if _overlap(box, item["bounds"]):
                 fail("sheet_overlap", identifier, f"The sheet item overlaps label {item['id']}.", bounds=box,
                      other_id=item["id"], other_bounds=item["bounds"])
+    for owner, start, end in segments:
+        for identifier, box in boxes + [(item["id"], item["bounds"]) for item in labels]:
+            # A leader starts at the edge of its own item and ends at its feature. Only a crossing of another item is a defect.
+            if identifier == owner or (owner.endswith(("_arrow_0", "_arrow_1")) and identifier.startswith(owner.rsplit("_arrow_", 1)[0])):
+                continue
+            if _segment_crosses_box(start, end, box):
+                fail("sheet_overlap", owner, f"The leader crosses {identifier}. Move the frame, the datum symbol, or the label.",
+                     leader=[start, end], other_id=identifier, other_bounds=box)
     for index, note in enumerate(drawing.notes):
         if GPS_TEXT.search(note.text):
             findings.append({"code": "gps_free_text", "id": f"note_{index}", "status": "needs_review",

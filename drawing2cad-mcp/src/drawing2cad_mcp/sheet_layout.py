@@ -53,9 +53,18 @@ def scale_text(scales) -> str:
     return ", ".join(parts)
 
 
+# Decimal places of a tolerance value. The validator rejects a value that this text cannot show exactly.
+VALUE_DECIMALS = 6
+
+
 def _number(value: float) -> str:
-    text = f"{value:.4f}".rstrip("0").rstrip(".")
+    text = f"{value:.{VALUE_DECIMALS}f}".rstrip("0").rstrip(".")
     return text or "0"
+
+
+def exact_text(value: float) -> bool:
+    """True when the value text shows the value without rounding."""
+    return abs(float(_number(value)) - value) <= 1e-12
 
 
 def has_title_block(drawing: dict) -> bool:
@@ -90,7 +99,8 @@ def title_block_cells(drawing: dict, views: list[dict]) -> list[dict[str, Any]]:
 def projection_symbol(kind: str, cell: list[float]) -> dict[str, Any]:
     """Projection method symbol (ISO 5456-2) inside a cell: a truncated cone and its end view.
 
-    The cone has its large end on the left in both methods. First angle puts the end view on the right, third angle on the left.
+    The cone has its small end on the left in both methods. The end view seen from the small end shows two visible circles.
+    First angle puts this view on the right, next to the large end. Third angle puts it on the left, next to the small end.
     """
     big, small, length, gap = 2.0, 1.1, 5.0, 2.0
     cx = (cell[0] + cell[2]) / 2
@@ -101,7 +111,7 @@ def projection_symbol(kind: str, cell: list[float]) -> dict[str, Any]:
         cone_left, circle_center = left, [left + length + gap + big, cy]
     else:
         circle_center, cone_left = [left + big, cy], left + 2 * big + gap
-    cone = [[cone_left, cy - big], [cone_left + length, cy - small], [cone_left + length, cy + small], [cone_left, cy + big]]
+    cone = [[cone_left, cy - small], [cone_left + length, cy - big], [cone_left + length, cy + big], [cone_left, cy + small]]
     return {"cone": cone, "circle_center": circle_center, "radii": [big, small],
             "axis": [[left - 0.5, cy], [left + total + 0.5, cy]]}
 
@@ -146,7 +156,11 @@ def anchor_point(primitive: dict, view: dict) -> list[float]:
         local = [primitive["center"][0] + primitive["radius"] * math.cos(math.radians(angle)),
                  primitive["center"][1] + primitive["radius"] * math.sin(math.radians(angle))]
     else:
-        local = list(primitive["center"])
+        # A point on the ellipse at the middle of its parameter range.
+        angle = math.radians((primitive["start_parameter"] + primitive["end_parameter"]) / 2)
+        major = primitive["major_axis"]
+        minor = [-major[1] * primitive["ratio"], major[0] * primitive["ratio"]]
+        local = [primitive["center"][i] + math.cos(angle) * major[i] + math.sin(angle) * minor[i] for i in (0, 1)]
     return [view["origin"][i] + view["scale"] * local[i] for i in (0, 1)]
 
 
@@ -302,9 +316,12 @@ def section_marks(plane: dict, source: dict, view_direction, text_height: float)
         normal = [-arrow[1], arrow[0]]
         head = [tip, [head_base[0] + normal[0] * ARROW_HEAD[1] / 2, head_base[1] + normal[1] * ARROW_HEAD[1] / 2],
                 [head_base[0] - normal[0] * ARROW_HEAD[1] / 2, head_base[1] - normal[1] * ARROW_HEAD[1] / 2]]
-        letter = [tip[0] + arrow[0] * (text_height * 0.9) - sign * unit[0] * 1.5,
-                  tip[1] + arrow[1] * (text_height * 0.9) - sign * unit[1] * 1.5 - text_height / 2]
-        ends.append({"thick": [point, inner], "shaft": [point, head_base], "head": head, "letter_position": letter})
+        # The letter is centered at this point. Its box uses the field text factor.
+        letter = [tip[0] + arrow[0] * (text_height * 1.2) - sign * unit[0] * 1.5,
+                  tip[1] + arrow[1] * (text_height * 1.2) - sign * unit[1] * 1.5]
+        half = text_width(plane["letter"], text_height, FIELD_TEXT_FACTOR) / 2 + 0.3
+        box = [letter[0] - half, letter[1] - text_height * 0.7, letter[0] + half, letter[1] + text_height * 0.7]
+        ends.append({"thick": [point, inner], "shaft": [point, head_base], "head": head, "letter_center": letter, "letter_box": box})
     return {"line": [start, end], "ends": ends, "letter": plane["letter"]}
 
 

@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field
 
 from .part_schema import ClosedModel, EvidenceIds, Identifier, Number
+from .sheet_layout import VALUE_DECIMALS, exact_text
 
 Text = Annotated[str, Field(min_length=1, max_length=180, pattern=r"^[^\x00-\x1f\x7f\\]+$")]
 Vector3 = tuple[Number, Number, Number]
@@ -271,6 +272,8 @@ def frame_review(frame: ToleranceFrame) -> tuple[list[str], list[str]]:
         defects.append("Datum references must be distinct: a datum letter occurs more than once.")
     if len(frame.modifiers) != len(set(frame.modifiers)):
         defects.append("A modifier occurs more than once.")
+    if not exact_text(frame.value):
+        defects.append(f"The tolerance value has more than {VALUE_DECIMALS} decimal places. The drawing cannot show it exactly.")
     if frame.value == 0 and not {"M", "L"} & set(frame.modifiers):
         defects.append("A tolerance value of 0 needs the modifier M or L.")
     if {"M", "L"} <= set(frame.modifiers):
