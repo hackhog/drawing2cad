@@ -97,3 +97,40 @@ def test_the_gate_needs_a_current_verification_of_the_profile():
     assert not gate({**base, "validity": "stale", "reason": "pdf_sha256"}, [])["passed"]
     assert not gate({**base, "profile": "drawing2cad-verify-0"}, [])["passed"]
     assert not gate({**base, "findings": [{**findings[0], "message": ""}]}, [])["passed"]
+
+
+def test_a_failed_report_blocks_also_without_a_mandatory_failure():
+    base = {"validity": "current", "profile": "drawing2cad-verify-1", "findings": [], "status": "fail"}
+    result = gate(base, [])
+    assert not result["passed"] and result["blocking"][0]["rule_id"] == "REPORT"
+    assert "TEXT-LIMIT" in MANDATORY_RULES
+
+
+def test_a_missing_candidate_makes_the_verification_stale_without_an_error(domain):
+    service, source, _, _, runner, pdf = prepare(domain)
+    assert verify_and_review(service, source, runner, pdf, passing())["status"] == "accepted"
+    cad = service._backend(CTX)[0]
+    built = cad._load(cad._directory("plate"))["build"]
+    cad._candidate(built["build"]).unlink()
+    read = service.call(CTX, "drawing_read", {"run_id": "plate"})
+    assert read["verification"]["validity"] == "stale" and read["acceptance"]["status"] == "unverified"
+    assert service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]["drawing_current"] is False
+
+
+def test_repeated_reads_reuse_the_verified_file_hashes(domain, monkeypatch, tmp_path):
+    import hashlib
+
+    service = domain[0]
+    path = tmp_path / "file.pdf"
+    path.write_bytes(b"synthetic content")
+    digest = hashlib.sha256(b"synthetic content").hexdigest()
+    assert service._file_has(path, digest)
+
+    def no_hash(*args, **kwargs):
+        raise AssertionError("The file was hashed again.")
+    monkeypatch.setattr("drawing2cad_mcp.domain_service.hashlib.sha256", no_hash)
+    assert service._file_has(path, digest)
+    monkeypatch.undo()
+    # A changed file has another size or ctime, so the service hashes it again.
+    path.write_bytes(b"changed content!!")
+    assert not service._file_has(path, digest)

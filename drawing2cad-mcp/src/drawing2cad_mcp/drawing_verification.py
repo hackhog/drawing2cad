@@ -325,6 +325,10 @@ def gate(verification: dict | None, decisions: list[dict] | None) -> dict[str, A
             (reviewed if key in decided else blocking).append(item)
         elif item["status"] == "not_applicable" and not item.get("message"):
             blocking.append(item)
+    if verification.get("status") == "fail" and not blocking:
+        # A failed report always blocks, also for a rule outside the mandatory list.
+        blocking.append({"rule_id": "REPORT", "status": "fail", "severity": "major", "feature": None,
+                         "message": "The verification report failed."})
     passed = not blocking
     return {"passed": passed, "blocking": blocking[:50], "blocking_count": len(blocking), "reviewed": reviewed[:50],
             "reason": None if passed else f"{len(blocking)} mandatory verification findings block the acceptance."}

@@ -42,6 +42,8 @@ and the web UI (`ReviewPanel.tsx`, `ArtifactsPanel.tsx`).
   `drawing_review` takes `verification_decisions`: the rule ID, the feature, and a reason for each decided finding.
   A decision must name a `needs_review` finding of the current verification. Other decisions fail with `REVIEW_DECISION_INVALID`.
 - A `not_applicable` finding needs a reason.
+- A report with the overall status `fail` always blocks, also for a rule outside the mandatory list. `TEXT-LIMIT` is mandatory:
+  a drawing with more text regions than the verifier reads cannot be accepted.
 - The drawing state keeps the mandatory findings that are not a pass (at most 300). A truncated record blocks.
 
 ### Invalidation
@@ -49,6 +51,8 @@ and the web UI (`ReviewPanel.tsx`, `ArtifactsPanel.tsx`).
 - The verification binding contains the part revision, the description, the construction source hashes, the profile, the stored build candidate bytes,
   the drawing hash, and the stored PDF bytes. A change of any of them makes the record stale, and the drawing is not accepted.
 - A new verification with another report needs a new review. A review covers only the report that it names.
+- A missing or changed build candidate makes the record stale. It does not make the read fail.
+- A read computes the binding once. The service reuses a verified file hash while the inode, size, mtime, and ctime of the file stay the same.
 
 ### Release and interface
 

@@ -22,7 +22,7 @@ MANDATORY_RULES = (
     "PDF-INTEGRITY-01", "PDF-STRUCT-01", "PDF-STRUCT-02", "PDF-STRUCT-03", "PDF-STRUCT-04", "PDF-BIND-01",
     "RENDER-01", "RENDER-02", "RENDER-03", "RENDER-04", "VIEW-REQ-01", "VIEW-REQ-02", "ISO-01",
     "MODEL-01", "MODEL-02", "MODEL-03", "MODEL-04", "MODEL-05", "DIM-01", "DIM-02", "DIM-03", "DIM-04", "DIM-05",
-    "UNITS-01", "REV-01", "REV-02", "TEXT-01", "TEXT-02", "TEXT-03", "TEXT-04", "TEXT-05", "SEC-01",
+    "UNITS-01", "REV-01", "REV-02", "TEXT-01", "TEXT-02", "TEXT-03", "TEXT-04", "TEXT-05", "TEXT-LIMIT", "SEC-01",
     "GPS-01", "GPS-02", "GPS-03", "GPS-04", "GPS-05", "GPS-06", "GPS-07", "GPS-08", "GPS-09",
 )
 # A mandatory rule without a finding is not applicable only for these reasons. Any other missing rule is not tested.
@@ -34,6 +34,7 @@ ABSENT_REASONS = {
     "TEXT-03": "The drawing has no notes.",
     "TEXT-04": "The drawing has no uncertainty markers.",
     "TEXT-05": "The drawing has no other labels.",
+    "TEXT-LIMIT": "The verifier read each text region of the drawing.",
     "GPS-01": "The drawing has no tolerance frames.",
     "GPS-02": "The drawing has no tolerance frames.",
     "GPS-03": "No tolerance frame is outside the supported profile.",

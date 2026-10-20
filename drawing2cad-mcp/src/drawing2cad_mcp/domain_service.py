@@ -659,9 +659,11 @@ class DomainService:
     def _drawing_read(self, ctx, directory, state, run_id):
         drawing = self._drawing(directory, state)
         verification = None
+        current = None
         if drawing and drawing.get("verification"):
-            verification = drawing_verification.status(drawing["verification"], self._verification_binding(ctx, state, drawing))
-        acceptance = self._drawing_status(drawing, state, ctx)
+            current = self._verification_binding(ctx, state, drawing)
+            verification = drawing_verification.status(drawing["verification"], current)
+        acceptance = self._drawing_status(drawing, state, ctx, current)
         return {"run_id": run_id, "revision": state["revision"], "drawing": drawing, "verification": verification,
                 "acceptance": {key: acceptance.get(key) for key in ("status", "reason", "verification")},
                 "derived_views": derived_views.status(self._derivation(directory), state)}
@@ -679,25 +681,51 @@ class DomainService:
         digest = None
         if pdf is not None:
             metadata, path = pdf
-            try:
-                self.store._verify(path, metadata["size_bytes"], metadata["sha256"])
-                digest = metadata["sha256"]
-            except DomainError:
-                digest = "changed"
+            digest = metadata["sha256"] if self._file_has(path, metadata["sha256"], metadata["size_bytes"]) else "changed"
         built = derived_views.binding(state)
         candidate = None
         if built:
+            # The stored candidate bytes, not only the recorded hash. A missing candidate is a change, not an error.
             try:
-                # The stored candidate bytes, not only the recorded hash.
-                self._current_candidate(self._backend(ctx)[0], state, "the drawing verification")
-                candidate = built["candidate_sha256"]
-            except DomainError:
-                candidate = "changed"
+                path = self._backend(ctx)[0]._candidate((state.get("build") or {})["build"])
+                same_path = str(path) == (state.get("build") or {}).get("candidate_path")
+            except (DomainError, CadError, OSError, KeyError):
+                same_path = False
+            candidate = built["candidate_sha256"] if same_path and self._file_has(path, built["candidate_sha256"]) else "changed"
         sources = sorted(source["sha256"] for source in state["sources"] if source["role"] == "construction")
         return {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
                 "source_sha256s": sources, "profile": drawing_verification.PROFILE,
                 "candidate_sha256": candidate,
                 "drawing_sha256": drawing["drawing_sha256"], "pdf_sha256": digest}
+
+    def _file_has(self, path, digest, size=None) -> bool:
+        """True when the file has the digest. A verified result is reused while inode, size, mtime, and ctime stay the same.
+
+        A read of the drawing state can need the hashes of the PDF and the STEP candidate. The cache keeps repeated reads cheap.
+        """
+        try:
+            info = Path(path).stat()
+        except OSError:
+            return False
+        key = (str(path), info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, digest)
+        cache = self.__dict__.setdefault("_verified_files", {})
+        if key in cache:
+            return cache[key]
+        if size is not None and info.st_size != size:
+            result = False
+        else:
+            try:
+                actual = hashlib.sha256()
+                with Path(path).open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        actual.update(chunk)
+                result = actual.hexdigest() == digest
+            except OSError:
+                result = False
+        if len(cache) > 256:
+            cache.clear()
+        cache[key] = result
+        return result
 
     def _verify_drawing(self, ctx, cad, directory, state, args):
         """Verify the stored PDF bytes of the current drawing, or a construction source without a binding."""
@@ -847,7 +875,7 @@ class DomainService:
         return bool(release.get("artifact") and release.get("sha256") == build.get("candidate_sha256")
                     and release.get("description_revision") == state.get("revision"))
 
-    def _drawing_status(self, drawing, state, ctx=None):
+    def _drawing_status(self, drawing, state, ctx=None, current=None):
         """Summarize the technical drawing for a release record.
         States: accepted, unverified, unreviewed, rejected, failed, or missing (with a reason).
         accepted needs an accepted review of the current model and a current verification that passes the acceptance gate."""
@@ -861,7 +889,8 @@ class DomainService:
                     "reason": "The latest drawing render did not pass its checks. The artifacts are diagnostic files, not an accepted drawing."}
         verification = None
         if drawing.get("verification"):
-            current = self._verification_binding(ctx, state, drawing) if ctx is not None else None
+            if current is None and ctx is not None:
+                current = self._verification_binding(ctx, state, drawing)
             verification = drawing_verification.status(drawing["verification"], current)
         review = drawing.get("review") or {}
         decisions = review.get("verification_decisions") if review.get("verification_report_sha256") == (verification or {}).get("report_sha256") else []
