@@ -1,7 +1,7 @@
 """Declarations and rules of drawing contract 2.0: projections, isometric views, ellipses, sections, sheet data, and GPS.
 
 Drawing contract 2.0 adds structured data for complete technical drawings. This module defines the data and its checks.
-It does not derive views from a model and does not render. The renderer rejects 2.0 content that it cannot render.
+It does not derive views from a model and does not render. sheet_layout.py and drafting.py lay out and render the content.
 """
 
 from __future__ import annotations
@@ -108,6 +108,8 @@ class Datum(ClosedModel):
     feature_ids: Annotated[list[Identifier], Field(min_length=1, max_length=20)]
     view_id: Identifier
     primitive_id: Identifier
+    position: tuple[Number, Number] | None = Field(
+        default=None, description=LOCAL_POINT + " Lower-left corner of the datum square. Default: 4 mm above the feature point.")
     evidence_ids: EvidenceIds
 
 

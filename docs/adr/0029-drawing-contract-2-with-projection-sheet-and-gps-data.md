@@ -4,7 +4,8 @@ Date: 2026-10-19
 
 ## Status
 
-Accepted. Extends the drawing contract of [ADR 0016](0016-shared-domain-service-and-drawing-delivery.md). Implemented in the MCP (`drawing2cad-mcp/src/drawing2cad_mcp/drawing_contract.py`, `drawing_contract_v2.py`).
+Accepted. Extends the drawing contract of [ADR 0016](0016-shared-domain-service-and-drawing-delivery.md).
+[ADR 0031](0031-render-complete-drawings-from-contract-2.md) replaces the section "Rendering". Implemented in the MCP (`drawing2cad-mcp/src/drawing2cad_mcp/drawing_contract.py`, `drawing_contract_v2.py`).
 
 ## Context
 

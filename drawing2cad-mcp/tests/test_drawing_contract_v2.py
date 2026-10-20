@@ -20,7 +20,7 @@ def projection(direction, up=(0.0, 0.0, 1.0), convention="isometric_drawing"):
 
 def isometric_view(**changes):
     view = {"id": "iso", "label": "Isometric", "kind": "isometric", "orientation": "isometric",
-            "origin": [240, 45], "frame": [200, 15, 285, 80], "projection": projection((1.0, -1.0, 1.0)),
+            "origin": [340, 130], "frame": [300, 100, 385, 165], "projection": projection((1.0, -1.0, 1.0)),
             "geometry": [{"id": "iso_edge", "type": "line", "start": [0, 0], "end": [20, 10],
                           "evidence_ids": ["drawing"], "feature_ids": ["base"]},
                          {"id": "iso_hole", "type": "ellipse", "center": [10, 15], "major_axis": [4.0, 0.0], "ratio": 0.58, "approximation_error": 0.0,
@@ -49,6 +49,8 @@ def section_view():
 def complete_spec():
     description, spec = drawing_fixture()
     spec["schema_version"] = "2.0"
+    # A3 sheet: the title block needs the bottom-right corner.
+    spec["sheet"] = {"width": 420.0, "height": 297.0}
     spec["notes"] = []
     spec["views"][0]["projection"] = {"view_direction": [0, 0, 1], "up": [0, 1, 0], "scale_convention": "true_size",
                                       "matrix": [[1, 0, 0], [0, 1, 0]]}
@@ -84,7 +86,7 @@ def test_complete_v2_drawing_passes_with_profile_status():
     assert result["checks"]["sheet_items"] == "pass"
     assert result["gps"]["profile"] == GPS_PROFILE_ID
     assert [f["status"] for f in result["gps"]["frames"]] == ["pass", "pass"]
-    assert result["render_support"]["renderable"] is False
+    assert result["render_support"]["renderable"] is True
 
 
 def test_isometric_label_without_projection_is_rejected():
@@ -176,14 +178,12 @@ def test_v1_spec_rejects_v2_content_and_keeps_v1_behavior():
     assert "views[iso].projection" in result["defects"][0]["fields"]
 
 
-def test_render_gate_rejects_unrenderable_content(tmp_path):
+def test_render_gate_passes_version_2_content(tmp_path):
     description, spec = complete_spec()
     report = render_gate(drawing_validate(spec, description, 1))
-    assert report["status"] == "fail" and report["diagnostic_eligible"] is False
-    assert report["defects"][0]["code"] == "render_unsupported"
+    assert report["status"] == "pass" and report["render_support"] == {"renderable": True, "unsupported": []}
     result = render_drawing(spec, description, 1, tmp_path)
-    assert result["defects"][0]["code"] == "render_unsupported"
-    assert list(tmp_path.iterdir()) == []
+    assert result["status"] == "pass", result["defects"]
 
 
 def test_schema_versions():
@@ -251,7 +251,8 @@ def test_failures_keep_the_result_fields(tmp_path):
         assert {"schema_version", "findings", "render_support"} <= set(result)
     _, complete = complete_spec()
     gated = render_gate(drawing_validate(complete, description, 1))
-    assert gated["total_defects"] == 1 and gated["checks"]["render_support"] == "fail"
+    # The renderer draws all 2.0 content, so the gate does not add a defect.
+    assert gated["total_defects"] == 0 and "render_support" not in gated["checks"]
 
 
 def test_repeated_hatching_boundary_fails():

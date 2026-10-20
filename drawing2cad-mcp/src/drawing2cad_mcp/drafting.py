@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+import math
+
+from . import sheet_layout
 from .drawing_contract import _inside, _overlap, description_digest, drawing_validate, render_gate
 
 
@@ -90,6 +93,162 @@ def _diagnostic_pdf(pdf: bytes, sheet: dict[str, Any], report: dict[str, Any]) -
     return data
 
 
+def geometry_by_id(view: dict, identifier: str) -> dict:
+    return next(item for item in view["geometry"] if item["id"] == identifier)
+
+
+def _sample(item: dict, point, scale: float) -> list[list[float]]:
+    """Sheet points of a boundary primitive, in its own direction."""
+    if item["type"] == "line":
+        return [point(item["start"]), point(item["end"])]
+    if item["type"] in {"circle", "arc"}:
+        start = 0.0 if item["type"] == "circle" else item["start_angle"]
+        sweep = 360.0 if item["type"] == "circle" else (item["end_angle"] - item["start_angle"]) % 360 or 360.0
+        count = max(8, math.ceil(sweep / 5))
+        return [point([item["center"][0] + item["radius"] * math.cos(math.radians(start + sweep * i / count)),
+                       item["center"][1] + item["radius"] * math.sin(math.radians(start + sweep * i / count))]) for i in range(count + 1)]
+    major = item["major_axis"]
+    minor = [-major[1] * item["ratio"], major[0] * item["ratio"]]
+    start, end = item["start_parameter"], item["end_parameter"]
+    count = max(8, math.ceil((end - start) / 5))
+    return [point([item["center"][0] + math.cos(math.radians(start + (end - start) * i / count)) * major[0]
+                   + math.sin(math.radians(start + (end - start) * i / count)) * minor[0],
+                   item["center"][1] + math.cos(math.radians(start + (end - start) * i / count)) * major[1]
+                   + math.sin(math.radians(start + (end - start) * i / count)) * minor[1]]) for i in range(count + 1)]
+
+
+def _hatch_loops(items: list[dict], point, scale: float) -> list[list[list[float]]]:
+    """Closed sheet polylines of a hatching boundary. The validator has checked that the boundary is closed."""
+    pieces = [_sample(item, point, scale) for item in items]
+    loops = []
+    while pieces:
+        loop = pieces.pop(0)
+        while math.dist(loop[0], loop[-1]) > 1e-4 and pieces:
+            for index, piece in enumerate(pieces):
+                if math.dist(loop[-1], piece[0]) <= 1e-4:
+                    loop += piece[1:]
+                elif math.dist(loop[-1], piece[-1]) <= 1e-4:
+                    loop += piece[::-1][1:]
+                else:
+                    continue
+                pieces.pop(index)
+                break
+            else:
+                raise ValueError("A hatching boundary is not closed.")
+        loops.append([[round(x, 6), round(y, 6)] for x, y in loop[:-1]])
+    return loops
+
+
+def _render_sheet_items(modelspace, layout: dict, sheet: dict, evidence) -> list:
+    """Draw the border, the title block, the section marks, the tolerance frames, and the datum symbols.
+
+    Return the entities in the sheet margin. They are excluded from the margin check.
+    """
+    from ezdxf.enums import TextEntityAlignment
+
+    height = sheet["text_height"]
+    furniture = []
+
+    def text(value, position, layer, size=height, centered=False):
+        entity = modelspace.add_text(value, dxfattribs={"height": size, "layer": layer})
+        if centered:
+            entity.set_placement(position, align=TextEntityAlignment.MIDDLE_CENTER)
+        else:
+            entity.set_placement(position, align=TextEntityAlignment.LEFT)
+        return entity
+
+    def rect(box, layer):
+        return modelspace.add_lwpolyline([(box[0], box[1]), (box[2], box[1]), (box[2], box[3]), (box[0], box[3])],
+                                         close=True, dxfattribs={"layer": layer})
+
+    def solid(points, layer):
+        # A SOLID with three points is a filled triangle. The fourth point repeats the third point.
+        return modelspace.add_solid([points[0], points[1], points[2], points[2]], dxfattribs={"layer": layer})
+
+    border = layout.get("border")
+    if border:
+        rect(border["frame"], "BORDER")
+        for start, end in border["marks"]:
+            furniture.append(modelspace.add_line(start, end, dxfattribs={"layer": "BORDER"}))
+        for start, end in border["ticks"]:
+            furniture.append(modelspace.add_line(start, end, dxfattribs={"layer": "SHEET"}))
+        for item in border["labels"]:
+            furniture.append(text(item["text"], item["position"], "SHEET", border["label_height"], centered=True))
+    block = layout.get("title_block")
+    if block:
+        rect(block["rect"], "BORDER")
+        for cell in block["cells"]:
+            rect(cell["rect"], "TITLE_BLOCK")
+            text(cell["caption"], cell["caption_position"], "TITLE_BLOCK", cell["caption_height"])
+            if cell["value"] is not None:
+                text(cell["value"], cell["value_position"], "ANNOTATIONS", cell["value_height"])
+        symbol = block.get("projection_symbol")
+        if symbol:
+            modelspace.add_lwpolyline(symbol["cone"], close=True, dxfattribs={"layer": "TITLE_BLOCK"})
+            for radius in symbol["radii"]:
+                modelspace.add_circle(symbol["circle_center"], radius, dxfattribs={"layer": "TITLE_BLOCK"})
+            modelspace.add_line(*symbol["axis"], dxfattribs={"layer": "CENTER"})
+    for section in layout.get("sections", []):
+        line = modelspace.add_line(*section["line"], dxfattribs={"layer": "CUTTING"})
+        evidence(line, section["view_id"] + "_cutting_line", section["evidence_ids"])
+        for end in section["ends"]:
+            modelspace.add_line(*end["thick"], dxfattribs={"layer": "CUTTING_THICK"})
+            modelspace.add_line(*end["shaft"], dxfattribs={"layer": "CUTTING_THICK"})
+            solid(end["head"], "CUTTING_THICK")
+            text(section["letter"], end["letter_position"], "ANNOTATIONS")
+    for frame in layout.get("frames", []):
+        layer = "GPS" if frame["status"] == "pass" else "GPS_REVIEW"
+        frame_layout = frame["layout"]
+        outline = rect(frame_layout["rect"], layer)
+        evidence(outline, frame["id"], frame["evidence_ids"], frame["feature_ids"])
+        for compartment in frame_layout["compartments"]:
+            rect(compartment["rect"], layer)
+            if compartment["kind"] == "symbol":
+                strokes = sheet_layout.symbol_strokes(compartment["symbol"], compartment["rect"])
+                for start, end in strokes["lines"]:
+                    modelspace.add_line(start, end, dxfattribs={"layer": layer})
+                for center, radius in strokes["circles"]:
+                    modelspace.add_circle(center, radius, dxfattribs={"layer": layer})
+                for center, radius, start, end in strokes["arcs"]:
+                    modelspace.add_arc(center, radius, start, end, dxfattribs={"layer": layer})
+                continue
+            text(compartment["text"], compartment["text_position"], layer, frame_layout["text_height"])
+            for item in compartment["circles"]:
+                modelspace.add_circle(item["center"], item["radius"], dxfattribs={"layer": layer})
+                text(item["letter"], item["center"], layer, frame_layout["text_height"] * 0.8, centered=True)
+        start, target = frame["leader"]
+        modelspace.add_line(start, target, dxfattribs={"layer": layer})
+        direction = [target[0] - start[0], target[1] - start[1]]
+        length = math.hypot(*direction)
+        if length > 1e-6:
+            unit = [direction[0] / length, direction[1] / length]
+            normal = [-unit[1], unit[0]]
+            base = [target[0] - unit[0] * 2.5, target[1] - unit[1] * 2.5]
+            solid([target, [base[0] + normal[0] * 0.8, base[1] + normal[1] * 0.8],
+                   [base[0] - normal[0] * 0.8, base[1] - normal[1] * 0.8]], layer)
+        if frame.get("review"):
+            text(frame["review"]["text"], frame["review"]["position"], "UNCERTAINTY")
+    for datum in layout.get("datums", []):
+        box = rect(datum["box"], "GPS")
+        evidence(box, "datum_" + datum["letter"], datum["evidence_ids"], datum["feature_ids"])
+        text(datum["letter"], datum["text_position"], "GPS")
+        modelspace.add_line(*datum["leader"], dxfattribs={"layer": "GPS"})
+        solid(datum["triangle"], "GPS")
+    return furniture
+
+
+def _bind_pdf(pdf: bytes, revision: int, description_sha256: str, dxf_sha256: str) -> bytes:
+    """Record the drawing binding in the PDF metadata: the part revision, the description, and the DXF that the PDF shows."""
+    import pymupdf
+
+    document = pymupdf.open(stream=pdf, filetype="pdf")
+    document.set_metadata({"title": "drawing2cad technical drawing", "producer": "drawing2cad ezdxf-pymupdf",
+                           "keywords": f"part_revision:{revision}; description_sha256:{description_sha256}; dxf_sha256:{dxf_sha256}"})
+    data = document.tobytes(garbage=4, deflate=True)
+    document.close()
+    return data
+
+
 def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: int,
                    output_dir: Path) -> dict[str, Any]:
     """Render fixed artifact names inside the restricted worker directory."""
@@ -111,13 +270,18 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
     # the setup DASHED gap is only 0.254 mm, close to the default stroke width.
     document.linetypes.add("D2C_HIDDEN_MM", [3.0, 2.0, -1.0], description="Hidden edge: 2 mm dash, 1 mm gap")
     document.linetypes.add("D2C_CENTER_MM", [8.0, 5.0, -1.0, 1.0, -1.0], description="Center line: 5/1 mm dashes, 1 mm gaps")
-    for name, color, linetype in (("VISIBLE", 7, "CONTINUOUS"), ("HIDDEN", 7, "D2C_HIDDEN_MM"),
-                                  ("CENTER", 7, "D2C_CENTER_MM"), ("SECTION", 7, "CONTINUOUS"),
-                                  ("DIMENSIONS", 7, "CONTINUOUS"), ("ANNOTATIONS", 7, "CONTINUOUS"),
-                                  ("UNCERTAINTY", 1, "CONTINUOUS")):
+    # Line weights in hundredths of a mm: 0.7 mm for frames and thick cutting-line ends, 0.18 mm for thin lines.
+    for name, color, linetype, weight in (("VISIBLE", 7, "CONTINUOUS", None), ("HIDDEN", 7, "D2C_HIDDEN_MM", 18),
+                                          ("CENTER", 7, "D2C_CENTER_MM", 18), ("SECTION", 7, "CONTINUOUS", None),
+                                          ("HATCH", 7, "CONTINUOUS", 18),
+                                          ("DIMENSIONS", 7, "CONTINUOUS", None), ("ANNOTATIONS", 7, "CONTINUOUS", None),
+                                          ("UNCERTAINTY", 1, "CONTINUOUS", None), ("CUTTING", 7, "D2C_CENTER_MM", 18),
+                                          ("CUTTING_THICK", 7, "CONTINUOUS", 70), ("BORDER", 7, "CONTINUOUS", 70),
+                                          ("SHEET", 7, "CONTINUOUS", 25), ("TITLE_BLOCK", 7, "CONTINUOUS", 35),
+                                          ("GPS", 7, "CONTINUOUS", 25), ("GPS_REVIEW", 1, "D2C_HIDDEN_MM", 25)):
         attrs = {"color": color, "linetype": linetype}
-        if name in {"HIDDEN", "CENTER"}:
-            attrs["lineweight"] = 18  # DXF line weights use hundredths of a mm.
+        if weight is not None:
+            attrs["lineweight"] = weight
         document.layers.new(name, dxfattribs=attrs)
     modelspace = document.modelspace()
     entity_groups = []
@@ -143,6 +307,13 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
                 entity = modelspace.add_line(point(primitive["start"]), point(primitive["end"]), dxfattribs=attrs)
             elif primitive["type"] == "circle":
                 entity = modelspace.add_circle(point(primitive["center"]), scale * primitive["radius"], dxfattribs=attrs)
+            elif primitive["type"] == "ellipse":
+                major = [scale * primitive["major_axis"][0], scale * primitive["major_axis"][1], 0.0]
+                full = primitive["end_parameter"] - primitive["start_parameter"] >= 360 - 1e-9
+                entity = modelspace.add_ellipse(point(primitive["center"]), major_axis=major, ratio=primitive["ratio"],
+                                                start_param=0.0 if full else math.radians(primitive["start_parameter"]),
+                                                end_param=2 * math.pi if full else math.radians(primitive["end_parameter"]),
+                                                dxfattribs=attrs)
             else:
                 entity = modelspace.add_arc(point(primitive["center"]), scale * primitive["radius"],
                                            primitive["start_angle"], primitive["end_angle"], dxfattribs=attrs)
@@ -154,6 +325,9 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
             overrides = {"dimtxt": sheet["text_height"], "dimasz": 1.25, "dimlfac": 1 / scale,
                          "dimdec": 4, "dimadec": 4, "dimzin": 8, "dimazin": 2, "dimtad": 0,
                          "dimgap": 0.5, "dimexe": 1.0, "dimexo": 0.5, "dimtmove": 2}
+            if dim.get("theoretically_exact"):
+                # A negative DIMGAP draws a frame around the value: a theoretically exact dimension (ISO 1101).
+                overrides["dimgap"] = -0.5
             if dim["type"] == "linear":
                 result = modelspace.add_linear_dim(base=label, p1=point(dim["p1"]), p2=point(dim["p2"]),
                                                    location=label, angle=dim["angle"], override=overrides, dxfattribs=attrs)
@@ -175,14 +349,27 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
             native_dimensions.append(dim["id"])
             entities.append(result.dimension)
             text_sources.append((dim["id"], view["id"], "dimension", result.dimension))
+        for index, hatch in enumerate(view.get("hatching") or []):
+            loops = _hatch_loops([geometry_by_id(view, ref) for ref in hatch["boundary_primitive_ids"]], point, scale)
+            entity = modelspace.add_hatch(dxfattribs={"layer": "HATCH"})
+            # ANSI31 has 45-degree lines with 3.175 mm spacing at scale 1.
+            entity.set_pattern_fill("ANSI31", angle=hatch["angle"] - 45.0, scale=hatch["spacing"] / 3.175)
+            for loop in loops:
+                entity.paths.add_polyline_path(loop, is_closed=True)
+            evidence(entity, f"{view['id']}_hatch_{index}", view["cutting_plane"]["evidence_ids"] if view.get("cutting_plane") else [])
+            entities.append(entity)
         entity_groups.append((view["id"], entities, view["frame"]))
 
+    layout_data = resolved.get("layout") or {}
+    furniture = _render_sheet_items(modelspace, layout_data, sheet, evidence)
+
     marker_ids = {marker["id"] for marker in resolved["uncertainty_markers"]}
+    review_ids = set(layout_data.get("review_label_ids", []))
     for label in resolved["labels"]:
         if label["id"] in native_dimensions:
             continue
         entity = modelspace.add_text(label["text"], dxfattribs={"height": sheet["text_height"],
-                                    "layer": "UNCERTAINTY" if label["id"] in marker_ids else "ANNOTATIONS"})
+                                    "layer": "UNCERTAINTY" if label["id"] in marker_ids | review_ids else "ANNOTATIONS"})
         entity.set_placement(label["position"], align=TextEntityAlignment.LEFT)
         view_id = next((view["id"] for view in resolved["views"]
                         if label["id"] in {view["id"] + "_label", view["id"] + "_section"}), None)
@@ -205,7 +392,9 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
                             "message": "Rendered geometry or dimension lines exceed their view frame."})
     margin = sheet["margin"]
     usable = [margin, margin, sheet["width"] - margin, sheet["height"] - margin]
-    bounds = bbox.extents(modelspace, cache=cache)
+    # The border, its marks, and its zone labels are in the margin. They must stay on the sheet.
+    furniture_handles = {entity.dxf.handle for entity in furniture}
+    bounds = bbox.extents([entity for entity in modelspace if entity.dxf.handle not in furniture_handles], cache=cache)
     if bounds.has_data and not _inside([bounds.extmin.x, bounds.extmin.y, bounds.extmax.x, bounds.extmax.y], usable):
         defects.append({"code": "rendered_sheet_clipping", "id": "drawing", "message": "Rendered entities exceed the sheet margin.",
                         "bounds_mm": [bounds.extmin.x, bounds.extmin.y, bounds.extmax.x, bounds.extmax.y], "allowed_bounds_mm": usable})
@@ -240,12 +429,15 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
     for path in ((pdf_path, report_path) if diagnostic_only else (dxf_path, pdf_path, report_path)):
         if path.exists() or path.is_symlink():
             raise ValueError("Drawing artifact paths must be empty before rendering.")
+    source = document
     if not diagnostic_only:
         document.saveas(dxf_path)
+        # Render the PDF from the written DXF, so both files have the same content.
+        source = ezdxf.readfile(dxf_path)
     backend = pymupdf.PyMuPdfBackend()
     render_config = config.Configuration(background_policy=config.BackgroundPolicy.WHITE,
                                          color_policy=config.ColorPolicy.COLOR)
-    Frontend(RenderContext(document), backend, config=render_config).draw_layout(modelspace, finalize=True)
+    Frontend(RenderContext(source), backend, config=render_config).draw_layout(source.modelspace(), finalize=True)
     pdf = backend.get_pdf_bytes(layout.Page(sheet["width"], sheet["height"], units=layout.Units.mm),
                                 settings=layout.Settings(fit_page=False, scale=1.0),
                                 render_box=BoundingBox2d([(0, 0), (sheet["width"], sheet["height"])]))
@@ -261,12 +453,18 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
         report["artifacts"].append({"path": str(report_path), "name": report_path.name,
                                     "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "role": "drawing_diagnostic_report"})
         return report
-    pdf_path.write_bytes(pdf)
+    dxf_sha256 = hashlib.sha256(dxf_path.read_bytes()).hexdigest()
+    pdf_path.write_bytes(_bind_pdf(pdf, revision, report["description_sha256"], dxf_sha256))
     reopened = ezdxf.readfile(dxf_path)
     actual_count = len(reopened.modelspace().query("DIMENSION"))
     if actual_count != len(native_dimensions) or reopened.audit().has_errors:
         raise ValueError("The written DXF failed the native dimension and structure checks.")
-    report.update(native_dimension_count=actual_count, artifacts=[],
+    report.update(native_dimension_count=actual_count, artifacts=[], dxf_sha256=dxf_sha256,
+                  sheet_items={"title_block": bool(layout_data.get("title_block")), "border": bool(layout_data.get("border")),
+                               "tolerance_frames": len(layout_data.get("frames", [])), "datums": len(layout_data.get("datums", [])),
+                               "sections": len(layout_data.get("sections", [])),
+                               "review_marks": sum(1 for item in layout_data.get("frames", []) if item.get("review"))
+                               + len(layout_data.get("review_label_ids", []))},
                   adapter={"name": "ezdxf-pymupdf", "ezdxf_version": ezdxf.__version__},
                   pdf_page={"width_points": int(sheet["width"] / 25.4 * 72),
                             "height_points": int(sheet["height"] / 25.4 * 72),

@@ -123,8 +123,8 @@
 <text x="913" y="952" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">Web delivery and acceptance follow-up</text>
 <text x="913" y="978" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Web routes and agent runs share one service instance</text>
 <text x="913" y="995" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="913" y="1012" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Derived views and sections; ellipses and hatching do not</text>
-<text x="913" y="1029" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">render yet</text>
+<text x="913" y="1012" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Derived views, sections, title block, and GPS frames</text>
+<text x="913" y="1029" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">render</text>
 <text x="913" y="1046" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
 <text x="913" y="1063" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Drawing review follows the current model build</text>
 <text x="913" y="1080" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
