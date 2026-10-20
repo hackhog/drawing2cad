@@ -71,7 +71,8 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
 - **Model transport:** the official `openai` Python SDK sends the requests, with one client and `base_url` for each
   profile. It is the HTTP transport only. `drive()` keeps the agent loop, the authorization guards, the budgets, and the
   trace format, so the backend uses no agent framework. The SDK retries are off. The model call keeps its own retry
-  policy with one deadline for each turn, and a response size limit of 8 MiB.
+  policy with one deadline for each turn, and a response size limit of 8 MiB. One attempt can use half of the turn deadline
+  (`model_timeout_seconds`), at least 120 s, so that a slow model can answer and one retry fits after a stalled attempt.
 
 ## Consequences
 

@@ -43,6 +43,9 @@ RETRY_DELAY_SECONDS = 2.0
 RATE_LIMIT_STEP_SECONDS = 15.0
 RATE_LIMIT_MAX_WAIT_SECONDS = 60.0
 # Normal answers took 2-45 s; a stalled connection must not use the whole call budget in one attempt.
+# A slower model can need longer than this minimum for one answer (Qwen 3.8 27B: up to 448 s at 90k prompt tokens).
+# One attempt can use half of the turn deadline, so that model_timeout_seconds controls the time of one answer
+# and one retry after a stalled attempt still fits in the turn.
 ATTEMPT_TIMEOUT_SECONDS = 120.0
 # Each image costs many tokens in every later turn. Older images are replaced by a note; the trace keeps them.
 KEPT_IMAGE_MESSAGES = 2
@@ -427,12 +430,13 @@ def make_model_call(settings: ModelSettings):
     def model_call(plan: dict[str, Any], payload: dict[str, Any], timeout: float) -> dict[str, Any]:
         path, parse, body = request_for(settings, payload, plan.get("options"))
         deadline = time.monotonic() + timeout
+        attempt_timeout = max(ATTEMPT_TIMEOUT_SECONDS, timeout / 2)
         attempt = rate_limits = 0
         while True:
             attempt += 1
             remaining = deadline - time.monotonic()
             try:
-                raw = _post(client, settings, path, body, max(1.0, min(ATTEMPT_TIMEOUT_SECONDS, remaining)))
+                raw = _post(client, settings, path, body, max(1.0, min(attempt_timeout, remaining)))
                 break
             except APIStatusError as error:
                 code = error.status_code
