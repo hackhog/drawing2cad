@@ -33,7 +33,7 @@ from .domain_tools import DOMAIN_SCHEMAS
 from . import derived_views, drawing_verification
 from .drawing_contract import DRAWING_SCHEMA_VERSION, drawing_schema, drawing_validate, render_gate
 from .measurements_tools import MEASUREMENT_METHODS
-from .pdf import MAX_STROKE_LIMIT, PdfError, PdfService
+from .pdf import MAX_STROKE_LIMIT, PdfError, PdfProcessError, PdfService
 from .part_schema import EdgeSelectionDiagnostic
 from .schema_errors import describe as describe_schema_error
 from .source_flags import check_decision, review_flags
@@ -217,10 +217,17 @@ class DomainService:
             raise DomainError(error.code, self._redact(message)) from None
         except StepError as error:
             raise DomainError(error.code, "The STEP inspection failed. Check the artifact and expected hash.") from None
-        except PdfError as error:
+        except PdfProcessError as error:
+            # Helper process output stays in the server log.
             LOG.warning("PDF operation %s failed: %s", name, self._redact(str(error)))
             raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.",
                               next_action="Inspect the server diagnostic. Use PDF image tools if the vector profile does not support this page.") from None
+        except PdfError as error:
+            # Written messages name the argument or the evidence to correct.
+            message = self._redact(str(error))
+            LOG.warning("PDF operation %s failed: %s", name, message)
+            raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options: " + message,
+                              next_action="Correct the arguments or the evidence named in the message. Use PDF image tools if the vector profile does not support this page.") from None
         except Exception:
             LOG.exception("Domain operation %s failed", name)
             raise DomainError("DOMAIN_OPERATION_FAILED", "The domain operation failed. No private process details are returned.") from None

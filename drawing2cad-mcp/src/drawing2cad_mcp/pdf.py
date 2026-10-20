@@ -39,6 +39,10 @@ class PdfError(ValueError):
     """An invalid PDF request or a failed PDF preparation operation."""
 
 
+class PdfProcessError(PdfError):
+    """A failed PDF operation whose message contains the output of a helper process."""
+
+
 @dataclass(frozen=True)
 class _Source:
     path: Path
@@ -340,7 +344,7 @@ class PdfService:
                 raise PdfError(f"Cannot start pdftoppm: {type(exc).__name__}.") from exc
             if result.returncode:
                 diagnostic = result.stderr.decode("utf-8", errors="replace")[-1500:]
-                raise PdfError(f"pdftoppm failed (exit {result.returncode}): {diagnostic}")
+                raise PdfProcessError(f"pdftoppm failed (exit {result.returncode}): {diagnostic}")
             try:
                 with Image.open(prefix.with_suffix(".png")) as rendered:
                     if rendered.width * rendered.height > self.max_pixels:
@@ -466,7 +470,7 @@ class PdfService:
                 raise PdfError(f"Cannot start vector analysis: {type(exc).__name__}.") from exc
             if completed.returncode:
                 detail = completed.stderr.decode("utf-8", errors="replace").strip()[-1000:]
-                raise PdfError(f"Vector analysis failed: {detail or 'worker exited without a result'}")
+                raise PdfProcessError(f"Vector analysis failed: {detail or 'worker exited without a result'}")
             if not result_path.is_file() or result_path.stat().st_size > 64 * 1024 * 1024:
                 raise PdfError("Vector analysis produced no result or exceeded the 64 MiB result limit.")
             try:
