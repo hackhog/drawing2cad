@@ -3,7 +3,7 @@
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
 import type {
   AgentProfileInput, AgentProfiles, Artifact, ArtifactRole, Capabilities, Measurement, MeasurementInput, Part, Run,
-  RunFiles, RunNote, RunPhase, Source,
+  RunFiles, RunNote, RunPhase, RunStepDetail, RunSteps, Source,
 } from "./contract";
 import { CONTRACT_VERSION } from "./contract";
 import type { ExtractResult, FlagChange, FlagDecision, FlagsPage } from "./drawing";
@@ -250,6 +250,19 @@ export class FixtureApi implements WebApi {
     await this.latency();
     this.run(runId);
     return { files: [], archive_url: null };
+  }
+
+  /** A simulated run has no agent trace, so it has no timeline steps. */
+  async runSteps(runId: string): Promise<RunSteps> {
+    await this.latency();
+    this.run(runId);
+    return { steps: [], summary: null };
+  }
+
+  async runStep(runId: string, sequence: number): Promise<RunStepDetail> {
+    await this.latency();
+    this.run(runId);
+    throw notFound("Step", String(sequence));
   }
 
   async readArtifact(artifactId: string): Promise<Blob> {

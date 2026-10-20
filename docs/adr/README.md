@@ -33,5 +33,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0030](0030-views-derived-from-the-validated-model.md) | Views derived from the validated model |
 | [0031](0031-render-complete-drawings-from-contract-2.md) | Render complete drawings from contract 2.0 |
 | [0032](0032-independent-verification-of-the-final-drawing-pdf.md) | Independent verification of the final drawing PDF |
+| [0033](0033-run-timeline-from-the-agent-trace.md) | Run timeline from the agent trace |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

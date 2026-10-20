@@ -533,6 +533,7 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
                     assert time.monotonic() < deadline, run
                     time.sleep(0.2)
                 files = [f["path"] for f in client.get(f"/api/runs/{run_id}/files").json()["files"]]
+                timeline = client.get(f"/api/runs/{run_id}/steps").json()
         finally:
             server.should_exit = True
             thread.join(10)
@@ -547,6 +548,11 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
                                  "mcp_calls": 2, "blocked_requests": 0}
     assert run["review"]["release_state"] == "draft" and run["artifacts"] == []
     assert "summary.json" in files and "trace/trace.jsonl" in files
+    # The timeline shows the same run: skill references, both model turns, and both tool calls with their results.
+    assert [(s["kind"], s.get("tool")) for s in timeline["steps"] if s["kind"] != "skill"] == [
+        ("model", None), ("tool", "pdf_info"), ("tool", "part_create"), ("model", None)]
+    assert all(s["status"] == "ok" for s in timeline["steps"] if s["kind"] == "tool")
+    assert timeline["summary"]["model_turns"] == 2
 
 
 def test_ui_profiles_are_normalized_keep_their_key_and_persist(environment, tmp_path):

@@ -1,6 +1,7 @@
 // Query keys and options for all server data. Components use these through TanStack Query only.
 import { queryOptions } from "@tanstack/react-query";
 import { isActive } from "./release";
+import type { JobStatus } from "./contract";
 import type { WebApi } from "./webApi";
 
 export const keys = {
@@ -14,6 +15,8 @@ export const keys = {
   run: (id: string) => ["run", id] as const,
   note: (runId: string) => ["note", runId] as const,
   runFiles: (runId: string) => ["runFiles", runId] as const,
+  runSteps: (runId: string, status: JobStatus) => ["runSteps", runId, status] as const,
+  runStep: (runId: string, sequence: number) => ["runStep", runId, sequence] as const,
   measurements: ["measurements"] as const,
 };
 
@@ -57,6 +60,23 @@ export const noteQuery = (api: WebApi, runId: string) =>
 // Loaded on request; the trace grows while the run is active, so each opening reads the current list.
 export const runFilesQuery = (api: WebApi, runId: string) =>
   queryOptions({ queryKey: keys.runFiles(runId), queryFn: () => api.listRunFiles(runId), staleTime: 0 });
+
+// The trace grows while the run is active. Each poll reads the condensed steps, not the trace files.
+const STEPS_POLL_MS = 2000;
+
+// The job status is part of the key: a run that ends between two polls still reads its final steps.
+export const runStepsQuery = (api: WebApi, runId: string, status: JobStatus) =>
+  queryOptions({
+    queryKey: keys.runSteps(runId, status), queryFn: () => api.runSteps(runId),
+    refetchInterval: status === "queued" || status === "running" ? STEPS_POLL_MS : false,
+  });
+
+// A step with a response never changes. A tool request without a response gets its response later.
+export const runStepQuery = (api: WebApi, runId: string, sequence: number, complete: boolean) =>
+  queryOptions({
+    queryKey: keys.runStep(runId, sequence), queryFn: () => api.runStep(runId, sequence),
+    staleTime: complete ? Infinity : 0,
+  });
 
 // Measurements change only through a mutation of this browser or a reload.
 export const measurementsQuery = (api: WebApi) =>

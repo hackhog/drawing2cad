@@ -99,6 +99,15 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
     # The scripted model creates a part without a build; the run ends as failed in the modeling phase.
     expect(page.get_by_text("The agent built no valid model", exact=False)).to_be_visible()
 
+    # The run page opens the timeline: the end of the loop, the four layers, and each step with its details.
+    expect(page.get_by_role("tab", name="Timeline")).to_have_attribute("aria-selected", "true")
+    expect(page.get_by_text("The model ended the conversation without a release.")).to_be_visible()
+    expect(page.get_by_text("How a run works")).to_be_visible()
+    steps = page.get_by_role("navigation", name="Steps")
+    steps.get_by_role("button", name=re.compile("part_create")).click()
+    expect(page.get_by_role("heading", name="part_create")).to_be_visible()
+    expect(page.get_by_text("Answer of the MCP server")).to_be_visible()
+
     page.get_by_role("tab", name="Parameter").click()
     expect(page.get_by_label("length")).to_have_value("10")
     expect(page.get_by_label("length")).to_be_disabled()

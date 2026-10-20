@@ -78,7 +78,7 @@ const overviewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", 
 const sourceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sources/$sourceId",
-  // Optional search parameters: links without them open step 1 or the parameter tab.
+  // Optional search parameters: links without them open step 1 or the timeline tab.
   validateSearch: (search: Record<string, unknown>): { step?: Step } => {
     const step = Number(search.step);
     return step >= 2 && step <= 4 ? { step: step as Step } : {};
@@ -94,7 +94,7 @@ const runRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/runs/$runId",
   validateSearch: (search: Record<string, unknown>): { tab?: RunTab } =>
-    RUN_TABS.includes(search.tab as RunTab) && search.tab !== "parameter" ? { tab: search.tab as RunTab } : {},
+    RUN_TABS.includes(search.tab as RunTab) && search.tab !== "timeline" ? { tab: search.tab as RunTab } : {},
   loader: ({ context: { api, queryClient }, params: { runId } }) => load(queryClient.ensureQueryData(runQuery(api, runId))),
   component: RunPage,
 });
