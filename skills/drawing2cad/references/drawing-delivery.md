@@ -83,6 +83,8 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
   A `needs_review` finding blocks until `drawing_review` decides it in `verification_decisions` with a reason. Do not decide a finding that you did not check.
   A stale verification (`drawing_read`) is not evidence. `drawing_read` returns `acceptance` with the blocking findings.
 - The drawing status is `accepted` only after an accepted review of the current verification report. Otherwise it is `unverified`.
+- `DIM-06` measures each dimension on the bound STEP geometry. A declared value that differs from the model value fails, also when the specification agrees with itself.
+  Dimension features only in orthographic or section views: a dimension in an isometric view fails as not true size.
 - Verify a supplied source drawing with `source_id` only as an inspection aid. Without a binding, the model rules are `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.

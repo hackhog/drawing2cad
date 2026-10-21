@@ -381,3 +381,51 @@ def test_the_correct_flange_passes_the_acceptance_gate_after_its_review_decision
     assert open_items and not gate(stored, [])["passed"]
     decisions = [{"rule_id": item["rule_id"], "feature": item["feature"], "reason": "Reviewed."} for item in open_items]
     assert gate(stored, decisions)["passed"]
+
+
+def test_each_dimension_states_the_model_value(drawing, tmp_path):
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
+                 expected=expected_for(drawing, data))
+    values = {item["feature"]: item for item in by_rule(report, "DIM-06")}
+    assert len(values) == 8 and all(item["status"] == "pass" for item in values.values()), [
+        (key, item["message"]) for key, item in values.items() if item["status"] != "pass"]
+    height = values["h_total"]["observed"]
+    assert height["model"] == 32 and height["declared"] == 32 and height["observed"] and height["unit"] == "mm"
+    assert "GPS-10" in report["untested_rules"]
+
+
+def test_a_dimension_that_differs_from_the_step_fails_also_with_the_same_wrong_specification(drawing, tmp_path):
+    # The drawing and its specification agree with each other (height 32), but the bound STEP has a hub of 24 mm (height 36).
+    description = flange()
+    next(f for f in description["features"] if f["id"] == "hub")["height"] = 24
+    next(f for f in description["features"] if f["id"] == "bore")["position"][2] = 36
+    description["measurements"][0]["expected"] = [100, 100, 36]
+    step = candidate(description, tmp_path / "taller")
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path, data, step=step, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
+    height = next(item for item in by_rule(report, "DIM-06") if item["feature"] == "h_total")
+    assert height["status"] == "fail" and height["observed"]["model"] == 36 and height["observed"]["declared"] == 32
+
+
+def test_dimension_values_in_synthetic_views():
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimension_values
+
+    true_size = {"scale_convention": "true_size"}
+    model = {"geometry": [{"type": "line", "style": "visible", "start": [0, 0], "end": [40, 0], "id": "a"},
+                          {"type": "line", "style": "visible", "start": [0, 0], "end": [0, 25], "id": "b"}]}
+    base = {"evidence_ids": ["drawing"]}
+    length = {**base, "id": "length", "type": "linear", "axis": "horizontal", "p1": [0, 0], "p2": [38, 0], "expected": 38}
+    angle = {**base, "id": "angle", "type": "angular", "center": [0, 0], "p1": [40, 0], "p2": [0, 25], "expected": 90}
+    report = Report()
+    report.add("DIM-01", "pass", "info", "read", feature="length", observed="38")
+    report.add("DIM-01", "pass", "info", "read", feature="angle", observed="90°")
+    views = [{"id": "front", "kind": "orthographic", "projection": true_size, "frame": [0, 0, 50, 50], "dimensions": [length, angle]},
+             {"id": "iso", "kind": "isometric", "projection": {"scale_convention": "isometric_drawing"}, "frame": [0, 0, 50, 50],
+              "dimensions": [{**length, "id": "iso_length", "p2": [40, 0], "expected": 40}]}]
+    check_dimension_values(report, views, {"front": model, "iso": model})
+    results = {item["feature"]: item for item in report.findings if item["rule_id"] == "DIM-06"}
+    # The specification declares 38 mm, the model has 40 mm: the length fails although the specification agrees with itself.
+    assert results["length"]["status"] == "fail" and results["length"]["observed"]["model"] == 40
+    assert results["angle"]["status"] == "pass" and results["angle"]["observed"]["model"] == 90
+    assert results["iso_length"]["status"] == "fail" and "not true size" in results["iso_length"]["message"]
