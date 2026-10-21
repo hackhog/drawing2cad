@@ -48,9 +48,28 @@ def test_a_tool_that_cannot_load_does_not_pass(monkeypatch, tmp_path):
     broken = tmp_path / "reader"
     broken.write_text("#!/bin/sh\necho 'reader: error while loading shared libraries: libx.so' >&2\nexit 127\n")
     broken.chmod(0o755)
-    ok, detail = runtime_tools._run([str(broken)])
+    ok, detail = runtime_tools._run([str(broken)], {0})
     assert not ok and "shared libraries" in detail
     usage = tmp_path / "usage"
     usage.write_text("#!/bin/sh\necho 'usage: reader FILE' >&2\nexit 64\n")
     usage.chmod(0o755)
-    assert runtime_tools._run([str(usage)])[0]
+    assert runtime_tools._run([str(usage)], {64})[0] and not runtime_tools._run([str(usage)], {0})[0]
+    crash = tmp_path / "crash"
+    crash.write_text("#!/bin/sh\nkill -SEGV $$\n")
+    crash.chmod(0o755)
+    assert not runtime_tools._run([str(crash)], {64})[0]
+
+
+def test_an_unusable_language_file_fails_the_tesseract_probe(monkeypatch):
+    from drawing2cad_mcp.adapters import tesseract
+
+    class Reader:
+        def __init__(self, languages):
+            if languages == "deu":
+                raise ValueError("Tesseract cannot load its language data.")
+
+        def close(self):
+            pass
+    monkeypatch.setattr(tesseract, "Ocr", Reader)
+    probe = runtime_tools._probe("tesseract", {"available": True})
+    assert probe == {"ok": False, "detail": "Tesseract cannot load its language data."}
