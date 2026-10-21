@@ -22,16 +22,16 @@ PURPOSES = {
 }
 
 
-def _run(command: list[str]) -> tuple[bool, str]:
-    """Start a program once. It must load: a missing shared library or an unusable file is a failure; a usage exit code is not."""
+def _run(command: list[str], expected: set[int]) -> tuple[bool, str]:
+    """Start a program once. Only an expected exit code passes. A signal, a load failure, or another exit code fails."""
     try:
         result = subprocess.run(command, capture_output=True, timeout=20, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
         return False, type(error).__name__
-    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
-    if result.returncode in (126, 127) or "error while loading shared libraries" in output:
-        return False, output.strip()[:300] or f"exit code {result.returncode}"
-    return True, output.strip().splitlines()[0][:200] if output.strip() else f"exit code {result.returncode}"
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace").strip()
+    if result.returncode not in expected or "error while loading shared libraries" in output:
+        return False, f"exit code {result.returncode}: " + output[:300]
+    return True, output.splitlines()[0][:200] if output else f"exit code {result.returncode}"
 
 
 def _probe(name: str, capability: dict[str, Any]) -> dict[str, Any]:
@@ -41,15 +41,17 @@ def _probe(name: str, capability: dict[str, Any]) -> dict[str, Any]:
     if not capability.get("available"):
         return {"ok": False, "detail": "not installed"}
     if name == "poppler":
-        ok, detail = _run([str(poppler.BINARY), "-v"])
+        ok, detail = _run([str(poppler.BINARY), "-v"], {0})
     elif name == "stepcode":
-        ok, detail = _run([str(stepcode.BINARY)])
+        # Without arguments, the reader prints its usage and exits with EX_USAGE (64).
+        ok, detail = _run([str(stepcode.BINARY)], {64})
     else:
-        # Load the library and initialize OCR with both language files.
+        # Initialize each language on its own. Tesseract starts with "eng+deu" when only one of the two languages loads.
         try:
-            reader = tesseract.Ocr()
-            reader.close()
-            ok, detail = True, f"initialized {tesseract.LANGUAGES}"
+            for language in tesseract.LANGUAGES.split("+"):
+                reader = tesseract.Ocr(language)
+                reader.close()
+            ok, detail = True, f"initialized {tesseract.LANGUAGES} one by one"
         except (OSError, ValueError) as error:
             ok, detail = False, str(error)[:300]
     return {"ok": ok, "detail": detail}
