@@ -33,7 +33,15 @@ DOMAIN_SCHEMAS["part_create"]["properties"]["sources"]["items"] = _object({
     "source_id": ID, "sha256": HASH, "role": {"enum": ["construction", "verification"]}})
 DOMAIN_DESCRIPTIONS["part_create"] = "Create a part from uploaded source IDs and exact hashes. Evidence must use these source IDs. Verification sources cannot supply construction values."
 DOMAIN_DESCRIPTIONS["part_export_review"] = "Export path-free JSON part, run manifest, drawing review, and recorded run trace as immutable artifacts."
-DOMAIN_DESCRIPTIONS["export_step"] = "Release validated STEP of the current model build. The drawing does not gate the release: release.drawing records its status (accepted, unreviewed, rejected, failed, or missing) with the drawing files or the reason. Call again after a drawing change to record the new status. AP242 and semantic PMI remain separate M3 requirements."
+DOMAIN_SCHEMAS["export_step"]["properties"]["delivery"] = {
+    "enum": ["step_only", "complete_service"],
+    "description": "step_only (default): the validated model gates the release, and release.drawing records the drawing status. "
+                   "complete_service: the release also needs an accepted drawing whose PDF verification is bound to the released STEP bytes."}
+DOMAIN_DESCRIPTIONS["export_step"] = ("Release validated STEP of the current model build. With delivery step_only (default), the drawing does not gate the release: "
+                                      "release.drawing records its status (accepted, unverified, unreviewed, rejected, failed, or missing) with the drawing files or the reason. "
+                                      "With delivery complete_service, the release fails unless the drawing is accepted and verified against the released STEP bytes; "
+                                      "release.pair records the STEP, PDF, and verification report hashes. release.pair_current is false after a change of either file. "
+                                      "Call again after a drawing change to record the new status. AP242 and semantic PMI remain separate M3 requirements.")
 
 PROJECTION_VIEW = _object({
     "view_id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},

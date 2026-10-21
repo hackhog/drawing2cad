@@ -81,7 +81,8 @@ def test_release_reports_its_drawing_status_and_released_files():
              "release": {"drawing": {"status": "failed", "reason": "The latest drawing render did not pass its checks."}}}
     review = review_view(state, part_validate(state["description"])["review_items"], (200, 100), released=True)
     assert review["release_state"] == "released"
-    assert review["drawing"] == {"status": "failed", "reason": "The latest drawing render did not pass its checks.", "current": True}
+    assert review["drawing"] == {"status": "failed", "reason": "The latest drawing render did not pass its checks.", "current": True,
+                                 "delivery": "step_only", "pair_current": None}
     state["release"]["drawing_current"] = False
     assert review_view(state, [], (200, 100), released=True)["drawing"]["current"] is False
     assert review_view(state, [], (200, 100), released=False)["drawing"] is None
@@ -668,3 +669,38 @@ def test_run_view_reads_the_drawing_acceptance_for_each_request(tmp_path):
     # The cached result stays, but the acceptance is new.
     assert run_view(services, record)["review"]["drawing_acceptance"]["status"] == "unverified"
     assert cached["review"]["drawing_acceptance"] is None
+
+
+def test_review_view_marks_a_changed_complete_service_pair_as_outdated():
+    from drawing_demo.agent.mapping import review_view
+
+    state = {"build": {"status": "pass"}, "release": {"delivery": "complete_service", "pair_current": False, "drawing_current": True,
+                                                      "pair_reason": "The released PDF file changed after the release.",
+                                                      "drawing": {"status": "accepted", "reason": None}}}
+    drawing = review_view(state, [], (420.0, 297.0), released=True)["drawing"]
+    assert drawing == {"status": "accepted", "reason": "The released PDF file changed after the release.", "current": False,
+                       "delivery": "complete_service", "pair_current": False}
+    state["release"].update(pair_current=True, pair_reason=None)
+    assert review_view(state, [], (420.0, 297.0), released=True)["drawing"]["current"] is True
+
+
+def test_run_view_reads_the_release_freshness_for_each_request(tmp_path):
+    from types import SimpleNamespace
+
+    from drawing_demo.api import run_view
+
+    pair = iter([True, False])
+
+    class Backend:
+        def call(self, operation, **arguments):
+            current = next(pair)
+            return {"acceptance": None, "release": {"delivery": "complete_service", "drawing": {"status": "accepted", "reason": None},
+                                                    "drawing_current": True, "pair_current": current,
+                                                    "pair_reason": None if current else "The released PDF file changed after the release."}}
+
+    cached = {"part": None, "review": {"release_state": "released", "drawing": {"status": "accepted"}, "drawing_acceptance": None}, "artifacts": []}
+    services = SimpleNamespace(backend=Backend(), result=lambda record: cached, jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
+    record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"}, "error": None, "part_run_id": "part"}
+    assert run_view(services, record)["review"]["drawing"]["current"] is True
+    stale = run_view(services, record)["review"]["drawing"]
+    assert stale["current"] is False and stale["pair_current"] is False and "PDF" in stale["reason"]
