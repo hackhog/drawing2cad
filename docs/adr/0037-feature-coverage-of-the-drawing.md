@@ -22,19 +22,25 @@ The feature references of the drawing specification cannot identify the features
 
 - The verifier derives a feature inventory from the bound STEP. It does not use the part description:
   - a round feature is a set of cylindrical faces with one axis, one radius, and one side of the material: a hole has the face normal to the axis,
-    a boss has it away from the axis. Its extent along the axis comes from the face vertices,
+    a boss has it away from the axis. Its extent along the axis comes from points on the boundary edges of its faces,
+    so that inclined and curved ends count,
   - a plane level is a set of planar faces with one normal and one offset, for example a face of a step, a pocket floor, or an end face.
-    It keeps the box of each face.
+    It keeps points on the boundary edges of each face.
 - Only true-size views count (orthographic, section, and detail views with the scale convention `true_size`). Isometric views do not count.
 - `FEAT-01`: each feature is visible in a true-size view. A round feature is visible as a circle or an arc along its axis, or across its axis
-  as its outline lines within its extent. A section edge within the radius also counts, because a cutting plane off the axis cuts the cylinder
-  nearer to the axis. A plane level is visible as its edge-on trace inside the projected box of one of its faces. Visible and section edges count.
+  as its outline lines within its extent. In a section, a cutting plane parallel to the axis at the distance d from the axis cuts the cylinder
+  at sqrt(r² − d²) from the axis. A section edge there counts. A cutting plane that does not cut the cylinder gives no section edge of it.
+  Two round features with one axis and one radius, for example a bore below a boss, share their circle in a view along the axis.
+  That circle and a radius or diameter dimension at it do not count for them; a view across the axis or a section must show and size them.
+  A plane level is visible as its edge-on trace between the ends of the projection of one of its faces. Visible and section edges count.
   A feature that only hidden lines show fails: add a section or a view.
 - `FEAT-02`: each round feature has a size dimension: a radius or diameter dimension at its circle, or a linear dimension from one outline
   to the other within its extent.
 - `FEAT-03`: along each model axis and each plane normal, the plane levels and the axes of the round features across that direction are positions.
   Linear dimensions connect two positions when their anchors are at these positions along the measurement direction and at a feature of the position:
-  inside the projected box of a face of the plane level, or at the center of the round feature in a view along its axis.
+  on the projection of a face of the plane level, or at the center of the round feature in a view along its axis.
+  Features at the same coordinate share a position. Thus aligned holes share their dimensions, as in a hole grid with one row of X dimensions
+  and one column of Y dimensions.
   All positions of a direction must be connected. The connected group with the most features is the reference. A feature outside it fails.
   A plane level has no separate size rule: the distance to the next level is its size, and `FEAT-03` checks it.
 - A dimension counts for `FEAT-02` and `FEAT-03` only when `DIM-02` and `DIM-06` pass for it.
@@ -61,7 +67,8 @@ The feature references of the drawing specification cannot identify the features
   a completely dimensioned plate passes; missing size, position, and thickness dimensions fail; a dimension that failed its value check does not count;
   a linear dimension across the outlines gives the size; a feature that only hidden lines show fails, and a marker makes it a review item;
   other surfaces are listed as not tested; isometric views do not count; an edge outside the extent of a hole or beside the faces of a plane level
-  does not count, and a dimension to it does not locate the face; a section off the hole axis shows the hole; an empty inventory is not applicable.
+  does not count, and a dimension to it does not locate the face; a section off the hole axis shows the hole, and a section that misses the hole
+  does not; a circle that two round features share shows neither; an empty inventory is not applicable.
 - `drawing2cad-mcp/tests/test_pdf_verification.py`: each feature of the flange drawing is visible, sized, and located;
   without the disc thickness and the hole positions, the four holes and the disc face fail `FEAT-03`;
   without the bound STEP, the feature rules are `not_tested`.

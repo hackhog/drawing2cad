@@ -86,7 +86,8 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
 - `DIM-06` measures each dimension on the bound STEP geometry. A declared value that differs from the model value fails, also when the specification agrees with itself.
   Dimension features only in orthographic or section views: a dimension in an isometric view fails as not true size.
 - `FEAT-01` to `FEAT-03` check each round feature and each plane level of the bound STEP. Each feature must be visible in a true-size view,
-  not only as hidden lines. Each round feature needs a radius or diameter dimension. Along each model axis, the plane levels and the hole axes
+  not only as hidden lines. Each round feature needs a radius or diameter dimension, or a linear dimension from one outline to the other.
+  Along each model axis, the plane levels and the hole axes
   must be connected by linear dimensions. Dimension the thickness of each step and the position of each hole from an axis or a face.
   Use linear dimensions between hole centers: a pitch circle with an angle does not count as a position.
   Mark a feature that you cannot dimension with an uncertainty marker. Its findings are then `needs_review`.

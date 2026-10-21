@@ -27,11 +27,14 @@ def view(identifier, projection, dimensions, geometry=()):
 
 # A plate 40 x 20 x 10 with a hole of 6 mm at (10, 10). The bottom view sees the plate face-on; the front view sees it edge-on.
 def level(identifier, normal, offset, low, high):
-    return {"id": identifier, "kind": "plane_level", "normal": normal, "offset": offset, "boxes": [[low, high]]}
+    # One rectangular face: its corners are its boundary points.
+    corners = [[x, y, z] for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
+    return {"id": identifier, "kind": "plane_level", "normal": normal, "offset": offset, "faces": [corners]}
 
 
 PLATE = {"features": [
-    {"id": "round_1", "kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "extent": [0.0, 10.0]},
+    {"id": "round_1", "kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "extent": [0.0, 10.0],
+     "shared_circle": False},
     level("plane_1", (1.0, 0.0, 0.0), 0.0, [0, 0, 0], [0, 20, 10]), level("plane_2", (1.0, 0.0, 0.0), 40.0, [40, 0, 0], [40, 20, 10]),
     level("plane_3", (0.0, 1.0, 0.0), 0.0, [0, 0, 0], [40, 0, 10]), level("plane_4", (0.0, 1.0, 0.0), 20.0, [0, 20, 0], [40, 20, 10]),
     level("plane_5", (0.0, 0.0, 1.0), 0.0, [0, 0, 0], [40, 20, 0]), level("plane_6", (0.0, 0.0, 1.0), 10.0, [0, 0, 10], [40, 20, 10])],
@@ -86,9 +89,10 @@ def test_a_dimension_that_failed_its_value_check_does_not_count():
 def test_a_linear_dimension_across_the_outlines_gives_the_size():
     dimensions = {"top": [item for item in COMPLETE["top"] if item["id"] != "hd"],
                   "front": COMPLETE["front"] + [linear("hd_front", [7, 4], [13, 4], "horizontal")]}
-    # The outlines are visible in a section.
+    # The outlines are visible in a section through the hole axis.
     front = [item if not item["id"].startswith("h") else {**item, "style": "section"} for item in FRONT_MODEL]
-    result, _ = coverage(dimensions, derived={"top": {"geometry": TOP_MODEL}, "front": {"geometry": front}})
+    cut = {"origin": [0, 10, 0], "normal": [0, 1, 0]}
+    result, _ = coverage(dimensions, derived={"top": {"geometry": TOP_MODEL}, "front": {"geometry": front, "cutting_plane": cut}})
     assert result["round_1"]["size_dimensions"] == ["hd_front"]
 
 
@@ -118,8 +122,23 @@ def test_a_section_off_the_axis_shows_the_hole():
     # The cutting plane is 1 mm from the hole axis: the cut walls are at 2.83 mm from the axis, not at the radius.
     walls = [line("s1", [10 - 2.828427, 0], [10 - 2.828427, 10], "section"), line("s2", [10 + 2.828427, 0], [10 + 2.828427, 10], "section")]
     front = [item for item in FRONT_MODEL if not item["id"].startswith("h")] + walls
-    result, _ = coverage({"top": [], "front": COMPLETE["front"]}, derived={"front": {"geometry": front}})
+    cut = {"origin": [0, 9, 0], "normal": [0, 1, 0]}
+    result, _ = coverage({"top": [], "front": COMPLETE["front"]}, derived={"front": {"geometry": front, "cutting_plane": cut}})
     assert result["round_1"]["visible_in"] == ["front"]
+    # A cutting plane that does not cut the hole: a section edge at the hole position belongs to another feature.
+    other = [item for item in FRONT_MODEL if not item["id"].startswith("h")] + [line("wall", [10, 0], [10, 10], "section")]
+    cut = {"origin": [0, 0, 0], "normal": [0, 1, 0]}
+    result, _ = coverage({"top": [], "front": COMPLETE["front"]}, derived={"front": {"geometry": other, "cutting_plane": cut}})
+    assert result["round_1"]["visible_in"] == []
+
+
+def test_a_circle_that_two_round_features_share_shows_neither():
+    # A bore below a boss on one axis with one radius: the top view circle does not show which one is visible.
+    features = {**PLATE, "features": [{**PLATE["features"][0], "shared_circle": True}] + PLATE["features"][1:]}
+    result, findings = coverage(COMPLETE, features=features)
+    assert result["round_1"]["visible_in"] == [] and findings[("FEAT-02", "round_1")]["status"] == "fail"
+    # The position from its center stays valid: both features have this axis.
+    assert result["round_1"]["positions"] == {"[1, 0, 0]": True, "[0, 1, 0]": True}
 
 
 def test_an_empty_inventory_is_not_applicable():
