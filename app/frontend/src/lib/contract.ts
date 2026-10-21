@@ -200,6 +200,7 @@ export interface Run {
   artifacts: Artifact[];
   review: Review | null;
   error: ServiceError | null;
+  warning?: RunWarning | null;
   simulated: boolean;
   /** Final text of the agent conversation, from its trace. It is also the first text of the run note (ADR 0018). */
   agent_report?: string | null;
@@ -212,6 +213,11 @@ export interface ServiceError {
   message: string;
   field: string | null;
   recovery: string | null;
+}
+
+export interface RunWarning {
+  code: string;
+  message: string;
 }
 
 /** Actual capabilities of the connected service. The UI hides or explains every unavailable one. */

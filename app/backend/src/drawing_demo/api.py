@@ -187,6 +187,7 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     An active run shows only its job state: a part_read during the run would use the agent's step budget.
     """
     view = {key: record[key] for key in ("run_id", "source_id", "phase", "job", "error")}
+    view["warning"] = record.get("warning")
     view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
     view["agent"] = record.get("agent")
     view["iterations"] = record.get("iterations")  # Records from before this field have none.
