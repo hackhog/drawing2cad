@@ -80,3 +80,29 @@ def test_a_changed_file_after_the_release_makes_the_delivery_stale(domain, targe
     corrupt(service, released["artifact"]["artifact_id"] if target == "step" else pdf["artifact_id"])
     view = service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]
     assert view["pair_current"] is False and ("STEP" if target == "step" else "PDF") in view["pair_reason"]
+
+
+def test_a_new_review_after_the_release_makes_the_pair_not_current(domain):
+    service, source, _, _, _ = accepted(domain)
+    released = release(service, source)
+    assert released["pair_current"] is True
+    digest = service.call(CTX, "drawing_read", {"run_id": "plate"})["drawing"]["drawing_sha256"]
+    call(service, "drawing_review", drawing_sha256=digest, reviewer="Another reviewer", reason="Synthetic second review.",
+         source_hashes=[source["sha256"]], decision="accepted")
+    view = service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]
+    assert view["pair_current"] is False
+
+
+def test_a_pdf_change_during_the_release_fails(domain, monkeypatch):
+    service, source, _, _, pdf = accepted(domain)
+    cad = service._backend(CTX)[0]
+    original = cad.call
+
+    def export_then_change(name, arguments):
+        result = original(name, arguments)
+        corrupt(service, pdf["artifact_id"])
+        return result
+    monkeypatch.setattr(cad, "call", export_then_change)
+    with pytest.raises(DomainError) as error:
+        release(service, source)
+    assert error.value.code == "RELEASE_PAIR_REQUIRED"

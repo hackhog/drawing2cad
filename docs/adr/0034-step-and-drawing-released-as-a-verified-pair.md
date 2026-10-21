@@ -21,10 +21,11 @@ and it did not record which STEP file, PDF, and report formed the delivery. A ch
   - `complete_service`: the release also needs an accepted drawing (ADR 0033) whose verification is bound to the STEP bytes of this release.
     Otherwise it fails with `RELEASE_PAIR_REQUIRED` and names the reason.
 - The released STEP bytes are the bytes of the validated candidate after the fresh-worker re-import of the build. The verification binds the same candidate hash.
-  The service checks after the export that the released hash is the verified hash.
+  The service checks after the export that the released hash and the hash of the registered STEP copy are the verified hash,
+  and that the stored PDF still has its verified bytes. A change during the release fails with `RELEASE_PAIR_REQUIRED`.
 - The release record has `delivery` and `pair`: the STEP hash and artifact, the PDF hash and artifact, the verification report hash and artifact, the profile,
-  the drawing hash, and the part revision. Without an accepted, verified drawing, `pair` is null.
-- A read of the release (`part_read`) gives `pair_current` and `pair_reason`. The pair is current while the released STEP file and the PDF file have their recorded bytes,
+  the drawing hash, the part revision, and the digest of the review. Without an accepted, verified drawing, `pair` is null.
+- `export_step` and a read of the release (`part_read`) give `pair_current` and `pair_reason`. The pair is current while the released STEP file and the PDF file have their recorded bytes,
   and the drawing is still accepted with the same verification and review. A change of either file, or a new drawing, verification, or review, makes it false.
 - The web backend shows a release drawing as not current when `pair_current` is false. The web UI names a complete-service delivery and shows when it is outdated.
 

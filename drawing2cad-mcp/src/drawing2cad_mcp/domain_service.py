@@ -933,7 +933,8 @@ class DomainService:
         report = next((item for item in record.get("artifact_ids", [])), None)
         return {"step_sha256": binding["candidate_sha256"], "pdf_sha256": binding["pdf_sha256"], "pdf_artifact_id": pdf[0]["artifact_id"],
                 "report_sha256": record["report_sha256"], "report_artifact_id": report, "profile": record.get("profile"),
-                "drawing_sha256": drawing["drawing_sha256"], "part_revision": state["revision"]}
+                "drawing_sha256": drawing["drawing_sha256"], "part_revision": state["revision"],
+                "review_sha256": _digest(drawing.get("review") or {})}
 
     def _pair_current(self, ctx, release, state, drawing, current_status):
         """Whether the released pair is still the delivered pair: both files unchanged and the drawing still accepted for it."""
@@ -950,7 +951,7 @@ class DomainService:
             if not self._file_has(path, digest):
                 return False, f"The released {label} file changed after the release."
         now = self._release_pair(ctx, state, drawing, current_status)
-        keys = ("step_sha256", "pdf_sha256", "report_sha256", "profile", "drawing_sha256")
+        keys = ("step_sha256", "pdf_sha256", "report_sha256", "profile", "drawing_sha256", "review_sha256")
         if now is None or any(now[key] != pair[key] for key in keys):
             return False, "The drawing, its verification, or its review changed after the release. Call export_step again."
         return True, None
@@ -1096,6 +1097,13 @@ class DomainService:
                     raise DomainError("RELEASE_PAIR_REQUIRED", "The released STEP bytes differ from the verified STEP bytes.")
                 artifact = self.store.artifact_register(ctx, release["path"], "released_step", args["run_id"],
                                                         state["revision"], "model/step", Path(release["path"]).name)
+                if pair is not None:
+                    # The registered copy and the stored PDF must still be the verified bytes when the release is saved.
+                    pdf_path = self.store._path(ctx, "artifacts", pair["pdf_artifact_id"])
+                    if artifact["sha256"] != pair["step_sha256"] or not self._file_has(pdf_path, pair["pdf_sha256"]):
+                        pair = None
+                if delivery == "complete_service" and pair is None:
+                    raise DomainError("RELEASE_PAIR_REQUIRED", "The STEP file or the PDF changed during the release. Release again.")
                 recorded = {"artifact": artifact, "drawing": drawing_status, "delivery": delivery,
                             "pair": {**pair, "step_artifact_id": artifact["artifact_id"]} if pair else None}
                 result["release"].update(recorded)
@@ -1103,6 +1111,8 @@ class DomainService:
                     saved = cad._load(saved_directory)
                     saved["release"].update(recorded)
                     cad._save(saved_directory, saved)
+                result["release"]["pair_current"], result["release"]["pair_reason"] = self._pair_current(
+                    ctx, result["release"], state, drawing, drawing_status)
                 result["drawing"] = drawing
             return result
         if name not in CAD_SCHEMAS:
