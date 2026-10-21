@@ -465,3 +465,30 @@ def test_dimension_values_with_anchors_inside_edges_and_concentric_circles():
     # A model of 36 mm width: the anchor inside the edge snaps to the real edge, and the declared 40 mm fails.
     results = run(_rectangle(36, 20) + circles)
     assert results["width"]["status"] == "fail" and results["width"]["observed"]["model"] == 36
+
+
+def test_dimension_values_with_midpoints_ellipses_and_leg_directions():
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimension_values
+
+    base = {"evidence_ids": ["drawing"]}
+    # From the midpoint of the bottom edge to the midpoint of the right edge: 20 mm.
+    half = {**base, "id": "half", "type": "linear", "axis": "horizontal", "p1": [20, 0], "p2": [40, 10], "expected": 20}
+    # The legs are an edge that starts 0.04 mm above the vertex and a vertical edge: the model angle is 90 degrees,
+    # also when the leg anchors give 89.54 degrees from the vertex.
+    skew = {**base, "id": "skew", "type": "angular", "center": [0, 0], "p1": [5, 0.04], "p2": [0, 5], "expected": 89.54164354}
+    ellipse = {"type": "ellipse", "style": "visible", "center": [20, 10], "major_axis": [4, 0], "ratio": 0.5,
+               "start_parameter": 0, "end_parameter": 360, "id": "oblique_hole"}
+    geometry = [{"type": "line", "style": "visible", "start": [0, 0], "end": [40, 0], "id": "bottom"},
+                {"type": "line", "style": "visible", "start": [40, 0], "end": [40, 20], "id": "right"},
+                {"type": "line", "style": "visible", "start": [0, 0.04], "end": [10, 0.04], "id": "ledge"},
+                {"type": "line", "style": "visible", "start": [0, 0], "end": [0, 10], "id": "left"}, ellipse]
+    report = Report()
+    for feature in ("half", "skew"):
+        report.add("DIM-01", "pass", "info", "read", feature=feature, observed="x")
+    view = {"id": "front", "kind": "orthographic", "projection": {"scale_convention": "true_size"}, "frame": [0, 0, 50, 50],
+            "dimensions": [half, skew]}
+    # The ellipse in the view does not stop the check.
+    check_dimension_values(report, [view], {"front": {"geometry": geometry}})
+    results = {item["feature"]: item for item in report.findings if item["rule_id"] == "DIM-06"}
+    assert results["half"]["status"] == "pass" and results["half"]["observed"]["model"] == 20
+    assert results["skew"]["status"] == "fail" and results["skew"]["observed"]["model"] == 90

@@ -682,15 +682,19 @@ def _on_arc(item: dict, angle: float) -> bool:
 
 
 def _model_points(edges: list[dict], direction: list[float] | None = None) -> list[list[float]]:
-    """The characteristic points of the model geometry of a view: end points, centers, and, for a measurement direction,
-    the extreme points of round edges along that direction."""
+    """The characteristic points of the model geometry of a view: end points, midpoints of straight edges, centers, and,
+    for a measurement direction, the extreme points of circles and arcs along that direction. These are the anchor points
+    of the drawing contract."""
     points = []
     for item in edges:
         if item["type"] == "line":
-            points += [item["start"], item["end"]]
+            points += [item["start"], item["end"], [(item["start"][i] + item["end"][i]) / 2 for i in (0, 1)]]
             continue
-        center, radius = item["center"], item["radius"]
+        center = item["center"]
         points.append(center)
+        if item["type"] not in {"circle", "arc"}:
+            continue
+        radius = item["radius"]
         angles = [item[key] for key in ("start_angle", "end_angle")] if item["type"] == "arc" else []
         if direction is not None:
             base = math.degrees(math.atan2(direction[1], direction[0]))
@@ -750,13 +754,24 @@ def _model_value(dimension: dict, model: dict) -> tuple[float | None, str | None
     center = _snap(dimension["center"], points)
     if center is None:
         return None, "The angle vertex has no model point near it."
-    # A leg anchor can also lie inside a straight edge from the vertex: that edge fixes the leg direction.
-    legs = [item for item in edges if item["type"] == "line"
-            and min(math.dist(item["start"], center), math.dist(item["end"], center)) <= THRESHOLDS["anchor_mm"]]
-    p1, p2 = (_snap(p, points + [_foot(p, item) for item in legs]) for p in (dimension["p1"], dimension["p2"]))
-    if p1 is None or p2 is None or math.dist(p1, center) == 0 or math.dist(p2, center) == 0:
-        return None, "An angle leg has no model point near it."
-    angle = math.degrees(math.atan2(p2[1] - center[1], p2[0] - center[0]) - math.atan2(p1[1] - center[1], p1[0] - center[0])) % 360
+    # A leg anchor can also lie inside a straight edge from the vertex. Then the direction of that edge is the leg direction,
+    # not the direction from the vertex to the anchor. The edge candidates come first and win a tie.
+    candidates = []
+    for item in edges:
+        if item["type"] != "line":
+            continue
+        near, far = sorted((item["start"], item["end"]), key=lambda point: math.dist(point, center))
+        if math.dist(near, center) <= THRESHOLDS["anchor_mm"]:
+            candidates.append((item, [far[0] - near[0], far[1] - near[1]]))
+    legs = []
+    for anchor in (dimension["p1"], dimension["p2"]):
+        options = [(_foot(anchor, item), vector) for item, vector in candidates] + \
+            [(point, [point[0] - center[0], point[1] - center[1]]) for point in points]
+        best = min(options, key=lambda option: math.dist(option[0], anchor), default=None)
+        if best is None or math.dist(best[0], anchor) > THRESHOLDS["anchor_snap_mm"] or math.hypot(*best[1]) == 0:
+            return None, "An angle leg has no model point near it."
+        legs.append(best[1])
+    angle = math.degrees(math.atan2(legs[1][1], legs[1][0]) - math.atan2(legs[0][1], legs[0][0])) % 360
     return angle, None
 
 

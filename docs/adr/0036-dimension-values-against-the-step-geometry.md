@@ -19,11 +19,12 @@ A specification that agrees with itself, but not with the bound STEP, could ther
 - The mandatory rule `DIM-06` compares each dimension in a view with a model projection with the bound STEP geometry.
 - The model value comes from the model geometry that the verifier derives again from the STEP (ADR 0032), not from the anchor coordinates of the specification:
   - a linear dimension takes the model point nearest to each of its two anchors and measures their distance along its axis
-    (horizontal, vertical, or aligned). A model point is an end point, a center, an extreme point of a round edge along the axis,
-    or the nearest point on a straight edge across the axis. That edge fixes the measured coordinate,
+    (horizontal, vertical, or aligned). A model point is an end point or a midpoint of a straight edge, a center of a circle, an arc, or an ellipse,
+    an extreme point of a circle or an arc along the axis, or the nearest point on a straight edge across the axis. That edge fixes the measured coordinate,
   - a radius or diameter dimension takes the round model edge at its center. Of concentric edges, it takes the radius nearest to the declared radius,
   - an angular dimension takes the model point nearest to its vertex, and for each leg the model point or the point on a straight edge
-    from the vertex nearest to the leg anchor. It measures the counterclockwise angle.
+    from the vertex nearest to the leg anchor. For a point on such an edge, the leg direction is the direction of the edge.
+    It measures the counterclockwise angle between the two leg directions.
   A model point counts only within 5 mm of a declared anchor. Without such a point, the dimension fails.
 - The finding reports three values: the model value, the declared value of the specification, and the value read from the PDF (`observed`).
   It passes when the declared value differs from the model value by at most 0.01 mm or 0.01 degrees and `DIM-01` read the value from the PDF.
@@ -38,7 +39,7 @@ A specification that agrees with itself, but not with the bound STEP, could ther
 
 - A delivered dimension states the value of the bound STEP, within the profile tolerance, or the drawing is not accepted.
 - The nearest-point rule can take another model point when the model differs strongly from the specification. The dimension then fails with the
-  measured value of that point. For a correct model, an anchor on an end point, a center, an extreme point, or an edge across the axis has a model point at distance 0.
+  measured value of that point. For a correct model, an anchor on an end point, a midpoint, a center, an extreme point, or an edge across the axis has a model point at distance 0.
   An anchor inside an edge along the axis does not fix the measured coordinate. It snaps to the nearest end point.
 - A wrong tolerance value that the source states differently is not detected until the part description has structured GPS values.
 
@@ -48,4 +49,6 @@ A specification that agrees with itself, but not with the bound STEP, could ther
   a bound STEP with a taller hub makes the height dimension fail although the specification agrees with itself;
   synthetic views: a length of 38 mm on a model of 40 mm fails, a right angle passes, and a dimension in an isometric view fails as not true size;
   anchors inside edges across the axis, at the extreme point of a hole, and on a leg edge give the correct values, a model of 36 mm makes a declared 40 mm fail,
-  and of two concentric circles with a negligible center difference, the radius dimension takes the declared radius.
+  and of two concentric circles with a negligible center difference, the radius dimension takes the declared radius;
+  a length between two edge midpoints passes, an ellipse in the view does not stop the check, and an angle with leg anchors that differ from the edge directions
+  gets the angle of the edges.
