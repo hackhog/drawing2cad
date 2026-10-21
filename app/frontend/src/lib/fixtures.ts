@@ -1,7 +1,23 @@
 // Synthetic contract fixtures. They describe a fictitious plate, not a customer part.
 // Simulated data does not establish end-to-end acceptance.
-import type { Assumption, Operation, Parameter, Uncertainty, ValidationResult } from "./contract";
+import type { Assumption, Operation, Parameter, ProjectionCheck, ProjectionStatus, Uncertainty, ValidationResult } from "./contract";
 import type { Drawing, ExtractResult, Stroke } from "./drawing";
+
+/** Synthetic projection data for display tests, never an executed geometry check. */
+export function fixtureProjection(status: ProjectionStatus, revision: number): ProjectionCheck {
+  return {
+    status, revision, simulated: true, report_artifact_id: null, overlay_artifact_id: null,
+    reason: status === "not_tested" ? "No simulated projection check exists for this revision." : null,
+    page: status === "not_tested" ? null : 1, sheet_size_mm: [297, 210],
+    views: status === "not_tested" ? [] : [{
+      view_id: "front", status: status === "matches" ? "pass" : "fail", reason: null,
+      region_sheet_mm: [20, 20, 200, 140], max_capped: false,
+      metrics: { p95_mm: status === "matches" ? 0.12 : 0.49, max_mm: 0.8, coverage: 0.98 },
+      limits: { p95_mm: 0.3, max_mm: 1, coverage_min: 0.85 },
+      checks: { p95: status === "matches" ? "pass" : "fail", max: "pass", coverage: "pass" },
+    }],
+  };
+}
 
 const SHEET: [number, number] = [297, 210];
 

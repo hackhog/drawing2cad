@@ -54,6 +54,16 @@ Named parameters and ordered features remain in the versioned JSON description.
 Notes have an independent revision counter. Use revision zero for the first note.
 A stale note update returns `REVISION_CONFLICT` and preserves the current note.
 
+The web run response includes `projection`, separate from release and generated-PDF verification.
+It presents the newest `projection_report` of the current part revision and the preceding `projection_overlay` of that check.
+The MCP registers these artifacts together in sequence; the report does not contain an overlay link.
+The web adapter stops its image lookup at the previous report. It never substitutes an earlier check's overlay.
+The response records report and overlay IDs, source page, sheet size, view regions, measurements, limits, and per-metric results.
+Measurements and limits retain the MCP values. No release gate or numerical limit changes in the web adapter.
+The overall state is `matches` when all current views pass, `deviates` when a view fails, and `not_tested` without complete current evidence.
+An older revision, invalid binding, or unreadable newest report gives `not_tested`, with its reason.
+Active runs show no completed projection result. Simulated service responses mark their data as simulated.
+
 ## Jobs and recovery
 
 Use `job_submit` for build, drawing-render, or STEP-release operations.

@@ -658,11 +658,16 @@ def test_run_view_reads_the_drawing_acceptance_for_each_request(tmp_path):
 
     class Backend:
         def call(self, operation, **arguments):
+            if operation == "source_get":
+                return {"source_id": "src", "sha256": SHA}
+            if operation == "artifact_list":
+                return {"items": [], "next_cursor": None}
             assert operation == "drawing_read" and arguments == {"run_id": "part"}
-            return {"acceptance": {"status": next(states), "reason": None, "verification": None}}
+            return {"revision": 1, "acceptance": {"status": next(states), "reason": None, "verification": None}}
 
-    cached = {"part": None, "review": {"release_state": "released", "drawing_acceptance": None}, "artifacts": []}
-    services = SimpleNamespace(backend=Backend(), result=lambda record: cached,
+    cached = {"part": {"revision": 1}, "review": {"release_state": "released", "drawing_acceptance": None}, "artifacts": []}
+    services = SimpleNamespace(backend=Backend(), result=lambda record, revision=None: cached,
+                               analysis=lambda source: {"drawing": {"sheet_size_mm": [420, 297]}},
                                jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
     record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"}, "error": None, "part_run_id": "part"}
     assert run_view(services, record)["review"]["drawing_acceptance"]["status"] == "accepted"
@@ -693,13 +698,18 @@ def test_run_view_reads_the_release_freshness_for_each_request(tmp_path):
 
     class Backend:
         def call(self, operation, **arguments):
+            if operation == "source_get":
+                return {"source_id": "src", "sha256": SHA}
+            if operation == "artifact_list":
+                return {"items": [], "next_cursor": None}
             current = next(pair)
-            return {"acceptance": None, "release": {"delivery": "complete_service", "drawing": {"status": "accepted", "reason": None},
+            return {"revision": 1, "acceptance": None, "release": {"delivery": "complete_service", "drawing": {"status": "accepted", "reason": None},
                                                     "drawing_current": True, "pair_current": current,
                                                     "pair_reason": None if current else "The released PDF file changed after the release."}}
 
-    cached = {"part": None, "review": {"release_state": "released", "drawing": {"status": "accepted"}, "drawing_acceptance": None}, "artifacts": []}
-    services = SimpleNamespace(backend=Backend(), result=lambda record: cached, jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
+    cached = {"part": {"revision": 1}, "review": {"release_state": "released", "drawing": {"status": "accepted"}, "drawing_acceptance": None}, "artifacts": []}
+    services = SimpleNamespace(backend=Backend(), result=lambda record, revision=None: cached,
+                               analysis=lambda source: {"drawing": {"sheet_size_mm": [420, 297]}}, jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
     record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"}, "error": None, "part_run_id": "part"}
     assert run_view(services, record)["review"]["drawing"]["current"] is True
     stale = run_view(services, record)["review"]["drawing"]

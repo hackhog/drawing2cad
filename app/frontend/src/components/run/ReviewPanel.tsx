@@ -1,6 +1,7 @@
 // Review data: release state, assumptions, uncertainty markers, and validation results.
 // `not_tested` is shown as such and never as a pass.
 import { StatusBadge } from "@/components/Status";
+import { ProjectionSection } from "./ProjectionSection";
 import type { DrawingAcceptance, ReleaseState, Run, ValidationResult } from "@/lib/contract";
 import { fmt } from "@/lib/format";
 import { delivery } from "@/lib/release";
@@ -26,7 +27,7 @@ const H3 = "mb-1.5 text-xs font-semibold tracking-[.06em] text-faint uppercase";
 
 export function ReviewPanel({ run }: { run: Run }) {
   const review = run.review;
-  if (!review) return <p className="text-muted-foreground">No review data yet.</p>;
+  if (!review) return <div className="flex flex-col gap-4"><ProjectionSection run={run} /><p className="text-muted-foreground">No review data yet.</p></div>;
   const [tone, label] = RELEASE[review.release_state];
   const { reasons } = delivery(run);
   return (
@@ -37,6 +38,7 @@ export function ReviewPanel({ run }: { run: Run }) {
       </section>
 
       {review.drawing_acceptance && <AcceptanceSection acceptance={review.drawing_acceptance} />}
+      <ProjectionSection run={run} />
 
       {run.agent_report && (
         <section>

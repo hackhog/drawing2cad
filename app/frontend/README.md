@@ -61,6 +61,11 @@ The UI text is English ([ADR 0022](../../docs/adr/0022-ui-text-in-english.md)).
 - **Parameter edits:** a change sends the expected revision. Results of an older revision show as stale until the service releases new results.
 - **Downloads:** only for artifacts of a released run with the current revision.
 - **Errors:** failed uploads, unknown IDs, failed jobs, and unavailable capabilities show a message with a recovery action.
+- **Source agreement:** the run review shows the newest projection check of the current part revision.
+  Each view has a cropped overlay and bars for p95 deviation, maximum deviation, and drawing coverage, with the recorded limits.
+  The job card shows `matches`, `deviates`, or `not tested` separately from release.
+  A check of an older revision is not a current test. A release without a projection check does not prove source agreement.
+  Simulated projection data and images are marked as simulated.
 
 The mouse wheel zooms, drag moves the sheet, double-click shows the full sheet.
 The font (Plus Jakarta Sans) is in `src/assets/` (SIL OFL 1.1, license text in `public/fonts/`).

@@ -47,7 +47,33 @@ export interface Part {
 }
 
 export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report"
-  | "verification_report" | "verification_preview";
+  | "verification_report" | "verification_preview" | "projection_overlay" | "projection_report";
+
+export type ProjectionStatus = "matches" | "deviates" | "not_tested";
+
+/** The newest source-projection check of the current part revision. Limits and check results come from the MCP. */
+export interface ProjectionCheck {
+  status: ProjectionStatus;
+  revision: number | null;
+  reason: string | null;
+  report_artifact_id: string | null;
+  overlay_artifact_id: string | null;
+  page: number | null;
+  sheet_size_mm: [number, number] | null;
+  views: ProjectionView[];
+  simulated?: boolean;
+}
+
+export interface ProjectionView {
+  view_id: string;
+  status: "pass" | "fail" | "not_tested";
+  reason: string | null;
+  region_sheet_mm: Box;
+  metrics: { p95_mm: number | null; max_mm: number | null; coverage: number | null };
+  limits: { p95_mm: number | null; max_mm: number | null; coverage_min: number | null };
+  checks: Record<"p95" | "max" | "coverage", "pass" | "fail" | "not_tested">;
+  max_capped: boolean;
+}
 
 /** Drawing status that a STEP release records. The drawing does not gate the release. */
 export interface ReleaseDrawing {
@@ -177,6 +203,8 @@ export interface Run {
   simulated: boolean;
   /** Final text of the agent conversation, from its trace. It is also the first text of the run note (ADR 0018). */
   agent_report?: string | null;
+  /** Separate from release and generated-PDF verification. Absent on older servers. */
+  projection?: ProjectionCheck;
 }
 
 export interface ServiceError {
