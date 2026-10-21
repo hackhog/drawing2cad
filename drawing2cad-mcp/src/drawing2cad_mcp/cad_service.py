@@ -74,7 +74,7 @@ class CadService:
         runtime = self.runner.capabilities()
         return {"enabled": self.settings.enabled, "runtime": runtime, "sandbox_probe": deepcopy(self._probe),
                 "build_code_enabled": bool(self.settings.enabled and self.settings.allow_build_code and self._probe and self._probe.get("status") == "pass"),
-                "part_schema_version": PART_SCHEMA_VERSION, "export_profile": "prototype_geometry_step",
+                "part_schema_version": PART_SCHEMA_VERSION, "export_profile": "validated_geometry_step",
                 "export_profiles": ["ap214", "ap242"],
                 "ap242_construction": "application_specific_adapter",
                 "semantic_pmi": "nominal_diameter_and_linear",
@@ -215,7 +215,7 @@ class CadService:
         for source in sources:
             path = Path(source["path"]).expanduser()
             if not path.is_absolute():
-                raise CadError("SOURCE_PATH_NOT_ALLOWED", "An M1 source requires an absolute server path.")
+                raise CadError("SOURCE_PATH_NOT_ALLOWED", "A local-path source requires an absolute server path.")
             path = path.resolve()
             if not any(path.is_relative_to(root) for root in self.allowed_roots) or path.suffix.lower() != ".pdf" or not path.is_file():
                 raise CadError("SOURCE_PATH_NOT_ALLOWED", "The source must be a PDF in an authorized root.")
@@ -620,7 +620,7 @@ class CadService:
             release_path = directory / f"part-r{state['revision']}-{built['candidate_sha256'][:12]}.step"
             self._atomic(release_path, data)
             state["source_review"] = coverage
-            state["release"] = {"path": str(release_path), "sha256": built["candidate_sha256"], "bytes": len(data), "description_revision": state["revision"], "profile": "validated_prototype_step", "metric_acceptance": "not_tested", "scope": "Kernel checks and identified source review passed. Independent conformance, target CAD, construction reconstruction, and PMI are separate checks."}
+            state["release"] = {"path": str(release_path), "sha256": built["candidate_sha256"], "bytes": len(data), "description_revision": state["revision"], "schema_version": 2, "profile": "validated_geometry_step", "scope": "Kernel checks and identified source review passed. Independent conformance, target CAD, construction reconstruction, and PMI are separate checks."}
             state["release"]["export_profile"] = built.get("export_profile", "ap214")
             if built.get("export_profile") == "ap242":
                 state["release"].update(profile="validated_ap242_application_construction",

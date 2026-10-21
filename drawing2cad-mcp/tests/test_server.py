@@ -45,6 +45,9 @@ async def test_status_and_pdf_use_native_tools(app, tmp_path):
     assert "freecad" not in status.structured_content
     assert "development_proxy" not in status.structured_content["capabilities"]
     assert not hasattr(app, "proxy")
+    requirements = status.structured_content["capabilities"]["cad"]["delivery_requirements"]
+    assert set(requirements) == {"step_only", "complete_service", "optional_claims"}
+    assert "metric_acceptance" not in status.structured_content["capabilities"]["cad"]
     listed = [tool.name for tool in (await app.on_list_tools(None)).tools]
     # build_code is disabled by default and is therefore not offered.
     assert "build_code" not in listed and len(listed) == len(LOCAL_TOOLS) - 1

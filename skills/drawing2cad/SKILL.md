@@ -2,15 +2,17 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.27.0"
+  version: "0.28.0"
 ---
 
 # drawing2cad
 
-**Domain profile:** Use supplied uploaded `source_id` values and hashes. The drawing does not gate the STEP release; the release records its status.
-**Local-path profile:** Use authorized server PDF paths and hashes; this profile supports the metric but does not supply technical drawings.
+**Complete-service delivery:** Use the domain profile with uploaded `source_id` values and hashes.
+Release with `delivery: "complete_service"` only after drawing verification and acceptance. The release binds the STEP, PDF, and verification report.
+**Local-path STEP-only profile:** Use authorized server PDF paths and hashes. This reduced profile does not supply technical drawings.
+Use it only for an explicitly requested STEP-only delivery or a development test.
 
-## Minimum path for the hackathon metric
+## Workflow
 
 1. Call `drawing2cad_status` → `cad_capabilities` → `cad_worker_probe` → `part_schema`; stop CAD work if the sandbox fails.
 2. For each authorized part, call `pdf_info` → `pdf_read_text` → `pdf_render_page`; record its source hash and inspect the page image. Empty native text is normal for some vector drawings.
@@ -32,22 +34,25 @@ metadata:
     Decide each `needs_review` verification finding in `verification_decisions` with a reason, or leave the drawing unaccepted.
 16. Call `export_step` with the current revision and complete, truthful source-review `coverage`; require a successful release.
     Domain only: for a complete-service delivery, set `delivery: "complete_service"`. The release then needs the accepted, verified drawing of the same STEP bytes,
-    and `release.pair` names the STEP, PDF, and report hashes. Report `release.pair_current`. Read `release.drawing.status` (`accepted`, `unverified`, `unreviewed`, `rejected`, `failed`, or `missing`) and report it with its reason.
+    and `release.pair` names the STEP, PDF, and report hashes. Confirm `release.pair_current: true` on the final `part_read` before reporting complete-service delivery. Read `release.drawing.status` (`accepted`, `unverified`, `unreviewed`, `rejected`, `failed`, or `missing`) and report it with its reason.
 17. Call `part_export_review` with the current revision. Retain STEP, description, review list, hashes, manifest, and actual results.
-18. Repeat for three parts. Require all MCP validations to pass for each final STEP hash.
+18. Repeat for each authorized part. Require all applicable validations and reviews to pass for each delivered pair.
+    For an explicitly requested STEP-only delivery, omit drawing steps 11 to 15 and use the STEP-only release scope in step 16.
+    Apply the model and source-review checks to each delivered STEP.
 
-Each local-model trial authorizes one PDF. Use three trials for three PDFs; use distinct runs for separate parts in one authorized PDF.
+Each agent run authorizes one PDF. Use distinct runs for separate parts in one authorized PDF.
 Use the live argument schemas. Local sources require `path`, `sha256`, and `role`; domain sources require `source_id`, `sha256`, and `role`.
-The acting agent can supply the identified source-review attestation. A separate reviewer is optional for the metric, when available.
-An opening test in a target CAD system is optional and separate from the metric. Record it only when it was actually run.
+Use a separate reviewer when available. The acting agent can supply the required identified source-review attestation.
+An opening test in a target CAD system is optional unless the requested delivery requires it. Record it only when it was actually run.
 For a domain run with corrections, start with `step_budget=45` unless the run needs another value within the live server limits.
 Track the client tool-call budget separately. Reserve calls for one final diagnostic build, `export_step`, and `part_export_review`.
-If drawing review cannot pass, release validated STEP with its actual drawing status when source coverage permits.
-Such a release does not complete the technical drawing deliverable.
+If drawing verification or review cannot pass, report the incomplete delivery and its reasons.
+Do not substitute a STEP-only release for a requested complete-service delivery.
+For an explicitly requested STEP-only delivery, domain `export_step` uses `delivery: "step_only"` and records the actual drawing status.
 
 ## Optional, profile-dependent extensions
 
-- **Upload:** The domain host must supply uploaded sources before the minimum path. Direct upload calls are optional when the client permits them.
+- **Upload:** The domain host must supply uploaded sources before the workflow. Direct upload calls are optional when the client permits them.
   `upload_begin` → `upload_chunk` → `upload_complete` transfers PDF bytes; `upload_get` resumes an interrupted transfer.
   The bounded local-model runner does not permit these tools. A client path is not a remote upload.
 - **Jobs:** Use `job_submit` and `job_get` only when the domain client permits them; otherwise use synchronous calls.
@@ -55,11 +60,12 @@ Such a release does not complete the technical drawing deliverable.
 - **Downloads:** A permitted domain host uses `artifact_get` and `artifact_read`, then verifies complete file hashes.
   These tools are unavailable to the bounded local-model runner. Return artifact IDs and hashes to that host.
   Local-path outputs use the server paths returned by the tools.
-- **AP242 and semantic PMI:** These M3 capabilities are optional for the hackathon metric. AP214 geometry can satisfy its STEP requirement.
+- **AP242 and semantic PMI:** These capabilities are optional for both complete-service and STEP-only delivery unless requested.
+  AP214 geometry can satisfy the STEP requirement. AP242 builds require the additional checks specified by the server.
   Use [ap242-adapter.md](references/ap242-adapter.md) only when requested and when the server and client permit its tools.
   Test construction replay, parameter changes, semantic associations, graphical PMI, and target-CAD behavior as separate claims.
 - **Separate review:** Use an independent reviewer for source and final-artifact review when the execution environment supplies one.
-  An identified review remains necessary; a separate agent is not an MCP tool or a prerequisite for the metric.
+  An identified review remains necessary; a separate agent is not an MCP tool or a prerequisite for delivery.
 
 ## Execution and evidence
 
@@ -79,11 +85,11 @@ Mark undimensioned radii and unclear details. Keep assumptions distinct from sou
 Block only when no reasonable assumption supports construction. Never report an unexecuted check as passed.
 
 The JSON description is the editable construction source. Its presence does not prove native feature history inside STEP.
-The domain service supplies a dimensioned DXF and a PDF inspection copy from supplied 2D geometry.
-It does not automatically project arbitrary solids or extract sections. Drawing and model creation can occur in either order.
+The domain service derives supported views and sections from the validated model and renders dimensioned DXF and PDF artifacts.
+Use the live schemas for supported projections and geometry. Drawing preparation and model creation can occur in either order.
 Compare their final revisions before domain delivery. A rebuild invalidates an earlier drawing review and the STEP release.
-A drawing render or review does not invalidate a STEP release. Call `export_step` again to record the new drawing status.
-The local-path metric result does not satisfy the complete-service drawing requirement.
+A new drawing, verification, or review makes an earlier complete-service pair stale. Repeat the affected checks and release the current pair.
+A STEP-only release does not establish complete-service drawing delivery.
 
 ## References
 
@@ -110,7 +116,7 @@ Keep customer parts, resource links, host snapshots, and historical adapter inst
 
 ## References for each step
 
-The step numbers refer to "Minimum path for the hackathon metric". A step starts with the first call of one of its tools.
+The step numbers refer to "Workflow". A step starts with the first call of one of its tools.
 
 | Step | Tools | References |
 |---|---|---|

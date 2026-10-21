@@ -41,7 +41,7 @@ These technical nouns identify project concepts. They do not extend the approved
 |---|---|
 | dimensioned technical drawing | An editable drawing sheet with dimensions and the necessary views, sections, and notes. |
 | controlling drawing | The verified drawing revision used for design requirements and model comparison. |
-| part description | The versioned JSON source of parameters, ordered features, evidence, and review data for the M1 prototype. |
+| part description | The versioned JSON source of parameters, ordered features, evidence, and review data for the service. |
 | model contract | Declarative data that specify sources, parameters, relations, operations, PMI, review data, and tests. |
 | fixed contract | A model contract with a recorded revision and hash. Changes require a new revision. |
 | operation graph | The directed acyclic graph of construction operations and their dependencies. |

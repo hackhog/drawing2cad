@@ -2,13 +2,13 @@
 
 Use this loop for reconstruction and model changes through `drawing2cad-mcp`.
 Read the live schemas before the first request and after a server version change.
-Keep model changes in sequence. Use a separate reviewer when available; this is optional for the hackathon metric.
+Keep model changes in sequence. Use a separate reviewer when available; a separate reviewer is optional.
 Otherwise, the acting agent records its identified review attestation.
 
 ## Prepare and validate JSON
 
 Read `part_schema` and the applicable tool input schemas.
-For domain drawing delivery, also read `drawing_schema`. The local-path metric skips drawing operations.
+For domain drawing delivery, also read `drawing_schema`. The local-path STEP-only profile skips drawing operations.
 Use only tools that both the server and the client permit.
 Read `pmi_schema` only when the requested profile uses supported PMI.
 Prepare ordinary JSON data with stable identifiers, explicit units, parameter references, and source evidence.
@@ -62,7 +62,7 @@ The result does not gate the STEP release. Correct the model when the cause is a
 
 ## Inspect drawing diagnostics
 
-This section applies to domain drawing delivery. It does not add drawing requirements to the local-path metric.
+This section applies to domain drawing delivery. It does not add drawing requirements to the local-path STEP-only profile.
 
 Run `drawing_validate`, then `drawing_render` for the current part revision.
 If drawing validation returns `diagnostic_eligible: true`, rendering can supply a preview of the failed layout.
@@ -90,12 +90,12 @@ A model error requires a model correction and new binding; moving drawing text c
 Diagnostic previews apply to supported rendered layout failures only.
 Schema, evidence, geometry, or binding failures can stop before a preview exists.
 Correct the reported contract defect first. Do not bypass it with a separate renderer.
-Keep failed artifacts as evidence. A failed drawing cannot receive an accepted review. The STEP release states the failed drawing and links its diagnostic files.
+Keep failed artifacts as evidence. A failed drawing cannot receive an accepted review. A STEP-only release records the failed drawing and its diagnostic files. A complete-service release remains blocked.
 
 ## Review and release
 
-For domain drawing delivery, do the drawing review below. The STEP release does not wait for it; the release records the drawing status. The local-path metric skips this drawing review.
-After a render pass, independently compare the final source, drawing, and measured model.
+For domain drawing delivery, do the drawing review below. Complete-service release requires the accepted, verified drawing and a current pair binding. STEP-only release records the drawing status. The local-path STEP-only profile skips this drawing review.
+After a render pass and `drawing_verify`, independently compare the final source, drawing, and measured model.
 Inspect the complete sheet and necessary detail views for legibility, missing features, and unclear assumptions.
 Compare inner and outer boundaries in each view. Duplicate lines do not prove that both boundaries are present.
 Inspect section hatching against material regions. Keep hatch strokes outside bores, pockets, and drill-point voids.
@@ -104,7 +104,7 @@ Record `drawing_review` for the exact drawing hash and current model build.
 Repeat affected checks and obtain a new review after a change that invalidates the previous result.
 
 In both profiles, inspect the candidate STEP and its fresh-worker import results before `export_step`.
-AP242 and semantic PMI are optional M3 capabilities for the hackathon metric.
+AP242 and semantic PMI are optional unless requested. AP242 builds require the server's additional independent analysis.
 For AP242, also apply [ap242-adapter.md](ap242-adapter.md) within the verified capability scope.
 Keep external analysis, target-CAD opening, editability, and PMI acceptance as separate results.
 Use the permitted host for domain downloads; verify complete file hashes. Local-path outputs use returned server paths.

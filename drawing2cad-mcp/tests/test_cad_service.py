@@ -151,8 +151,9 @@ def test_end_to_end_candidate_release_and_report(setup_service):
     assert stored["build"]["checks"] == built["build"]["build"]["checks"]
     assert stored["validation"]["checks"] == built["build"]["validation"]["checks"]
     released = service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
-    assert released["release"]["profile"] == "validated_prototype_step"
-    assert released["release"]["metric_acceptance"] == "not_tested"
+    assert released["release"]["schema_version"] == 2
+    assert released["release"]["profile"] == "validated_geometry_step"
+    assert "metric_acceptance" not in released["release"]
     assert next(item for item in released["checks"] if item["check"] == "target_cad_open")["status"] == "not_tested"
     report = service.part_export_review(run_id="example", expected_revision=1)
     assert {Path(item["path"]).name for item in report["artifacts"]} == {"part.json", "review.md", "review.csv", "coverage.json", "trace.jsonl", "manifest.json"}
@@ -160,6 +161,33 @@ def test_end_to_end_candidate_release_and_report(setup_service):
     assert len(trace.read_text(encoding="utf-8").splitlines()) == 3
     for artifact in report["artifacts"]:
         assert hashlib.sha256(Path(artifact["path"]).read_bytes()).hexdigest() == artifact["sha256"]
+
+
+def test_stored_legacy_release_remains_readable_without_new_acceptance_claims(setup_service):
+    service, runner, _, source = setup_service
+    create(setup_service)
+    service.build_from_description(run_id="example", expected_revision=1)
+    service.export_step(run_id="example", expected_revision=1, coverage=coverage(source))
+    directory = service.storage / "runs" / "example"
+    state_path = directory / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    legacy = state["release"]
+    legacy.pop("schema_version")
+    legacy.update(profile="validated_prototype_step", metric_acceptance="not_tested")
+    service._save(directory, state)
+    release_bytes = Path(legacy["path"]).read_bytes()
+
+    restarted = CadService(service.allowed_roots, service.output_root, service.settings, runner=runner)
+    assert restarted.part_read(run_id="example")["part"]["release"] == legacy
+    assert json.loads(state_path.read_text(encoding="utf-8"))["release"] == legacy
+    assert Path(legacy["path"]).read_bytes() == release_bytes
+    report = restarted.part_export_review(run_id="example", expected_revision=1)
+    manifest = next(Path(item["path"]) for item in report["artifacts"] if item["path"].endswith("manifest.json"))
+    assert json.loads(manifest.read_text(encoding="utf-8"))["release"] == legacy
+    current = restarted.export_step(run_id="example", expected_revision=1, coverage=coverage(source))["release"]
+    assert current["schema_version"] == 2 and current["profile"] == "validated_geometry_step"
+    assert current["sha256"] == legacy["sha256"]
+    assert "metric_acceptance" not in current and "pair" not in current
 
 
 @pytest.mark.parametrize("mutation,code", [
