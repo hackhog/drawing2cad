@@ -88,6 +88,27 @@ describe("source projection review", () => {
     expect(html).toContain("not tested");
     expect(html).toContain("The release does not prove agreement");
   });
+
+  it("shows a missing report as a warning and keeps the released run successful", () => {
+    const value = run("matches");
+    value.warning = {
+      code: "AGENT_REPORT_MISSING",
+      message: "Final report missing: RuntimeError: Model endpoint returned HTTP 429",
+    };
+    const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={value} /></QueryClientProvider>);
+    expect(html).toContain("Hinweis: Abschlussbericht fehlt");
+    expect(html).toContain("Freigabe erfolgt; nur der Abschlussbericht fehlt.");
+    expect(html).toContain("Die Dateien sind freigegeben. Der Lauf ist erfolgreich abgeschlossen.");
+    expect(html).toContain("HTTP 429");
+    expect(html).toContain("released");
+    expect(html).not.toContain("text-destructive");
+  });
+
+  it("shows no report warning for an older run without the warning field", () => {
+    const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={run("matches")} /></QueryClientProvider>);
+    expect(html).not.toContain("Abschlussbericht fehlt");
+    expect(html).toContain("released");
+  });
 });
 
 describe("simulated projection service", () => {

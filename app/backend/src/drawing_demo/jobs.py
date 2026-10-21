@@ -52,6 +52,7 @@ class JobStore:
             "failed_phase": None,
             "job": {"job_id": run_id, "status": "queued", "progress": 0, "started_at": now(), "finished_at": None},
             "error": None,
+            "warning": None,
         }
         write_json(directory / "run.json", record)
         return record
