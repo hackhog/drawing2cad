@@ -45,7 +45,6 @@ ABSENT_REASONS = {
     "GPS-07": "No tolerance frame has a modifier.",
     "GPS-08": "The drawing has no datum symbols.",
     "GPS-09": "The drawing has no datum symbols.",
-    "FEAT-02": "The bound model has no round feature.",
 }
 VERIFIER_VERSION = "1.0.0"
 REPORT_SCHEMA = "1.0"
@@ -1022,6 +1021,9 @@ def verify(directory: Path, request: dict) -> dict:
                       if ("DIM-06", "pass") in found and ("DIM-02", "pass") in found and not any(status != "pass" for _, status in found)}
             coverage = feature_coverage.check(report, views, derived, feature_coverage.inventory(directory / "input.step"), passed,
                                               request.get("markers", []))
+        else:
+            for rule in ("FEAT-01", "FEAT-02", "FEAT-03"):
+                report.add(rule, "not_tested", "info", "No model projection of the bound STEP exists, so the feature coverage is not tested.")
     for rule, reason in request.get("service_findings", []):
         report.add(rule["rule_id"], rule["status"], rule["severity"], reason, expected=rule.get("expected"), observed=rule.get("observed"))
     present = {item["rule_id"] for item in report.findings}

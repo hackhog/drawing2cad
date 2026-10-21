@@ -26,14 +26,16 @@ def view(identifier, projection, dimensions, geometry=()):
 
 
 # A plate 40 x 20 x 10 with a hole of 6 mm at (10, 10). The bottom view sees the plate face-on; the front view sees it edge-on.
+def level(identifier, normal, offset, low, high):
+    return {"id": identifier, "kind": "plane_level", "normal": normal, "offset": offset, "boxes": [[low, high]]}
+
+
 PLATE = {"features": [
-    {"id": "round_1", "kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0},
-    {"id": "plane_1", "kind": "plane_level", "normal": (1.0, 0.0, 0.0), "offset": 0.0},
-    {"id": "plane_2", "kind": "plane_level", "normal": (1.0, 0.0, 0.0), "offset": 40.0},
-    {"id": "plane_3", "kind": "plane_level", "normal": (0.0, 1.0, 0.0), "offset": 0.0},
-    {"id": "plane_4", "kind": "plane_level", "normal": (0.0, 1.0, 0.0), "offset": 20.0},
-    {"id": "plane_5", "kind": "plane_level", "normal": (0.0, 0.0, 1.0), "offset": 0.0},
-    {"id": "plane_6", "kind": "plane_level", "normal": (0.0, 0.0, 1.0), "offset": 10.0}], "other_surfaces": {}}
+    {"id": "round_1", "kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "extent": [0.0, 10.0]},
+    level("plane_1", (1.0, 0.0, 0.0), 0.0, [0, 0, 0], [0, 20, 10]), level("plane_2", (1.0, 0.0, 0.0), 40.0, [40, 0, 0], [40, 20, 10]),
+    level("plane_3", (0.0, 1.0, 0.0), 0.0, [0, 0, 0], [40, 0, 10]), level("plane_4", (0.0, 1.0, 0.0), 20.0, [0, 20, 0], [40, 20, 10]),
+    level("plane_5", (0.0, 0.0, 1.0), 0.0, [0, 0, 0], [40, 20, 0]), level("plane_6", (0.0, 0.0, 1.0), 10.0, [0, 0, 10], [40, 20, 10])],
+    "other_surfaces": {}}
 TOP_MODEL = [line("t1", [0, 0], [40, 0]), line("t2", [40, 0], [40, 20]), line("t3", [40, 20], [0, 20]), line("t4", [0, 20], [0, 0]),
              circle("hole", [10, 10], 3)]
 # The front view: the plate outline and the hole as hidden lines at x = 7 and x = 13.
@@ -100,6 +102,36 @@ def test_a_feature_that_only_hidden_lines_show_fails_and_a_marker_makes_it_a_rev
     assert findings[("FEAT-01", "round_1")]["status"] == "needs_review" and "m1" in findings[("FEAT-01", "round_1")]["message"]
 
 
+def test_an_edge_outside_the_extent_of_a_feature_does_not_count():
+    # A visible line at the hole outline, but above the plate (z = 20..30), is the edge of another feature.
+    front = FRONT_MODEL + [line("other", [7, 20], [7, 30])]
+    _, findings = coverage({"top": [], "front": COMPLETE["front"]}, derived={"front": {"geometry": front}})
+    assert findings[("FEAT-01", "round_1")]["status"] == "fail"
+    # A line at the height of the plate face, but beside the plate, does not show the face. A dimension to it does not locate the face.
+    front = [item for item in FRONT_MODEL if item["id"] != "f3"] + [line("rib", [50, 10], [60, 10])]
+    dimensions = {"top": COMPLETE["top"], "front": [linear("t", [55, 0], [55, 10], "vertical")]}
+    _, findings = coverage(dimensions, derived={"top": {"geometry": TOP_MODEL}, "front": {"geometry": front}})
+    assert findings[("FEAT-01", "plane_6")]["status"] == "fail" and findings[("FEAT-03", "plane_6")]["status"] == "fail"
+
+
+def test_a_section_off_the_axis_shows_the_hole():
+    # The cutting plane is 1 mm from the hole axis: the cut walls are at 2.83 mm from the axis, not at the radius.
+    walls = [line("s1", [10 - 2.828427, 0], [10 - 2.828427, 10], "section"), line("s2", [10 + 2.828427, 0], [10 + 2.828427, 10], "section")]
+    front = [item for item in FRONT_MODEL if not item["id"].startswith("h")] + walls
+    result, _ = coverage({"top": [], "front": COMPLETE["front"]}, derived={"front": {"geometry": front}})
+    assert result["round_1"]["visible_in"] == ["front"]
+
+
+def test_an_empty_inventory_is_not_applicable():
+    report = Report()
+    check(report, [view("top", TOP, [], TOP_MODEL)], {"top": {"geometry": TOP_MODEL}}, {"features": [], "other_surfaces": {"sphere": 1}}, set(), [])
+    statuses = {item["rule_id"]: item["status"] for item in report.findings}
+    assert statuses == {"FEAT-01": "not_applicable", "FEAT-02": "not_applicable", "FEAT-03": "not_applicable", "FEAT-04": "not_tested"}
+    report = Report()
+    check(report, [view("top", TOP, [], TOP_MODEL)], {"top": {"geometry": TOP_MODEL}}, {**PLATE, "features": PLATE["features"][1:]}, set(), [])
+    assert [item["status"] for item in report.findings if item["rule_id"] == "FEAT-02"] == ["not_applicable"]
+
+
 def test_other_surfaces_are_listed_as_not_tested():
     features = {**PLATE, "other_surfaces": {"cone": 2, "torus": 4}}
     _, findings = coverage(COMPLETE, features=features)
@@ -123,3 +155,5 @@ def test_the_flange_inventory_has_its_round_features_and_plane_levels(tmp_path):
     assert rounds == [("boss", 50.0), ("boss", 25.0), ("hole", 15.0)] + [("hole", 5.0)] * 4
     levels = [item["offset"] for item in found["features"] if item["kind"] == "plane_level"]
     assert levels == [0.0, 12.0, 32.0] and found["other_surfaces"] == {}
+    bore = next(item for item in found["features"] if item["kind"] == "hole" and item["radius"] == 15.0)
+    assert bore["extent"] == [0.0, 32.0]

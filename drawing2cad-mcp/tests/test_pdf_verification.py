@@ -318,6 +318,8 @@ def test_one_missing_extension_line_fails(drawing, tmp_path):
     data = mutate(drawing["pdf"], erase)
     report = run(tmp_path, data, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
     assert any(item["feature"] == "h_total" for item in by_rule(report, "DIM-05", "fail"))
+    # Without the bound STEP, the feature coverage is not tested. It is not "not applicable".
+    assert {item["status"] for rule in ("FEAT-01", "FEAT-02", "FEAT-03") for item in by_rule(report, rule)} == {"not_tested"}
 
 
 def test_extra_geometry_inside_a_hatched_surface_fails(drawing, tmp_path):

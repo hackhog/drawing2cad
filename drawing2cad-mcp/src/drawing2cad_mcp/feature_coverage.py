@@ -46,6 +46,11 @@ def _key(values, digits) -> tuple:
     return tuple(round(v, digits) + 0.0 for v in values)
 
 
+def _corners(face) -> list[list[float]]:
+    box = face.bounding_box()
+    return [[x, y, z] for x in (box.min.X, box.max.X) for y in (box.min.Y, box.max.Y) for z in (box.min.Z, box.max.Z)]
+
+
 def inventory(step_path: Path) -> dict[str, Any]:
     """The round features, the plane levels, and the counts of other surface types of the bound STEP."""
     from build123d import import_step
@@ -78,26 +83,34 @@ def inventory(step_path: Path) -> dict[str, Any]:
                 normal = [-c for c in normal]
             offset = [point.X() - foot[0], point.Y() - foot[1], point.Z() - foot[2]]
             radial = [offset[i] - _dot(offset, direction) * direction[i] for i in range(3)]
-            entry = rounds.setdefault(_key(direction, 6) + _key(foot, 4) + _key([radius], 4),
-                                      {"axis": direction, "foot": foot, "radius": radius, "concave": False})
-            entry["concave"] = entry["concave"] or _dot(normal, radial) < 0
+            concave = _dot(normal, radial) < 0
+            # The extent along the axis, from the face vertices or from the corners of the face box.
+            corners = [[v.X, v.Y, v.Z] for v in face.vertices()] or _corners(face)
+            stations = [_dot([c[i] - foot[i] for i in range(3)], direction) for c in corners]
+            entry = rounds.setdefault(_key(direction, 6) + _key(foot, 4) + _key([radius], 4) + (concave,),
+                                      {"axis": direction, "foot": foot, "radius": radius, "concave": concave,
+                                       "low": min(stations), "high": max(stations)})
+            entry.update(low=min(entry["low"], *stations), high=max(entry["high"], *stations))
         elif kind == GeomAbs_Plane:
             plane = surface.Plane()
             axis = plane.Axis()
             normal = _canonical([axis.Direction().X(), axis.Direction().Y(), axis.Direction().Z()])
             location = [axis.Location().X(), axis.Location().Y(), axis.Location().Z()]
             offset = _dot(normal, location)
-            planes.setdefault(_key(normal, 6) + _key([offset], 4), {"normal": normal, "offset": offset})
+            entry = planes.setdefault(_key(normal, 6) + _key([offset], 4), {"normal": normal, "offset": offset, "boxes": []})
+            box = face.bounding_box()
+            entry["boxes"].append([_key([box.min.X, box.min.Y, box.min.Z], 6), _key([box.max.X, box.max.Y, box.max.Z], 6)])
         else:
             name = str(kind).split(".")[-1].removeprefix("GeomAbs_").lower()
             other[name] = other.get(name, 0) + 1
     features = []
     for number, entry in enumerate(sorted(rounds.values(), key=lambda e: (-e["radius"], _key(e["axis"], 6), _key(e["foot"], 4))), 1):
         features.append({"id": f"round_{number}", "kind": "hole" if entry["concave"] else "boss", "axis": _key(entry["axis"], 9),
-                         "foot": _key(entry["foot"], 6), "radius": round(entry["radius"], 6)})
+                         "foot": _key(entry["foot"], 6), "radius": round(entry["radius"], 6),
+                         "extent": [round(entry["low"], 6), round(entry["high"], 6)]})
     for number, entry in enumerate(sorted(planes.values(), key=lambda e: (_key(e["normal"], 6), round(e["offset"], 4))), 1):
         features.append({"id": f"plane_{number}", "kind": "plane_level", "normal": _key(entry["normal"], 9),
-                         "offset": round(entry["offset"], 6)})
+                         "offset": round(entry["offset"], 6), "boxes": entry["boxes"]})
     return {"features": features, "other_surfaces": dict(sorted(other.items()))}
 
 
@@ -128,14 +141,34 @@ def _cross2(a, b) -> float:
     return a[0] * b[1] - a[1] * b[0]
 
 
+def _on_faces(feature: dict, view: _View, points) -> bool:
+    """True if each point is in the projected box of one face of the plane level."""
+    for low, high in feature["boxes"]:
+        projected = [view.point([x, y, z]) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
+        bounds = [min(p[0] for p in projected), min(p[1] for p in projected), max(p[0] for p in projected), max(p[1] for p in projected)]
+        if all(bounds[0] - POSITION_MM <= p[0] <= bounds[2] + POSITION_MM and bounds[1] - POSITION_MM <= p[1] <= bounds[3] + POSITION_MM
+               for p in points):
+            return True
+    return False
+
+
+def _in_extent(feature: dict, view: _View, points) -> bool:
+    """True if each point is within the axial extent of the round feature. The axis is in the view plane."""
+    axis = _unit(view.point(feature["axis"]))
+    center = view.point(feature["foot"])
+    low, high = feature["extent"]
+    return all(low - POSITION_MM <= _dot(axis, [p[0] - center[0], p[1] - center[1]]) <= high + POSITION_MM for p in points)
+
+
 def _shows(feature: dict, view: _View, item: dict) -> bool:
     """True if the primitive is an edge of the feature in this view."""
     if feature["kind"] == "plane_level":
         if abs(_dot(feature["normal"], view.direction)) > PARALLEL or item["type"] != "line":
             return False
-        # The plane is edge-on. Its trace is a line at its offset along the projected normal.
+        # The plane is edge-on. Its trace is a line at its offset along the projected normal, inside the projection of one of its faces.
         normal = view.point(feature["normal"])
-        return all(abs(_dot(normal, point) - feature["offset"]) <= POSITION_MM for point in (item["start"], item["end"]))
+        return (all(abs(_dot(normal, point) - feature["offset"]) <= POSITION_MM for point in (item["start"], item["end"]))
+                and _on_faces(feature, view, (item["start"], item["end"])))
     along = abs(_dot(feature["axis"], view.direction))
     center = view.point(feature["foot"])
     if along >= 1 - PARALLEL:
@@ -143,12 +176,16 @@ def _shows(feature: dict, view: _View, item: dict) -> bool:
                 and abs(item["radius"] - feature["radius"]) <= RADIUS_MM)
     if along > PARALLEL or item["type"] != "line":
         return False
-    # The axis is in the view plane. The outlines of the cylinder are lines parallel to the axis at the radius.
+    # The axis is in the view plane. The outlines of the cylinder are lines parallel to the axis at the radius, within its extent.
+    # A cutting plane parallel to the axis and off the axis cuts the cylinder at a smaller distance from the axis.
     axis = _unit(view.point(feature["axis"]))
     line = _unit([item["end"][0] - item["start"][0], item["end"][1] - item["start"][1], 0.0])
-    if line is None or abs(_cross2(axis, line)) > PARALLEL:
+    if line is None or abs(_cross2(axis, line)) > PARALLEL or not _in_extent(feature, view, (item["start"], item["end"])):
         return False
-    return abs(abs(_cross2(axis, [item["start"][0] - center[0], item["start"][1] - center[1]])) - feature["radius"]) <= POSITION_MM
+    distance = abs(_cross2(axis, [item["start"][0] - center[0], item["start"][1] - center[1]]))
+    if item["style"] == "section":
+        return distance <= feature["radius"] + POSITION_MM
+    return abs(distance - feature["radius"]) <= POSITION_MM
 
 
 def _measure_direction(dimension: dict) -> list[float] | None:
@@ -180,7 +217,8 @@ def _sizes(feature: dict, view: _View, passed: set[str]) -> list[str]:
             if measure is None or abs(_dot(axis[:2], measure)) > PARALLEL:
                 continue
             sides = [_cross2(axis, [point[0] - center[0], point[1] - center[1]]) for point in (dimension["p1"], dimension["p2"])]
-            if all(abs(abs(side) - feature["radius"]) <= POSITION_MM for side in sides) and sides[0] * sides[1] < 0:
+            if (all(abs(abs(side) - feature["radius"]) <= POSITION_MM for side in sides) and sides[0] * sides[1] < 0
+                    and _in_extent(feature, view, (dimension["p1"], dimension["p2"]))):
                 found.append(dimension["id"])
     return found
 
@@ -197,9 +235,17 @@ def _label(direction) -> str:
     return "[" + ", ".join(f"{c:.6g}" for c in (0.0 if abs(c) < 1e-12 else c for c in direction)) + "]"
 
 
+def _at(feature: dict, view: _View, point) -> bool:
+    if feature["kind"] == "plane_level":
+        return _on_faces(feature, view, (point,))
+    return (abs(_dot(feature["axis"], view.direction)) >= 1 - PARALLEL
+            and math.dist(point, view.point(feature["foot"])) <= POSITION_MM)
+
+
 def _positions(features: list[dict], views: list[_View], passed: set[str]) -> dict[str, dict[str, bool]]:
     """For each feature and each direction with more than one position: is the feature connected by dimensions?"""
     result: dict[str, dict[str, bool]] = {feature["id"]: {} for feature in features}
+    by_id = {feature["id"]: feature for feature in features}
     for direction in _directions(features):
         # The nodes are the distinct coordinates along the direction. Coinciding features share a node.
         coordinates: list[tuple[float, str]] = []
@@ -225,8 +271,12 @@ def _positions(features: list[dict], views: list[_View], passed: set[str]) -> di
                 index = parent[index]
             return index
 
-        def node(value):
-            return next((index for index, (coordinate, _) in enumerate(nodes) if abs(coordinate - value) <= POSITION_MM), None)
+        def node(value, point, view):
+            # The anchor must be at a feature of the node: on a face of a plane level, or at the center of a round feature.
+            for index, (coordinate, identifiers) in enumerate(nodes):
+                if abs(coordinate - value) <= POSITION_MM and any(_at(by_id[identifier], view, point) for identifier in identifiers):
+                    return index
+            return None
 
         for view in views:
             for dimension in view.dimensions:
@@ -239,7 +289,7 @@ def _positions(features: list[dict], views: list[_View], passed: set[str]) -> di
                 if abs(along) < 1 - PARALLEL:
                     continue
                 # Local coordinate along the measurement direction = model coordinate along the model direction.
-                ends = [node(math.copysign(1, along) * _dot(measure, point)) for point in (dimension["p1"], dimension["p2"])]
+                ends = [node(math.copysign(1, along) * _dot(measure, point), point, view) for point in (dimension["p1"], dimension["p2"])]
                 if None not in ends:
                     parent[root(ends[0])] = root(ends[1])
         groups: dict[int, list[int]] = {}
@@ -270,6 +320,11 @@ def check(report, views: list[dict], derived: dict[str, dict], found: dict[str, 
                 marked[feature["id"]].append(marker["id"])
     positions = _positions(features, usable, passed)
     coverage = []
+    if not features:
+        for rule in ("FEAT-01", "FEAT-02", "FEAT-03"):
+            report.add(rule, "not_applicable", "info", "The bound model has no round feature and no plane level.")
+    elif not any(feature["kind"] != "plane_level" for feature in features):
+        report.add("FEAT-02", "not_applicable", "info", "The bound model has no round feature.")
 
     def add(rule: str, feature: dict, ok: bool, passed_text: str, failed_text: str, observed) -> str:
         if ok:
