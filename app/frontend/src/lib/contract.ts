@@ -46,11 +46,12 @@ export interface Part {
   capabilities: { parameter_edit: boolean };
 }
 
-export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report";
+export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report"
+  | "verification_report" | "verification_preview";
 
 /** Drawing status that a STEP release records. The drawing does not gate the release. */
 export interface ReleaseDrawing {
-  status: "accepted" | "unreviewed" | "rejected" | "failed" | "missing";
+  status: "accepted" | "unverified" | "unreviewed" | "rejected" | "failed" | "missing";
   reason: string | null;
   /** False when the drawing changed after the release. Call export_step again to record the new status. */
   current: boolean;
@@ -112,6 +113,31 @@ export interface Review {
   validation: ValidationResult[];
   /** Drawing status of the current release, or null without a release. */
   drawing?: ReleaseDrawing | null;
+  /** Acceptance of the current drawing: review plus the gate of the final PDF verification. */
+  drawing_acceptance?: DrawingAcceptance | null;
+}
+
+/** One mandatory verification finding that blocks the acceptance. */
+export interface BlockingFinding {
+  rule_id: string;
+  status: "fail" | "needs_review" | "not_tested" | "not_applicable";
+  feature: string | null;
+  message: string;
+}
+
+/** The service decides the acceptance. The UI only shows it: automated results, review decisions, and untested rules stay distinct. */
+export interface DrawingAcceptance {
+  status: ReleaseDrawing["status"];
+  reason: string | null;
+  verification: {
+    validity: "current" | "stale" | null;
+    status: "pass" | "fail" | "needs_review" | null;
+    gate_passed: boolean;
+    blocking_count: number;
+    blocking: BlockingFinding[];
+    /** needs_review findings that the identified review decided. */
+    reviewed_count: number;
+  } | null;
 }
 
 /** The one note of a run, with its own revision. Revision 0 means that no note exists yet. */

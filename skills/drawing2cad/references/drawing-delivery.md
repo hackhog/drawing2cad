@@ -79,8 +79,10 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
   Do not write a tolerance as a note. A note that looks like a tolerance gets the finding `gps_free_text`.
   A validation pass of a frame is evidence for the declaration only, not for ISO conformity.
 - Call `drawing_verify` with the PDF artifact of the final drawing and its SHA-256. It checks the stored PDF bytes against the bound model.
-  Record its status in the coverage table. A `fail` finding blocks delivery; correct the drawing, render it, and verify it again.
-  `needs_review` findings and the listed untested rules stay open rows. A stale verification (`drawing_read`) is not evidence.
+  Record its status in the coverage table. A `fail` or `not_tested` mandatory finding blocks the acceptance; correct the drawing, render it, and verify it again.
+  A `needs_review` finding blocks until `drawing_review` decides it in `verification_decisions` with a reason. Do not decide a finding that you did not check.
+  A stale verification (`drawing_read`) is not evidence. `drawing_read` returns `acceptance` with the blocking findings.
+- The drawing status is `accepted` only after an accepted review of the current verification report. Otherwise it is `unverified`.
 - Verify a supplied source drawing with `source_id` only as an inspection aid. Without a binding, the model rules are `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.

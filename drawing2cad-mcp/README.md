@@ -231,7 +231,9 @@ Schema and layout checks cannot prove that the source was interpreted correctly 
 Use `drawing_validate`, then `drawing_render`. Inspect the returned PDF artifact and layout report.
 Either drawing or model can be created first. After the model build, record `drawing_review` for the exact drawing hash, current part revision, construction-source hashes, reviewer, decision, and reason.
 A model rebuild invalidates the earlier drawing review, including a rebuild of the same revision.
-The STEP release requires the validated model, not the drawing. `release.drawing.status` is `accepted`, `unreviewed`, `rejected`, `failed`, or `missing`, with the drawing files or the reason.
+The STEP release requires the validated model, not the drawing. `release.drawing.status` is `accepted`, `unverified`, `unreviewed`, `rejected`, `failed`, or `missing`, with the drawing files or the reason.
+`accepted` needs an accepted review and a current `drawing_verify` result that passes the acceptance gate (ADR 0033): each mandatory rule passes,
+is not applicable for a recorded reason, or is a `needs_review` finding that the review decided in `verification_decisions`.
 A drawing render or review does not invalidate the release. Call `export_step` again to record the new drawing status; `drawing_current` in `part_read` shows whether the recorded status is still current.
 The review is an identified attestation; automatic CAD equivalence remains `not_tested`.
 

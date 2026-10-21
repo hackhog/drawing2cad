@@ -26,7 +26,9 @@ ROLE_BY_MEDIA_TYPE = {("released_step", "model/step"): "step", ("technical_drawi
                       ("technical_drawing", "image/vnd.dxf"): "drawing_dxf",
                       ("part_description", "application/json"): "part_description",
                       ("run_manifest", "application/json"): "manifest", ("run_trace", "application/json"): "trace",
-                      ("domain_run_events", "application/json"): "events"}
+                      ("domain_run_events", "application/json"): "events",
+                      ("drawing_verification_report", "application/json"): "verification_report",
+                      ("drawing_verification_preview", "image/png"): "verification_preview"}
 
 ORIGIN_BY_EVIDENCE = {"explicit": "source", "derived": "source", "inferred": "assumed", "assumed": "assumed", "unresolved": "assumed"}
 CHECK_STATUS = {"pass": "pass", "fail": "fail"}
@@ -86,8 +88,22 @@ def part_view(state: dict[str, Any]) -> dict[str, Any]:
             "capabilities": {"parameter_edit": False}}
 
 
+def acceptance_view(acceptance: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Acceptance of the current drawing: the review and the gate of the final PDF verification."""
+    if not acceptance:
+        return None
+    verification = acceptance.get("verification") or {}
+    gate = verification.get("gate") or {}
+    blocking = [{"rule_id": item["rule_id"], "status": item["status"], "feature": item.get("feature"),
+                 "message": item.get("message") or ""} for item in gate.get("blocking", [])[:20]]
+    return {"status": acceptance["status"], "reason": acceptance.get("reason"),
+            "verification": {"validity": verification.get("validity"), "status": verification.get("status"),
+                             "gate_passed": bool(gate.get("passed")), "blocking_count": gate.get("blocking_count", len(blocking)),
+                             "blocking": blocking, "reviewed_count": len(gate.get("reviewed", []))} if verification else None}
+
+
 def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet_mm: tuple[float, float],
-                released: bool) -> dict[str, Any]:
+                released: bool, acceptance: dict[str, Any] | None = None) -> dict[str, Any]:
     """Release state, assumptions, uncertainty markers, and validation results of the MCP state."""
     evidence = {item["id"]: item for item in (state.get("description") or {}).get("evidence", [])}
     assumptions, uncertainties = [], []
@@ -120,7 +136,7 @@ def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet
     drawing = ({"status": recorded["status"], "reason": recorded.get("reason"),
                 "current": bool((state.get("release") or {}).get("drawing_current", True))} if recorded else None)
     return {"release_state": release_state, "assumptions": assumptions, "uncertainties": uncertainties, "validation": validation,
-            "drawing": drawing}
+            "drawing": drawing, "drawing_acceptance": acceptance_view(acceptance)}
 
 
 def artifact_view(artifact: dict[str, Any], source_sha256: str, released_ids: frozenset[str] = frozenset()) -> dict[str, Any] | None:

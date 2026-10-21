@@ -363,3 +363,21 @@ def test_a_removed_note_fails(drawing, tmp_path):
     intact = (out / "drawing.pdf").read_bytes()
     report = run(tmp_path / "intact", intact, spec=spec, description=description, expected={**expected, "pdf_sha256": hashlib.sha256(intact).hexdigest()})
     assert by_rule(report, "TEXT-03", "pass")
+
+
+def test_the_correct_flange_passes_the_acceptance_gate_after_its_review_decisions(drawing, tmp_path):
+    from drawing2cad_mcp.drawing_verification import PROFILE, gate, record
+    from drawing2cad_mcp.pdf_verifier import MANDATORY_RULES
+
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
+                 expected={**expected_for(drawing, data)}, raster_sha=hashlib.sha256(data).hexdigest())
+    # Each mandatory rule has a finding: a result, or not_applicable with its reason.
+    assert {item["rule_id"] for item in report["findings"]} >= set(MANDATORY_RULES)
+    assert not [item for item in report["findings"] if item["rule_id"] in MANDATORY_RULES and item["status"] == "not_tested"]
+    stored = {**record(report, {}, []), "validity": "current"}
+    assert stored["profile"] == PROFILE
+    open_items = [item for item in stored["findings"] if item["status"] == "needs_review"]
+    assert open_items and not gate(stored, [])["passed"]
+    decisions = [{"rule_id": item["rule_id"], "feature": item["feature"], "reason": "Reviewed."} for item in open_items]
+    assert gate(stored, decisions)["passed"]
