@@ -52,9 +52,31 @@ describe("source projection review", () => {
     expect(html).not.toContain("Loading projection");
   });
 
+  it("clips only the image when a failed view extends beyond the sheet", () => {
+    const value = run("deviates");
+    value.projection!.sheet_size_mm = [210, 297];
+    value.projection!.views[0].region_sheet_mm = [100, 20, 215, 140];
+    const html = renderToStaticMarkup(<ProjectionSection run={value} />);
+    expect(html).toContain('viewBox="100 20 110 120"');
+    expect(html).toContain("deviates");
+    expect(html).toContain("0.490 mm");
+  });
+
+  it("keeps metrics for a view entirely outside the sheet and distinguishes duplicate IDs", () => {
+    const value = run("deviates");
+    const view = value.projection!.views[0];
+    value.projection!.views = [view, { ...view, region_sheet_mm: [300, 20, 320, 140] }];
+    const html = renderToStaticMarkup(<ProjectionSection run={value} />);
+    expect(html).toContain(`aria-label="Projection view ${view.view_id} (1)"`);
+    expect(html).toContain(`aria-label="Projection view ${view.view_id} (2)"`);
+    expect(html).toContain("The view region is outside the source sheet.");
+    expect(html.match(/0\.490 mm/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html).not.toContain('viewBox="300');
+  });
+
   it.each(["matches", "deviates", "not_tested"] as const)("shows %s in the job card", (status) => {
     const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={run(status)} /></QueryClientProvider>);
-    expect(html).toContain("Source drawing agreement");
+    expect(html).toContain('role="group" aria-label="Source drawing agreement"');
     expect(html).toContain(status === "not_tested" ? "not tested" : status);
     expect(html).toContain("released");
   });
@@ -79,7 +101,9 @@ describe("simulated projection service", () => {
     expect(finished.projection).toMatchObject({ status, revision: 1, simulated: true });
     if (status !== "not_tested") {
       const overlay = await api.readArtifact(finished.projection!.overlay_artifact_id!);
-      expect(await overlay.text()).toContain("SIMULATED OVERLAY");
+      expect(overlay.type).toBe("image/png");
+      expect(Array.from(new Uint8Array(await overlay.arrayBuffer()).slice(0, 8))).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+      expect(finished.artifacts.find((artifact) => artifact.artifact_id === finished.projection!.overlay_artifact_id)?.filename).toMatch(/\.png$/);
     }
     const changed = await api.changeParameters(created.run_id, 1, [{ name: "length", value: 140 }]);
     expect(changed.projection).toMatchObject({ status: "not_tested", revision: 2 });

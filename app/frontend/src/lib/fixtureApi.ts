@@ -9,7 +9,7 @@ import { CONTRACT_VERSION } from "./contract";
 import type { ExtractResult, FlagChange, FlagDecision, FlagsPage } from "./drawing";
 import { ApiFailure, notFound, unavailable } from "./errors";
 import {
-  FIXTURE_ASSUMPTIONS, FIXTURE_OPERATIONS, FIXTURE_UNCERTAINTIES, fixtureAnalysis, fixtureParameters, fixtureProjection, fixtureValidation,
+  FIXTURE_ASSUMPTIONS, FIXTURE_OPERATIONS, FIXTURE_PROJECTION_PNG, FIXTURE_UNCERTAINTIES, fixtureAnalysis, fixtureParameters, fixtureProjection, fixtureValidation,
 } from "./fixtures";
 import { sha256Hex } from "./http";
 import { isActive } from "./release";
@@ -26,7 +26,7 @@ const OUTPUTS: [ArtifactRole, string, string][] = [
 const EXTENSION: Record<ArtifactRole, string> = {
   drawing_pdf: "pdf", drawing_diagnostic: "pdf", drawing_dxf: "dxf", step: "step", part_description: "json", manifest: "json", trace: "json", events: "json", report: "json",
   verification_report: "json", verification_preview: "png",
-  projection_report: "json", projection_overlay: "svg",
+  projection_report: "json", projection_overlay: "png",
 };
 
 interface RunRecord {
@@ -360,12 +360,8 @@ export class FixtureApi implements WebApi {
       outputs.push(artifact);
       return artifact.artifact_id;
     };
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="297" height="210" viewBox="0 0 297 210">
-      <rect width="297" height="210" fill="white"/><text x="30" y="35" font-size="7">SIMULATED OVERLAY</text>
-      <path d="M40 60 H170 V115 H40 Z" fill="none" stroke="#aaa" stroke-width="2"/>
-      <path d="M41 60 H171 V115 H41 Z" fill="none" stroke="#005adc"/>
-      <circle cx="171" cy="60" r="3" stroke="#dc0000" fill="none"/></svg>`;
-    record.projection.overlay_artifact_id = await add("projection_overlay", new Blob([svg], { type: "image/svg+xml" }));
+    const png = Uint8Array.from(atob(FIXTURE_PROJECTION_PNG), (character) => character.charCodeAt(0));
+    record.projection.overlay_artifact_id = await add("projection_overlay", new Blob([png], { type: "image/png" }));
     record.projection.report_artifact_id = await add("projection_report", new Blob([JSON.stringify(record.projection)], { type: "application/json" }));
     return outputs;
   }

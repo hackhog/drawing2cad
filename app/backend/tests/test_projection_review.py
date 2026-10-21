@@ -45,6 +45,17 @@ def test_a_failing_view_makes_a_mixed_check_deviate():
     assert projection_view(data, 1, (50.8, 76.2), "report", None)["status"] == "deviates"
 
 
+@pytest.mark.parametrize("region", [[100, 20, 215, 140], [220, 20, 230, 140], [5, 5, 210.001, 297.001]])
+def test_outside_sheet_regions_keep_recorded_failures_and_metrics(region):
+    data = report(status="fail")
+    data["views"][0]["region_sheet_mm"] = region
+    result = projection_view(data, 1, (210, 297), "report", "overlay")
+    assert result["status"] == "deviates"
+    assert result["views"][0]["region_sheet_mm"] == region
+    assert result["views"][0]["metrics"]["p95_mm"] == 0.49
+    assert result["overlay_artifact_id"] == "overlay"
+
+
 @pytest.mark.parametrize("field,value", [("source_sha256", "b" * 64), ("revision", 2), ("run_id", "other")])
 def test_a_report_with_a_different_binding_is_not_current(field, value):
     data = report()
@@ -107,7 +118,7 @@ def evidence(services, part_run, source, *, revision=1, status="pass", overlay=T
     return result, png
 
 
-def test_run_response_refreshes_projection_reports_without_polling_part_reads(environment):
+def test_run_response_refreshes_projection_reports_and_rejects_stale_revisions(environment):
     with TestClient(api.create_app()) as client:
         services, source, run, part_run = create_run(client)
         url = f"/api/runs/{run['run_id']}"

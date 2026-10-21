@@ -24,7 +24,7 @@ export function JobCard({ run }: { run: Run }) {
         <StatusBadge tone={tone}>{label}</StatusBadge>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs" aria-label="Source drawing agreement">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs" role="group" aria-label="Source drawing agreement">
           <span>Source drawing agreement</span><ProjectionBadge status={run.projection?.status} />
         </div>
         <Progress value={(run.job.progress ?? 0) * 100} aria-label="Progress" className="h-1.5" />

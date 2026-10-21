@@ -51,19 +51,24 @@ function ProjectionImages({ check }: { check: ProjectionCheck }) {
 }
 
 function ViewCards({ check, url, error }: { check: ProjectionCheck; url: string | null; error: string | null }) {
-  return <div className="grid gap-3 xl:grid-cols-2">{check.views.map((view) => {
-    const [left, top, right, bottom] = view.region_sheet_mm;
+  return <div className="grid gap-3 xl:grid-cols-2">{check.views.map((view, index) => {
+    const [x0, y0, x1, y1] = view.region_sheet_mm;
+    const [sheetWidth, sheetHeight] = check.sheet_size_mm ?? [0, 0];
+    const left = Math.max(0, x0), top = Math.max(0, y0);
+    const right = Math.min(sheetWidth, x1), bottom = Math.min(sheetHeight, y1);
+    const visible = right > left && bottom > top;
+    const name = `${view.view_id} (${index + 1})`;
     return (
-      <article key={view.view_id} className="flex min-w-0 flex-col gap-3 rounded-md border bg-surface p-3" aria-label={`Projection view ${view.view_id}`}>
+      <article key={`${index}-${view.view_id}`} className="flex min-w-0 flex-col gap-3 rounded-md border bg-surface p-3" aria-label={`Projection view ${name}`}>
         <div className="flex items-center justify-between gap-2"><h4 className="font-semibold">{view.view_id}</h4>
           <ProjectionBadge status={view.status === "pass" ? "matches" : view.status === "fail" ? "deviates" : "not_tested"} /></div>
-        {url && check.sheet_size_mm ? (
-          <svg viewBox={`${left} ${top} ${right - left} ${bottom - top}`} role="img" aria-label={`Source and model overlay for ${view.view_id}`}
+        {url && check.sheet_size_mm && visible ? (
+          <svg viewBox={`${left} ${top} ${right - left} ${bottom - top}`} role="img" aria-label={`Source and model overlay for ${name}`}
             className="max-h-72 w-full rounded border bg-white" style={{ aspectRatio: `${right - left} / ${bottom - top}` }}>
             <title>Grey source drawing, blue model, red largest deviations</title>
             <image href={url} x="0" y="0" width={check.sheet_size_mm[0]} height={check.sheet_size_mm[1]} preserveAspectRatio="none" />
           </svg>
-        ) : <p className="rounded border border-dashed p-3 text-xs text-muted-foreground" role="status">{error ?? "Loading projection overlay…"}</p>}
+        ) : <p className="rounded border border-dashed p-3 text-xs text-muted-foreground" role="status">{error ?? (check.sheet_size_mm && !visible ? "The view region is outside the source sheet." : "Loading projection overlay…")}</p>}
         {view.reason && <p className="text-xs text-muted-foreground">{view.reason}</p>}
         <MetricBar label="p95 deviation" value={view.metrics.p95_mm} limit={view.limits.p95_mm} status={view.checks.p95} />
         <MetricBar label="Maximum deviation" value={view.metrics.max_mm} limit={view.limits.max_mm} status={view.checks.max} capped={view.max_capped} />

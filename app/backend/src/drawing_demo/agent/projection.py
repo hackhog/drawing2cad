@@ -28,7 +28,7 @@ def projection_view(report: dict[str, Any], revision: int, sheet: tuple[float, f
     for view in report.get("views", []):
         region = view.get("region_sheet_mm")
         if (not isinstance(region, list) or len(region) != 4 or any(_number(n) is None for n in region)
-                or not (region[0] < region[2] <= sheet[0] and region[1] < region[3] <= sheet[1])):
+                or not (region[0] < region[2] and region[1] < region[3])):
             return not_tested(revision, "The projection report has an invalid view region.")
         model, drawing, limits = view.get("model_to_drawing") or {}, view.get("drawing_to_model") or {}, view.get("limits") or {}
         metrics = {"p95_mm": _number(model.get("p95_mm")), "max_mm": _number(model.get("max_mm")),
