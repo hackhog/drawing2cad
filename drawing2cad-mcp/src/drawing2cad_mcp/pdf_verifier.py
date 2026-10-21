@@ -670,21 +670,41 @@ def _largest_component(mask, dpi) -> dict | None:
     return best
 
 
-def _model_points(model: dict) -> list[list[float]]:
-    """The characteristic points of the model geometry of a view: end points and centers."""
+def _model_edges(model: dict) -> list[dict]:
+    return [item for item in model["geometry"] if item.get("style") in {"visible", "hidden", "section"}]
+
+
+def _on_arc(item: dict, angle: float) -> bool:
+    if item["type"] == "circle":
+        return True
+    span = (item["end_angle"] - item["start_angle"]) % 360 or 360
+    return (angle - item["start_angle"]) % 360 <= span + 1e-9
+
+
+def _model_points(edges: list[dict], direction: list[float] | None = None) -> list[list[float]]:
+    """The characteristic points of the model geometry of a view: end points, centers, and, for a measurement direction,
+    the extreme points of round edges along that direction."""
     points = []
-    for item in model["geometry"]:
-        if item.get("style") not in {"visible", "hidden", "section"}:
-            continue
+    for item in edges:
         if item["type"] == "line":
             points += [item["start"], item["end"]]
-        elif item["type"] == "arc":
-            points += [item["center"]] + [[item["center"][0] + item["radius"] * math.cos(math.radians(item[key])),
-                                           item["center"][1] + item["radius"] * math.sin(math.radians(item[key]))]
-                                          for key in ("start_angle", "end_angle")]
-        else:
-            points.append(item["center"])
+            continue
+        center, radius = item["center"], item["radius"]
+        points.append(center)
+        angles = [item[key] for key in ("start_angle", "end_angle")] if item["type"] == "arc" else []
+        if direction is not None:
+            base = math.degrees(math.atan2(direction[1], direction[0]))
+            angles += [angle for angle in (base, base + 180) if _on_arc(item, angle)]
+        points += [[center[0] + radius * math.cos(math.radians(angle)), center[1] + radius * math.sin(math.radians(angle))] for angle in angles]
     return points
+
+
+def _foot(point, item: dict) -> list[float]:
+    a, b = item["start"], item["end"]
+    d = [b[0] - a[0], b[1] - a[1]]
+    length = d[0] ** 2 + d[1] ** 2
+    t = 0.0 if length == 0 else max(0.0, min(1.0, ((point[0] - a[0]) * d[0] + (point[1] - a[1]) * d[1]) / length))
+    return [a[0] + t * d[0], a[1] + t * d[1]]
 
 
 def _snap(point, points):
@@ -693,27 +713,49 @@ def _snap(point, points):
     return best if best is not None and math.dist(best, point) <= THRESHOLDS["anchor_snap_mm"] else None
 
 
+def _unit(vector) -> list[float] | None:
+    length = math.hypot(*vector)
+    return None if length == 0 else [vector[0] / length, vector[1] / length]
+
+
 def _model_value(dimension: dict, model: dict) -> tuple[float | None, str | None]:
     """Measure a dimension on the model geometry of its view, from model points near its anchors. True-size views only."""
-    points = _model_points(model)
+    edges = _model_edges(model)
     kind = dimension["type"]
     if kind == "linear":
-        q1, q2 = _snap(dimension["p1"], points), _snap(dimension["p2"], points)
+        axis = dimension.get("axis", "horizontal")
+        direction = [1.0, 0.0] if axis == "horizontal" else [0.0, 1.0] if axis == "vertical" else \
+            _unit([dimension["p2"][0] - dimension["p1"][0], dimension["p2"][1] - dimension["p1"][1]])
+        if direction is None:
+            return None, "The aligned dimension has two equal anchors."
+        # An anchor can also lie inside a straight edge across the measurement direction: that edge fixes the measured coordinate.
+        across = [item for item in edges if item["type"] == "line" and (edge := _unit([item["end"][0] - item["start"][0],
+                  item["end"][1] - item["start"][1]])) is not None and abs(edge[0] * direction[0] + edge[1] * direction[1]) <= 1e-6]
+        points = _model_points(edges, direction)
+        q1, q2 = (_snap(p, points + [_foot(p, item) for item in across]) for p in (dimension["p1"], dimension["p2"]))
         if q1 is None or q2 is None:
             return None, "An anchor has no model point near it."
-        delta = [q2[0] - q1[0], q2[1] - q1[1]]
-        axis = dimension.get("axis", "horizontal")
-        return (abs(delta[0]) if axis == "horizontal" else abs(delta[1]) if axis == "vertical" else math.hypot(*delta)), None
+        return abs((q2[0] - q1[0]) * direction[0] + (q2[1] - q1[1]) * direction[1]), None
     if kind in {"radius", "diameter"}:
-        circles = [item for item in model["geometry"] if item["type"] in {"circle", "arc"}
+        circles = [(math.dist(item["center"], dimension["center"]), item) for item in model["geometry"] if item["type"] in {"circle", "arc"}
                    and math.dist(item["center"], dimension["center"]) <= THRESHOLDS["anchor_snap_mm"]]
         if not circles:
             return None, "No round model edge is near the dimensioned center."
-        nearest = min(circles, key=lambda item: (math.dist(item["center"], dimension["center"]), abs(item["radius"] - dimension["radius"])))
+        # Concentric edges: among the edges at the nearest center, the radius nearest to the declared radius.
+        closest = min(distance for distance, _ in circles)
+        nearest = min((item for distance, item in circles if distance <= closest + THRESHOLDS["anchor_mm"]),
+                      key=lambda item: abs(item["radius"] - dimension["radius"]))
         return nearest["radius"] * (2 if kind == "diameter" else 1), None
-    center, p1, p2 = _snap(dimension["center"], points), _snap(dimension["p1"], points), _snap(dimension["p2"], points)
-    if center is None or p1 is None or p2 is None:
-        return None, "An angle vertex or leg has no model point near it."
+    points = _model_points(edges)
+    center = _snap(dimension["center"], points)
+    if center is None:
+        return None, "The angle vertex has no model point near it."
+    # A leg anchor can also lie inside a straight edge from the vertex: that edge fixes the leg direction.
+    legs = [item for item in edges if item["type"] == "line"
+            and min(math.dist(item["start"], center), math.dist(item["end"], center)) <= THRESHOLDS["anchor_mm"]]
+    p1, p2 = (_snap(p, points + [_foot(p, item) for item in legs]) for p in (dimension["p1"], dimension["p2"]))
+    if p1 is None or p2 is None or math.dist(p1, center) == 0 or math.dist(p2, center) == 0:
+        return None, "An angle leg has no model point near it."
     angle = math.degrees(math.atan2(p2[1] - center[1], p2[0] - center[0]) - math.atan2(p1[1] - center[1], p1[0] - center[0])) % 360
     return angle, None
 

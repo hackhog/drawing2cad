@@ -429,3 +429,39 @@ def test_dimension_values_in_synthetic_views():
     assert results["length"]["status"] == "fail" and results["length"]["observed"]["model"] == 40
     assert results["angle"]["status"] == "pass" and results["angle"]["observed"]["model"] == 90
     assert results["iso_length"]["status"] == "fail" and "not true size" in results["iso_length"]["message"]
+
+
+def _rectangle(width, height):
+    corners = [[0, 0], [width, 0], [width, height], [0, height]]
+    return [{"type": "line", "style": "visible", "start": corners[i], "end": corners[(i + 1) % 4], "id": f"e{i}"} for i in range(4)]
+
+
+def test_dimension_values_with_anchors_inside_edges_and_concentric_circles():
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimension_values
+
+    base = {"evidence_ids": ["drawing"]}
+    width = {**base, "id": "width", "type": "linear", "axis": "horizontal", "p1": [0, 10], "p2": [40, 10], "expected": 40}
+    tangent = {**base, "id": "tangent", "type": "linear", "axis": "horizontal", "p1": [0, 10], "p2": [25, 10], "expected": 25}
+    leg = {**base, "id": "leg", "type": "angular", "center": [0, 0], "p1": [20, 0], "p2": [0, 10], "expected": 90}
+    bore = {**base, "id": "bore", "type": "radius", "center": [0, 0], "radius": 10, "expected": 10}
+    circles = [{"type": "circle", "style": "visible", "center": [20, 10], "radius": 5, "id": "hole"},
+               {"type": "circle", "style": "visible", "center": [0.0000001, 0], "radius": 10, "id": "inner"},
+               {"type": "circle", "style": "visible", "center": [0, 0], "radius": 20, "id": "outer"}]
+    view = {"id": "front", "kind": "orthographic", "projection": {"scale_convention": "true_size"}, "frame": [0, 0, 50, 50],
+            "dimensions": [width, tangent, leg, bore]}
+
+    def run(geometry, declared_width=40):
+        report = Report()
+        for feature in ("width", "tangent", "leg", "bore"):
+            report.add("DIM-01", "pass", "info", "read", feature=feature, observed="x")
+        check_dimension_values(report, [{**view, "dimensions": [{**width, "expected": declared_width}, tangent, leg, bore]}],
+                               {"front": {"geometry": geometry}})
+        return {item["feature"]: item for item in report.findings if item["rule_id"] == "DIM-06"}
+
+    # Anchors inside the vertical edges and at the extreme point of a hole: the correct values pass.
+    results = run(_rectangle(40, 20) + circles)
+    assert all(results[name]["status"] == "pass" for name in ("width", "tangent", "leg", "bore")), results
+    assert results["width"]["observed"]["model"] == 40 and results["tangent"]["observed"]["model"] == 25
+    # A model of 36 mm width: the anchor inside the edge snaps to the real edge, and the declared 40 mm fails.
+    results = run(_rectangle(36, 20) + circles)
+    assert results["width"]["status"] == "fail" and results["width"]["observed"]["model"] == 36
