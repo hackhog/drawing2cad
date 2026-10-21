@@ -671,8 +671,11 @@ class DomainService:
             current = self._verification_binding(ctx, state, drawing)
             verification = drawing_verification.status(drawing["verification"], current)
         acceptance = self._drawing_status(drawing, state, ctx, current)
+        release = self._release_view(state, drawing, ctx)
+        release_fields = ("delivery", "drawing", "drawing_current", "pair_current", "pair_reason")
         return {"run_id": run_id, "revision": state["revision"], "drawing": drawing, "verification": verification,
                 "acceptance": {key: acceptance.get(key) for key in ("status", "reason", "verification")},
+                "release": {key: release.get(key) for key in release_fields} if release else None,
                 "derived_views": derived_views.status(self._derivation(directory), state)}
 
     def _drawing_pdf(self, ctx, drawing):
@@ -1088,13 +1091,23 @@ class DomainService:
                                   "A complete-service release needs an accepted drawing whose PDF verification is bound to the STEP bytes of this release. "
                                   + (drawing_status.get("reason") or "The drawing verification belongs to other STEP bytes."),
                                   next_action="Call drawing_verify and drawing_review for the current build, or release with delivery step_only.")
+            previous = deepcopy(state.get("release"))
+
+            def restore_and_fail(message):
+                # The CAD service saved its release before these checks. Put the previous release back before the failure.
+                with cad._lock(args["run_id"]) as saved_directory:
+                    saved = cad._load(saved_directory)
+                    saved["release"] = previous
+                    cad._save(saved_directory, saved)
+                raise DomainError("RELEASE_PAIR_REQUIRED", message, next_action="Verify the current drawing again, then release again.")
+
             result = cad.call(name, {key: value for key, value in args.items() if key != "delivery"})
             if result.get("status") == "pass":
                 release = result["release"]
                 if pair is not None and pair["step_sha256"] != release["sha256"]:
                     pair = None
                 if delivery == "complete_service" and pair is None:
-                    raise DomainError("RELEASE_PAIR_REQUIRED", "The released STEP bytes differ from the verified STEP bytes.")
+                    restore_and_fail("The released STEP bytes differ from the verified STEP bytes.")
                 artifact = self.store.artifact_register(ctx, release["path"], "released_step", args["run_id"],
                                                         state["revision"], "model/step", Path(release["path"]).name)
                 if pair is not None:
@@ -1103,9 +1116,10 @@ class DomainService:
                     if artifact["sha256"] != pair["step_sha256"] or not self._file_has(pdf_path, pair["pdf_sha256"]):
                         pair = None
                 if delivery == "complete_service" and pair is None:
-                    raise DomainError("RELEASE_PAIR_REQUIRED", "The STEP file or the PDF changed during the release. Release again.")
+                    restore_and_fail("The STEP file or the PDF changed during the release. Release again.")
+                # Only a complete-service release claims a verified pair. A STEP-only release records the drawing status only.
                 recorded = {"artifact": artifact, "drawing": drawing_status, "delivery": delivery,
-                            "pair": {**pair, "step_artifact_id": artifact["artifact_id"]} if pair else None}
+                            "pair": {**pair, "step_artifact_id": artifact["artifact_id"]} if pair and delivery == "complete_service" else None}
                 result["release"].update(recorded)
                 with cad._lock(args["run_id"]) as saved_directory:
                     saved = cad._load(saved_directory)
@@ -1113,6 +1127,8 @@ class DomainService:
                     cad._save(saved_directory, saved)
                 result["release"]["pair_current"], result["release"]["pair_reason"] = self._pair_current(
                     ctx, result["release"], state, drawing, drawing_status)
+                if delivery == "complete_service" and result["release"]["pair_current"] is not True:
+                    restore_and_fail("The verified pair changed during the release: " + (result["release"]["pair_reason"] or "unknown change."))
                 result["drawing"] = drawing
             return result
         if name not in CAD_SCHEMAS:

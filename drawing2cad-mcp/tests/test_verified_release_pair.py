@@ -106,3 +106,41 @@ def test_a_pdf_change_during_the_release_fails(domain, monkeypatch):
     with pytest.raises(DomainError) as error:
         release(service, source)
     assert error.value.code == "RELEASE_PAIR_REQUIRED"
+
+
+def test_a_failed_complete_service_release_keeps_the_previous_release(domain, monkeypatch):
+    service, source, _, _, pdf = accepted(domain)
+    previous = release(service, source, "step_only")
+    cad = service._backend(CTX)[0]
+    original = cad.call
+
+    def export_then_change(name, arguments):
+        result = original(name, arguments)
+        corrupt(service, pdf["artifact_id"])
+        return result
+    monkeypatch.setattr(cad, "call", export_then_change)
+    with pytest.raises(DomainError):
+        release(service, source)
+    kept = service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]
+    assert kept["artifact"]["artifact_id"] == previous["artifact"]["artifact_id"] and kept["delivery"] == "step_only"
+
+
+def test_the_final_pair_check_gates_the_release(domain, monkeypatch):
+    service, source, _, _, _ = accepted(domain)
+    monkeypatch.setattr(service, "_pair_current", lambda *args: (False, "Synthetic change after the save."))
+    with pytest.raises(DomainError) as error:
+        release(service, source)
+    assert error.value.code == "RELEASE_PAIR_REQUIRED" and "Synthetic change" in error.value.message
+    monkeypatch.undo()
+    # The previous STEP-only release of the review step stays, without a pair.
+    kept = service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]
+    assert kept["delivery"] == "step_only" and kept["pair"] is None
+
+
+def test_drawing_read_gives_the_release_state_of_the_drawing(domain):
+    service, source, _, _, pdf = accepted(domain)
+    release(service, source)
+    read = service.call(CTX, "drawing_read", {"run_id": "plate"})
+    assert read["release"]["delivery"] == "complete_service" and read["release"]["pair_current"] is True
+    corrupt(service, pdf["artifact_id"])
+    assert service.call(CTX, "drawing_read", {"run_id": "plate"})["release"]["pair_current"] is False

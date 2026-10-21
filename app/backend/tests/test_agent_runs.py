@@ -682,3 +682,25 @@ def test_review_view_marks_a_changed_complete_service_pair_as_outdated():
                        "delivery": "complete_service", "pair_current": False}
     state["release"].update(pair_current=True, pair_reason=None)
     assert review_view(state, [], (420.0, 297.0), released=True)["drawing"]["current"] is True
+
+
+def test_run_view_reads_the_release_freshness_for_each_request(tmp_path):
+    from types import SimpleNamespace
+
+    from drawing_demo.api import run_view
+
+    pair = iter([True, False])
+
+    class Backend:
+        def call(self, operation, **arguments):
+            current = next(pair)
+            return {"acceptance": None, "release": {"delivery": "complete_service", "drawing": {"status": "accepted", "reason": None},
+                                                    "drawing_current": True, "pair_current": current,
+                                                    "pair_reason": None if current else "The released PDF file changed after the release."}}
+
+    cached = {"part": None, "review": {"release_state": "released", "drawing": {"status": "accepted"}, "drawing_acceptance": None}, "artifacts": []}
+    services = SimpleNamespace(backend=Backend(), result=lambda record: cached, jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
+    record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"}, "error": None, "part_run_id": "part"}
+    assert run_view(services, record)["review"]["drawing"]["current"] is True
+    stale = run_view(services, record)["review"]["drawing"]
+    assert stale["current"] is False and stale["pair_current"] is False and "PDF" in stale["reason"]

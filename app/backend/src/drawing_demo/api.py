@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Respons
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .agent.mapping import acceptance_view, artifact_view, part_view, review_view
+from .agent.mapping import acceptance_view, artifact_view, part_view, release_drawing_view, review_view
 from .agent.model import check_connection
 from .agent.profiles import ProfileStore, Provider
 from .agent.runner import AgentRunner
@@ -195,10 +195,14 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     if record["part_run_id"] is None:
         return view
     result = services.result(record)
-    # The acceptance changes with reviews and verifications. Read it each time; the cached result does not hold it.
+    # The acceptance and the release freshness change with reviews, verifications, and file changes.
+    # Read them each time; the cached result does not hold them.
     if result.get("review") is not None:
-        acceptance = services.backend.call("drawing_read", run_id=record["part_run_id"]).get("acceptance")
-        result = {**result, "review": {**result["review"], "drawing_acceptance": acceptance_view(acceptance)}}
+        current = services.backend.call("drawing_read", run_id=record["part_run_id"])
+        review = {**result["review"], "drawing_acceptance": acceptance_view(current.get("acceptance"))}
+        if result["review"].get("release_state") == "released":
+            review["drawing"] = release_drawing_view(current.get("release"))
+        result = {**result, "review": review}
     return {**view, **result}
 
 

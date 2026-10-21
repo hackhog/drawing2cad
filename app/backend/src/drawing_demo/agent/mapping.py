@@ -102,6 +102,17 @@ def acceptance_view(acceptance: dict[str, Any] | None) -> dict[str, Any] | None:
                              "blocking": blocking, "reviewed_count": len(gate.get("reviewed", []))} if verification else None}
 
 
+def release_drawing_view(release: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The drawing status that a STEP release records, with its freshness and the verified pair of a complete-service delivery."""
+    recorded = (release or {}).get("drawing")
+    if not recorded:
+        return None
+    pair_current = release.get("pair_current")
+    return {"status": recorded["status"], "reason": release.get("pair_reason") or recorded.get("reason"),
+            "current": bool(release.get("drawing_current", True)) and pair_current is not False,
+            "delivery": release.get("delivery") or "step_only", "pair_current": pair_current}
+
+
 def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet_mm: tuple[float, float],
                 released: bool, acceptance: dict[str, Any] | None = None) -> dict[str, Any]:
     """Release state, assumptions, uncertainty markers, and validation results of the MCP state."""
@@ -131,13 +142,7 @@ def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet
         release_state = "blocked"
     else:
         release_state = "draft"
-    # The STEP release records the drawing status. The drawing does not gate the release.
-    recorded = (state.get("release") or {}).get("drawing") if released else None
-    release = state.get("release") or {}
-    pair_current = release.get("pair_current")
-    drawing = ({"status": recorded["status"], "reason": release.get("pair_reason") or recorded.get("reason"),
-                "current": bool(release.get("drawing_current", True)) and pair_current is not False,
-                "delivery": release.get("delivery", "step_only"), "pair_current": pair_current} if recorded else None)
+    drawing = release_drawing_view(state.get("release") if released else None)
     return {"release_state": release_state, "assumptions": assumptions, "uncertainties": uncertainties, "validation": validation,
             "drawing": drawing, "drawing_acceptance": acceptance_view(acceptance)}
 
