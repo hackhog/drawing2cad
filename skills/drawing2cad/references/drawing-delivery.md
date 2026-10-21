@@ -85,6 +85,11 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
 - The drawing status is `accepted` only after an accepted review of the current verification report. Otherwise it is `unverified`.
 - `DIM-06` measures each dimension on the bound STEP geometry. A declared value that differs from the model value fails, also when the specification agrees with itself.
   Dimension features only in orthographic or section views: a dimension in an isometric view fails as not true size.
+- `FEAT-01` to `FEAT-03` check each round feature and each plane level of the bound STEP. Each feature must be visible in a true-size view,
+  not only as hidden lines. Each round feature needs a radius or diameter dimension. Along each model axis, the plane levels and the hole axes
+  must be connected by linear dimensions. Dimension the thickness of each step and the position of each hole from an axis or a face.
+  Use linear dimensions between hole centers: a pitch circle with an angle does not count as a position.
+  Mark a feature that you cannot dimension with an uncertainty marker. Its findings are then `needs_review`.
 - Verify a supplied source drawing with `source_id` only as an inspection aid. Without a binding, the model rules are `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.

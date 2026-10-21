@@ -23,7 +23,7 @@ MANDATORY_RULES = (
     "RENDER-01", "RENDER-02", "RENDER-03", "RENDER-04", "VIEW-REQ-01", "VIEW-REQ-02", "ISO-01",
     "MODEL-01", "MODEL-02", "MODEL-03", "MODEL-04", "MODEL-05", "DIM-01", "DIM-02", "DIM-03", "DIM-04", "DIM-05", "DIM-06",
     "UNITS-01", "REV-01", "REV-02", "TEXT-01", "TEXT-02", "TEXT-03", "TEXT-04", "TEXT-05", "TEXT-LIMIT", "SEC-01",
-    "GPS-01", "GPS-02", "GPS-03", "GPS-04", "GPS-05", "GPS-06", "GPS-07", "GPS-08", "GPS-09",
+    "GPS-01", "GPS-02", "GPS-03", "GPS-04", "GPS-05", "GPS-06", "GPS-07", "GPS-08", "GPS-09", "FEAT-01", "FEAT-02", "FEAT-03",
 )
 # A mandatory rule without a finding is not applicable only for these reasons. Any other missing rule is not tested.
 ABSENT_REASONS = {
@@ -45,6 +45,7 @@ ABSENT_REASONS = {
     "GPS-07": "No tolerance frame has a modifier.",
     "GPS-08": "The drawing has no datum symbols.",
     "GPS-09": "The drawing has no datum symbols.",
+    "FEAT-02": "The bound model has no round feature.",
 }
 VERIFIER_VERSION = "1.0.0"
 REPORT_SCHEMA = "1.0"
@@ -848,7 +849,9 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
                                feature=dimension["id"], evidence=dimension["evidence_ids"])
                 continue
             anchors = [point for point in (dimension.get("p1"), dimension.get("p2")) if point is not None]
-            distances = [min((_distance_to(point, item) for item in model["geometry"] if item["style"] in {"visible", "hidden", "section"}),
+            # An anchor is on a model edge or at the center of a round model edge, for example the position of a hole.
+            distances = [min((min(_distance_to(point, item), math.dist(point, item["center"]) if item["type"] != "line" else math.inf)
+                              for item in model["geometry"] if item["style"] in {"visible", "hidden", "section"}),
                              default=math.inf) for point in anchors]
             if all(distance <= THRESHOLDS["anchor_mm"] for distance in distances):
                 report.add("DIM-02", "pass", "info", f"Dimension {dimension['id']} is attached to edges of the bound model.",
@@ -959,9 +962,11 @@ def preview(raster: Raster, report: Report, path: Path) -> dict:
 
 def verify(directory: Path, request: dict) -> dict:
     """Run the verification layers. The request comes from drawing_verification.build_request."""
+    from . import feature_coverage
     from .adapters.tesseract import Ocr
 
     report = Report()
+    coverage = None
     pdf = check_pdf(report, directory / "input.pdf", request["expected"], request.get("sheet"))
     size = request.get("sheet") or ({"width": pdf["page_size_mm"][0], "height": pdf["page_size_mm"][1], "margin": 10.0}
                                     if pdf["page_size_mm"] else None)
@@ -1007,6 +1012,16 @@ def verify(directory: Path, request: dict) -> dict:
         check_dimension_values(report, views, derived)
         report.add("GPS-10", "not_tested", "info", "Tolerance values are read from the PDF (GPS-02), but the part description has no "
                    "structured GPS values to compare them with.")
+        if derived:
+            # A dimension counts for the feature coverage only if it is on the model (DIM-02) and states the model value (DIM-06).
+            states = {}
+            for item in report.findings:
+                if item["rule_id"] in {"DIM-02", "DIM-06"} and item.get("feature"):
+                    states.setdefault(item["feature"], set()).add((item["rule_id"], item["status"]))
+            passed = {identifier for identifier, found in states.items()
+                      if ("DIM-06", "pass") in found and ("DIM-02", "pass") in found and not any(status != "pass" for _, status in found)}
+            coverage = feature_coverage.check(report, views, derived, feature_coverage.inventory(directory / "input.step"), passed,
+                                              request.get("markers", []))
     for rule, reason in request.get("service_findings", []):
         report.add(rule["rule_id"], rule["status"], rule["severity"], reason, expected=rule.get("expected"), observed=rule.get("observed"))
     present = {item["rule_id"] for item in report.findings}
@@ -1024,7 +1039,7 @@ def verify(directory: Path, request: dict) -> dict:
             "profile": request.get("profile"), "thresholds": THRESHOLDS, "dpi": request["dpi"], "tools": tools,
             "binding": request["expected"], "mode": request["mode"], "status": report.status(),
             "untested_rules": sorted({item["rule_id"] for item in report.findings if item["status"] == "not_tested"}),
-            "findings": report.findings,
+            "findings": report.findings, "feature_coverage": coverage,
             "scope": "A pass is a result of the supported verification profile. It is not ISO conformity and not a manufacturing release."}
     path = directory / "verification-report.json"
     path.write_text(json.dumps(body, sort_keys=True, ensure_ascii=False, allow_nan=False, indent=2), encoding="utf-8")

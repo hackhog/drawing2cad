@@ -46,9 +46,22 @@ def flange_drawing(tmp_path, description=None):
 
     bolts = [(26.870057685, 26.870057685), (-26.870057685, 26.870057685), (-26.870057685, -26.870057685), (26.870057685, -26.870057685)]
     top_dimensions = [diameter("d_disc", circle("top", 50), 100, [40, 58]), diameter("d_hub", circle("top", 25), 50, [-66, 48]),
-                      diameter("d_bore", circle("top", 15), 30, [8, -64])]
+                      diameter("d_bore", circle("top", 15), 30, [-8, -64])]
     for index, (center, label) in enumerate(zip(bolts, ([40, 40], [-66, 30], [-66, -34], [40, -42]))):
         top_dimensions.append(diameter(f"d_bolt{index + 1}", circle("top", 5, center), 10, label))
+    primitives = {item["id"]: item for item in views["top"]["geometry"]}
+
+    def between(identifier, first, second, axis, label):
+        # A position dimension between two hole centers. The value is the distance of the derived centers.
+        a, b = primitives[first]["center"], primitives[second]["center"]
+        value = abs(b[0] - a[0]) if axis == "horizontal" else abs(b[1] - a[1])
+        return {"id": identifier, "type": "linear", "axis": axis, "p1": {"primitive": first, "point": "center"},
+                "p2": {"primitive": second, "point": "center"}, "expected": value, "label_position": label, "evidence_ids": ["drawing"]}
+
+    axis, bolt1, bolt2, bolt4 = circle("top", 50), circle("top", 5, bolts[0]), circle("top", 5, bolts[1]), circle("top", 5, bolts[3])
+    # The bolt hole positions: from the axis to the first hole, and from hole to hole, in X and in Y.
+    top_dimensions += [between("x_bolt", axis, bolt1, "horizontal", [13, -56]), between("x_pitch", bolt2, bolt1, "horizontal", [0, 66]),
+                       between("y_bolt", axis, bolt2, "vertical", [-58, 13]), between("y_pitch", bolt4, bolt1, "vertical", [74, 0])]
     bottom = next(item for item in views["front"]["geometry"] if item["type"] == "line" and item["style"] == "visible"
                   and abs(item["start"][1]) < 1e-6 and abs(item["end"][1]) < 1e-6)
     top_face = next(item for item in views["front"]["geometry"] if item["type"] == "line" and item["style"] == "visible"
@@ -58,6 +71,10 @@ def flange_drawing(tmp_path, description=None):
     # The overall height: from the bottom face to the hub face.
     front_dimensions = [{"id": "h_total", "type": "linear", "axis": "vertical", "p1": {"primitive": bottom["id"], "point": "start"},
                          "p2": {"primitive": hub_top["id"], "point": "start"}, "expected": 32, "label_position": [-72, 16],
+                         "evidence_ids": ["drawing"]},
+                        # The disc thickness: from the bottom face to the disc face beside the hub.
+                        {"id": "t_disc", "type": "linear", "axis": "vertical", "p1": {"primitive": bottom["id"], "point": "start"},
+                         "p2": {"primitive": top_face["id"], "point": "start"}, "expected": 12, "label_position": [-60, 6],
                          "evidence_ids": ["drawing"]}]
 
     def view(identifier, label, kind, origin, frame, scale, dimensions=()):
@@ -100,7 +117,7 @@ def test_flange_renders_a_complete_drawing(tmp_path):
     out.mkdir()
     result = render_drawing(spec, description, 1, out)
     assert result["status"] == "pass", result["defects"][:6]
-    assert result["native_dimension_count"] == 8
+    assert result["native_dimension_count"] == 13
     assert result["sheet_items"] == {"title_block": True, "border": True, "tolerance_frames": 3, "datums": 1, "sections": 1,
                                      "review_marks": 2}
     document = ezdxf.readfile(out / "drawing.dxf")

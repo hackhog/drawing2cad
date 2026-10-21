@@ -147,8 +147,8 @@ def test_wrong_hole_depth_fails(tmp_path):
 
 def test_pdf_mutations_fail_after_final_byte_rendering(drawing, tmp_path):
     spec, description = drawing["spec"], drawing["description"]
-    # A removed bore dimension (Ø30 at the bottom of the top view).
-    removed = mutate(drawing["pdf"], lambda page, k: white(page, k, [100, 128, 116, 148]))
+    # A removed bore dimension (Ø30 at the bottom left of the top view).
+    removed = mutate(drawing["pdf"], lambda page, k: white(page, k, [83, 128, 99, 148]))
     report = run(tmp_path / "removed", removed, spec=spec, description=description, expected=expected_for(drawing, removed))
     assert any(item["feature"] == "d_bore" for item in by_rule(report, "DIM-01", "fail"))
     # Wrong units in the title block.
@@ -388,11 +388,38 @@ def test_each_dimension_states_the_model_value(drawing, tmp_path):
     report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
                  expected=expected_for(drawing, data))
     values = {item["feature"]: item for item in by_rule(report, "DIM-06")}
-    assert len(values) == 8 and all(item["status"] == "pass" for item in values.values()), [
+    assert len(values) == 13 and all(item["status"] == "pass" for item in values.values()), [
         (key, item["message"]) for key, item in values.items() if item["status"] != "pass"]
     height = values["h_total"]["observed"]
     assert height["model"] == 32 and height["declared"] == 32 and height["observed"] and height["unit"] == "mm"
     assert "GPS-10" in report["untested_rules"]
+
+
+def test_each_flange_feature_is_visible_sized_and_located(drawing, tmp_path):
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
+                 expected=expected_for(drawing, data))
+    coverage = {item["id"]: item for item in report["feature_coverage"]}
+    assert len(coverage) == 10 and all(item["status"] == "pass" for item in coverage.values()), [
+        (item["rule_id"], item["feature"], item["message"]) for item in report["findings"]
+        if item["rule_id"].startswith("FEAT") and item["status"] != "pass"]
+    bolt = next(item for item in coverage.values() if item["kind"] == "hole" and item["radius"] == 5)
+    assert bolt["size_dimensions"] and set(bolt["positions"]) == {"[1, 0, 0]", "[0, 1, 0]"}
+    assert {item["status"] for item in by_rule(report, "FEAT-03")} == {"pass"}
+
+
+def test_a_flange_without_thickness_and_hole_positions_fails_the_feature_coverage(drawing, tmp_path):
+    data = drawing["pdf"].read_bytes()
+    spec = deepcopy(drawing["spec"])
+    removed = {"t_disc", "x_bolt", "x_pitch", "y_bolt", "y_pitch"}
+    for view in spec["views"]:
+        view["dimensions"] = [item for item in view["dimensions"] if item["id"] not in removed]
+    report = run(tmp_path, data, step=drawing["step"], spec=spec, description=drawing["description"], expected=expected_for(drawing, data))
+    failed = {item["feature"]: item["message"] for item in by_rule(report, "FEAT-03", "fail")}
+    coverage = {item["id"]: item for item in report["feature_coverage"]}
+    holes = {item["id"] for item in coverage.values() if item["kind"] == "hole" and item["radius"] == 5}
+    disc_face = next(item["id"] for item in coverage.values() if item["kind"] == "plane_level" and item["offset"] == 12)
+    assert holes | {disc_face} == set(failed), failed
 
 
 def test_a_dimension_that_differs_from_the_step_fails_also_with_the_same_wrong_specification(drawing, tmp_path):
