@@ -5,10 +5,12 @@ name: Backend
 
 on:
   pull_request:
-    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', '.github/workflows/backend.yml']
+    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', 'deployment/Dockerfile', '.dockerignore',
+            '.github/workflows/backend.yml']
   push:
     branches: [main]
-    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', '.github/workflows/backend.yml']
+    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', 'deployment/Dockerfile', '.dockerignore',
+            '.github/workflows/backend.yml']
 
 permissions:
   contents: read

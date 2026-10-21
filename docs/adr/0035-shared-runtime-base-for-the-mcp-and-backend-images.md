@@ -41,10 +41,12 @@ need no image in a registry, the build order of ADR 0027 does not change, and th
 ### Tool check
 
 - `drawing2cad_mcp.runtime_tools` reports Poppler, Tesseract with its language data, and the STEPcode reader, and names the domain operation that needs each tool.
+  It runs each installed tool once: `pdftoppm -v`, the STEPcode reader without arguments (a usage exit code is permitted, a load failure is not),
+  and a Tesseract initialization with `eng` and `deu`. A file that exists but cannot run or load does not pass.
 - The image build runs `python -m drawing2cad_mcp.runtime_tools` in the targets `mcp` and `backend`. A missing tool stops the build, so CI fails.
 - The stage `runtime` sets `DRAWING2CAD_REQUIRE_RUNTIME_TOOLS=1`. In an image, the MCP server and the backend refuse to start when a tool is missing.
   A development installation outside an image does not set the variable and does not need the tools.
-- The MCP and backend workflows run the tool check in the built image.
+- The MCP and backend workflows run the tool check in the built image. Both workflows start for a change of `deployment/Dockerfile`.
 
 ### Publication
 

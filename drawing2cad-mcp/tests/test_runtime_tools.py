@@ -42,3 +42,15 @@ def test_the_mcp_server_refuses_to_start_without_its_tools(monkeypatch, tmp_path
 @pytest.mark.skipif(os.environ.get(runtime_tools.REQUIRE_ENV) != "1", reason="This environment is not an image of the shared runtime.")
 def test_each_tool_is_present_in_the_image():
     assert runtime_tools.missing() == []
+
+
+def test_a_tool_that_cannot_load_does_not_pass(monkeypatch, tmp_path):
+    broken = tmp_path / "reader"
+    broken.write_text("#!/bin/sh\necho 'reader: error while loading shared libraries: libx.so' >&2\nexit 127\n")
+    broken.chmod(0o755)
+    ok, detail = runtime_tools._run([str(broken)])
+    assert not ok and "shared libraries" in detail
+    usage = tmp_path / "usage"
+    usage.write_text("#!/bin/sh\necho 'usage: reader FILE' >&2\nexit 64\n")
+    usage.chmod(0o755)
+    assert runtime_tools._run([str(usage)])[0]
