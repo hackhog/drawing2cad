@@ -18,7 +18,7 @@ There is no child process, network request, GUI, or unrestricted fallback.
 | C++ generator API | `SC_EXP2CXX_API_VERSION=2` |
 | Installed executable | `/usr/local/bin/drawing2cad-stepcode` |
 
-The Dockerfile builds the static `sdai_ap242-static` target first. It then builds
+`deployment/Dockerfile` builds the static `sdai_ap242-static` target first. It then builds
 `reader_sdai_ap242`. This keeps the schema compilation in a separate cache layer.
 The image retains STEPcode's `COPYING`, `AUTHORS`, and `INTENT.md` files. STEPcode
 and its generated library use the upstream 3-clause BSD terms.

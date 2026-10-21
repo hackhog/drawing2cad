@@ -433,6 +433,9 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)  # stderr; stdout is exclusively MCP protocol.
     try:
+        # An image of the shared runtime refuses to start without its system tools (ADR 0035).
+        from .runtime_tools import require_if_configured
+        require_if_configured()
         settings = Settings.load(args.config)
         if args.transport is not None:
             settings.server.transport = args.transport
@@ -450,7 +453,7 @@ def main() -> None:
             from .http import create_http_app
 
             app = create_http_app(Application(settings))
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
     if settings.server.transport == "streamable-http":
         # One process owns the shared CAD service. Forwarded headers require an

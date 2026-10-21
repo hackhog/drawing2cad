@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build the test image
-        run: docker build -f drawing2cad-mcp/Dockerfile --target test -t drawing2cad-mcp:ci-test .
+        run: docker build -f deployment/Dockerfile --target mcp-test -t drawing2cad-mcp:ci-test .
       - name: Test suite in the test image
         # Some tests read repository files outside the package. Mount the checkout read-only.
         run: |
@@ -53,6 +53,8 @@ jobs:
           print("Wheel and sdist contain", data, "and the console command.")
           EOF
       - name: Build the production image
-        run: docker build -f drawing2cad-mcp/Dockerfile --target production -t drawing2cad-mcp:ci .
+        run: docker build -f deployment/Dockerfile --target mcp -t drawing2cad-mcp:ci .
       - name: Production entry point starts
         run: docker run --rm --network none --entrypoint drawing2cad-mcp drawing2cad-mcp:ci --help
+      - name: The production image has each system tool of the shared runtime
+        run: docker run --rm --network none --entrypoint python drawing2cad-mcp:ci -m drawing2cad_mcp.runtime_tools
