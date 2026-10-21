@@ -682,9 +682,9 @@ def _on_arc(item: dict, angle: float) -> bool:
 
 
 def _model_points(edges: list[dict], direction: list[float] | None = None) -> list[list[float]]:
-    """The characteristic points of the model geometry of a view: end points, midpoints of straight edges, centers, and,
-    for a measurement direction, the extreme points of circles and arcs along that direction. These are the anchor points
-    of the drawing contract."""
+    """The characteristic points of the model geometry of a view: end points, midpoints of straight edges, centers,
+    the left, right, top, and bottom points of circles, and, for a measurement direction, the extreme points of circles
+    and arcs along that direction. These include the anchor points of the drawing contract."""
     points = []
     for item in edges:
         if item["type"] == "line":
@@ -695,7 +695,7 @@ def _model_points(edges: list[dict], direction: list[float] | None = None) -> li
         if item["type"] not in {"circle", "arc"}:
             continue
         radius = item["radius"]
-        angles = [item[key] for key in ("start_angle", "end_angle")] if item["type"] == "arc" else []
+        angles = [item[key] for key in ("start_angle", "end_angle")] if item["type"] == "arc" else [0, 90, 180, 270]
         if direction is not None:
             base = math.degrees(math.atan2(direction[1], direction[0]))
             angles += [angle for angle in (base, base + 180) if _on_arc(item, angle)]

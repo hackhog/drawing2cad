@@ -20,7 +20,7 @@ A specification that agrees with itself, but not with the bound STEP, could ther
 - The model value comes from the model geometry that the verifier derives again from the STEP (ADR 0032), not from the anchor coordinates of the specification:
   - a linear dimension takes the model point nearest to each of its two anchors and measures their distance along its axis
     (horizontal, vertical, or aligned). A model point is an end point or a midpoint of a straight edge, a center of a circle, an arc, or an ellipse,
-    an extreme point of a circle or an arc along the axis, or the nearest point on a straight edge across the axis. That edge fixes the measured coordinate,
+    the left, right, top, or bottom point of a circle, an extreme point of a circle or an arc along the axis, or the nearest point on a straight edge across the axis. That edge fixes the measured coordinate,
   - a radius or diameter dimension takes the round model edge at its center. Of concentric edges, it takes the radius nearest to the declared radius,
   - an angular dimension takes the model point nearest to its vertex, and for each leg the model point or the point on a straight edge
     from the vertex nearest to the leg anchor. For a point on such an edge, the leg direction is the direction of the edge.
@@ -40,7 +40,8 @@ A specification that agrees with itself, but not with the bound STEP, could ther
 - A delivered dimension states the value of the bound STEP, within the profile tolerance, or the drawing is not accepted.
 - The nearest-point rule can take another model point when the model differs strongly from the specification. The dimension then fails with the
   measured value of that point. For a correct model, an anchor on an end point, a midpoint, a center, an extreme point, or an edge across the axis has a model point at distance 0.
-  An anchor inside an edge along the axis does not fix the measured coordinate. It snaps to the nearest end point.
+  An anchor inside an edge along the axis does not fix the measured coordinate. It snaps to the nearest end point or midpoint of that edge,
+  or to another model point that is nearer.
 - A wrong tolerance value that the source states differently is not detected until the part description has structured GPS values.
 
 ## Tests

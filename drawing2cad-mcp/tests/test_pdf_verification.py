@@ -473,6 +473,8 @@ def test_dimension_values_with_midpoints_ellipses_and_leg_directions():
     base = {"evidence_ids": ["drawing"]}
     # From the midpoint of the bottom edge to the midpoint of the right edge: 20 mm.
     half = {**base, "id": "half", "type": "linear", "axis": "horizontal", "p1": [20, 0], "p2": [40, 10], "expected": 20}
+    # From the top point of a circle, a contract anchor across the measurement axis, to a line end point: 20 mm.
+    top = {**base, "id": "top", "type": "linear", "axis": "horizontal", "p1": [10, 30], "p2": [30, 30], "expected": 20}
     # The legs are an edge that starts 0.04 mm above the vertex and a vertical edge: the model angle is 90 degrees,
     # also when the leg anchors give 89.54 degrees from the vertex.
     skew = {**base, "id": "skew", "type": "angular", "center": [0, 0], "p1": [5, 0.04], "p2": [0, 5], "expected": 89.54164354}
@@ -481,14 +483,17 @@ def test_dimension_values_with_midpoints_ellipses_and_leg_directions():
     geometry = [{"type": "line", "style": "visible", "start": [0, 0], "end": [40, 0], "id": "bottom"},
                 {"type": "line", "style": "visible", "start": [40, 0], "end": [40, 20], "id": "right"},
                 {"type": "line", "style": "visible", "start": [0, 0.04], "end": [10, 0.04], "id": "ledge"},
-                {"type": "line", "style": "visible", "start": [0, 0], "end": [0, 10], "id": "left"}, ellipse]
+                {"type": "line", "style": "visible", "start": [0, 0], "end": [0, 10], "id": "left"}, ellipse,
+                {"type": "circle", "style": "visible", "center": [10, 20], "radius": 10, "id": "boss"},
+                {"type": "line", "style": "visible", "start": [30, 30], "end": [30, 40], "id": "post"}]
     report = Report()
-    for feature in ("half", "skew"):
+    for feature in ("half", "skew", "top"):
         report.add("DIM-01", "pass", "info", "read", feature=feature, observed="x")
     view = {"id": "front", "kind": "orthographic", "projection": {"scale_convention": "true_size"}, "frame": [0, 0, 50, 50],
-            "dimensions": [half, skew]}
+            "dimensions": [half, skew, top]}
     # The ellipse in the view does not stop the check.
     check_dimension_values(report, [view], {"front": {"geometry": geometry}})
     results = {item["feature"]: item for item in report.findings if item["rule_id"] == "DIM-06"}
     assert results["half"]["status"] == "pass" and results["half"]["observed"]["model"] == 20
+    assert results["top"]["status"] == "pass" and results["top"]["observed"]["model"] == 20
     assert results["skew"]["status"] == "fail" and results["skew"]["observed"]["model"] == 90
