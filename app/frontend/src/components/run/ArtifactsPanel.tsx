@@ -56,7 +56,11 @@ export function ArtifactsPanel({ run }: { run: Run }) {
           <AlertTitle>Released: model of revision {revision}</AlertTitle>
           {run.review?.drawing && (
             <AlertDescription>
-              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " This state is outdated: the drawing was changed after the release."}</p>
+              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " This state is outdated: the drawing or a released file was changed after the release."}</p>
+              {run.review.drawing.delivery === "complete_service" && (
+                <p>{run.review.drawing.pair_current ? "Complete-service delivery: the STEP model and the drawing PDF are verified as one pair."
+                  : "Complete-service delivery is outdated: the released STEP and drawing no longer form the verified pair."}</p>
+              )}
               {run.review.drawing.reason && <p>{run.review.drawing.reason}</p>}
             </AlertDescription>
           )}

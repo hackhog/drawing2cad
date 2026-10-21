@@ -921,6 +921,40 @@ class DomainService:
         return {**summary, "status": "unreviewed",
                 "reason": "The drawing rendered and passed its checks, but it has no review for the current model."}
 
+    def _release_pair(self, ctx, state, drawing, drawing_status):
+        """The verified pair of STEP and drawing PDF, or None. Only an accepted drawing with a current verification forms a pair."""
+        if drawing_status.get("status") != "accepted" or not drawing or not drawing.get("verification"):
+            return None
+        record = drawing["verification"]
+        binding = record["binding"]
+        pdf = self._drawing_pdf(ctx, drawing)
+        if pdf is None or binding.get("pdf_sha256") != pdf[0]["sha256"]:
+            return None
+        report = next((item for item in record.get("artifact_ids", [])), None)
+        return {"step_sha256": binding["candidate_sha256"], "pdf_sha256": binding["pdf_sha256"], "pdf_artifact_id": pdf[0]["artifact_id"],
+                "report_sha256": record["report_sha256"], "report_artifact_id": report, "profile": record.get("profile"),
+                "drawing_sha256": drawing["drawing_sha256"], "part_revision": state["revision"]}
+
+    def _pair_current(self, ctx, release, state, drawing, current_status):
+        """Whether the released pair is still the delivered pair: both files unchanged and the drawing still accepted for it."""
+        pair = release.get("pair")
+        if not pair:
+            return None, None
+        step = (release.get("artifact") or {})
+        files = (("STEP", step.get("artifact_id"), pair["step_sha256"]), ("PDF", pair["pdf_artifact_id"], pair["pdf_sha256"]))
+        for label, artifact_id, digest in files:
+            try:
+                path = self.store._path(ctx, "artifacts", artifact_id)
+            except DomainError:
+                return False, f"The released {label} file is missing."
+            if not self._file_has(path, digest):
+                return False, f"The released {label} file changed after the release."
+        now = self._release_pair(ctx, state, drawing, current_status)
+        keys = ("step_sha256", "pdf_sha256", "report_sha256", "profile", "drawing_sha256")
+        if now is None or any(now[key] != pair[key] for key in keys):
+            return False, "The drawing, its verification, or its review changed after the release. Call export_step again."
+        return True, None
+
     def _release_view(self, state, drawing, ctx=None):
         """Return the release with the current drawing status. Hide a release that is not current."""
         release = state.get("release")
@@ -937,6 +971,8 @@ class DomainService:
         release["drawing_current"] = (recorded.get("status") == current["status"]
                                       and recorded.get("drawing_sha256") == current["drawing_sha256"]
                                       and evidence(recorded) == evidence(current))
+        if ctx is not None:
+            release["pair_current"], release["pair_reason"] = self._pair_current(ctx, release, state, drawing, current)
         return release
 
     def _snapshot_read(self, ctx, name, args):
@@ -1038,22 +1074,34 @@ class DomainService:
         if name == "part_export_review":
             return self._export_review(ctx, cad, directory, state)
         if name == "export_step":
-            # The model validation gates the release. The drawing status is recorded, not required.
+            # The model validation gates each release. A complete-service release also needs a verified drawing of the same STEP bytes.
+            delivery = args.get("delivery", "step_only")
             drawing = self._drawing(directory, state)
             drawing_status = self._drawing_status(drawing, state, ctx)
             for artifact in drawing_status["artifacts"]:
                 self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
-            result = cad.call(name, args)
+            pair = self._release_pair(ctx, state, drawing, drawing_status)
+            candidate = (state.get("build") or {}).get("candidate_sha256")
+            if delivery == "complete_service" and (pair is None or pair["step_sha256"] != candidate):
+                raise DomainError("RELEASE_PAIR_REQUIRED",
+                                  "A complete-service release needs an accepted drawing whose PDF verification is bound to the STEP bytes of this release. "
+                                  + (drawing_status.get("reason") or "The drawing verification belongs to other STEP bytes."),
+                                  next_action="Call drawing_verify and drawing_review for the current build, or release with delivery step_only.")
+            result = cad.call(name, {key: value for key, value in args.items() if key != "delivery"})
             if result.get("status") == "pass":
                 release = result["release"]
+                if pair is not None and pair["step_sha256"] != release["sha256"]:
+                    pair = None
+                if delivery == "complete_service" and pair is None:
+                    raise DomainError("RELEASE_PAIR_REQUIRED", "The released STEP bytes differ from the verified STEP bytes.")
                 artifact = self.store.artifact_register(ctx, release["path"], "released_step", args["run_id"],
                                                         state["revision"], "model/step", Path(release["path"]).name)
-                result["release"]["artifact"] = artifact
-                result["release"]["drawing"] = drawing_status
+                recorded = {"artifact": artifact, "drawing": drawing_status, "delivery": delivery,
+                            "pair": {**pair, "step_artifact_id": artifact["artifact_id"]} if pair else None}
+                result["release"].update(recorded)
                 with cad._lock(args["run_id"]) as saved_directory:
                     saved = cad._load(saved_directory)
-                    saved["release"]["artifact"] = artifact
-                    saved["release"]["drawing"] = drawing_status
+                    saved["release"].update(recorded)
                     cad._save(saved_directory, saved)
                 result["drawing"] = drawing
             return result

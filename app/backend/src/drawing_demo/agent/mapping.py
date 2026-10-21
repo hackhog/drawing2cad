@@ -133,8 +133,11 @@ def review_view(state: dict[str, Any], review_items: list[dict[str, Any]], sheet
         release_state = "draft"
     # The STEP release records the drawing status. The drawing does not gate the release.
     recorded = (state.get("release") or {}).get("drawing") if released else None
-    drawing = ({"status": recorded["status"], "reason": recorded.get("reason"),
-                "current": bool((state.get("release") or {}).get("drawing_current", True))} if recorded else None)
+    release = state.get("release") or {}
+    pair_current = release.get("pair_current")
+    drawing = ({"status": recorded["status"], "reason": release.get("pair_reason") or recorded.get("reason"),
+                "current": bool(release.get("drawing_current", True)) and pair_current is not False,
+                "delivery": release.get("delivery", "step_only"), "pair_current": pair_current} if recorded else None)
     return {"release_state": release_state, "assumptions": assumptions, "uncertainties": uncertainties, "validation": validation,
             "drawing": drawing, "drawing_acceptance": acceptance_view(acceptance)}
 

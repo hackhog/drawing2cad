@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.26.0"
+  version: "0.27.0"
 ---
 
 # drawing2cad
@@ -30,7 +30,9 @@ metadata:
 14. Domain only: compare source, model, and drawing, and update the coverage table. Record each item that the current tools cannot supply as a limit.
 15. Domain only: record an accepted `drawing_review` only after review passes and after the current `drawing_verify`. Name its open coverage rows in the review reason.
     Decide each `needs_review` verification finding in `verification_decisions` with a reason, or leave the drawing unaccepted.
-16. Call `export_step` with the current revision and complete, truthful source-review `coverage`; require a successful release. Read `release.drawing.status` (`accepted`, `unverified`, `unreviewed`, `rejected`, `failed`, or `missing`) and report it with its reason.
+16. Call `export_step` with the current revision and complete, truthful source-review `coverage`; require a successful release.
+    Domain only: for a complete-service delivery, set `delivery: "complete_service"`. The release then needs the accepted, verified drawing of the same STEP bytes,
+    and `release.pair` names the STEP, PDF, and report hashes. Report `release.pair_current`. Read `release.drawing.status` (`accepted`, `unverified`, `unreviewed`, `rejected`, `failed`, or `missing`) and report it with its reason.
 17. Call `part_export_review` with the current revision. Retain STEP, description, review list, hashes, manifest, and actual results.
 18. Repeat for three parts. Require all MCP validations to pass for each final STEP hash.
 

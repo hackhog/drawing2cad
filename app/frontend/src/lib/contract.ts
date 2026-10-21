@@ -55,6 +55,10 @@ export interface ReleaseDrawing {
   reason: string | null;
   /** False when the drawing changed after the release. Call export_step again to record the new status. */
   current: boolean;
+  /** complete_service: the release needed a drawing verified against the released STEP bytes. Older records have none. */
+  delivery?: "step_only" | "complete_service";
+  /** True while the released STEP and drawing PDF are the verified pair; false after a change; null without a pair. */
+  pair_current?: boolean | null;
 }
 
 /** An output file. Content is read by `artifact_id` only. */
