@@ -163,7 +163,9 @@ A backend that still has another master key saves no key after this command.
 - `src/drawing_demo/jobs.py`: web run records (job state, agent trace, domain part run ID).
 - `src/drawing_demo/measurements.py`: review measurements per source (review time, manual-effort estimate).
 - `src/drawing_demo/agent/`: model adapter (`model.py`), runner (`runner.py`), model profiles and run limits (`profiles.py`), the SQLite configuration store with encrypted keys (`config_store.py`), and mapping of domain results to the contract (`mapping.py`).
-- `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill. Poetry installs the locked runtime dependencies.
+- The image is the target `backend` of `deployment/Dockerfile` (ADR 0035). It starts from the shared runtime stage of the MCP image:
+  Poppler, Tesseract with `eng` and `deu`, the STEPcode reader, and the sandbox libraries. It adds the MCP package, the backend, and the agent skill.
+  Poetry installs the locked runtime dependencies. The backend refuses to start in the image when a system tool is missing.
 
 The Docker build context is the repository root because the MCP package is a path dependency.
 The image excludes input drawings and local configuration.

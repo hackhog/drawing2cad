@@ -16,7 +16,8 @@ services:
       service: backend
     build:
       context: ..               # The MCP package is a path dependency at the repository root.
-      dockerfile: app/backend/Dockerfile
+      dockerfile: deployment/Dockerfile
+      target: backend           # The backend image starts from the shared runtime stage (ADR 0035).
     image: drawing2cad-backend:local
 
   frontend:
@@ -35,8 +36,8 @@ services:
       service: mcp
     build:
       context: ..
-      dockerfile: drawing2cad-mcp/Dockerfile
-      target: production
+      dockerfile: deployment/Dockerfile
+      target: mcp
     image: drawing2cad-mcp:local
 
   mcp-http:
@@ -45,8 +46,8 @@ services:
       service: mcp-http
     build:
       context: ..
-      dockerfile: drawing2cad-mcp/Dockerfile
-      target: production
+      dockerfile: deployment/Dockerfile
+      target: mcp
     image: drawing2cad-mcp:local
 
 volumes:
