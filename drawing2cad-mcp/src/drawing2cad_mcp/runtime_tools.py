@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from typing import Any
 
@@ -21,11 +22,49 @@ PURPOSES = {
 }
 
 
-def report() -> dict[str, Any]:
-    """The capability report of each system tool. It does not run a tool."""
+def _run(command: list[str]) -> tuple[bool, str]:
+    """Start a program once. It must load: a missing shared library or an unusable file is a failure; a usage exit code is not."""
+    try:
+        result = subprocess.run(command, capture_output=True, timeout=20, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return False, type(error).__name__
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    if result.returncode in (126, 127) or "error while loading shared libraries" in output:
+        return False, output.strip()[:300] or f"exit code {result.returncode}"
+    return True, output.strip().splitlines()[0][:200] if output.strip() else f"exit code {result.returncode}"
+
+
+def _probe(name: str, capability: dict[str, Any]) -> dict[str, Any]:
+    """Run the tool once outside the sandbox. The check runs at image build and at process start, not in a worker."""
     from .adapters import poppler, stepcode, tesseract
 
-    return {"poppler": poppler.capabilities(), "tesseract": tesseract.capabilities(), "stepcode": stepcode.capabilities()}
+    if not capability.get("available"):
+        return {"ok": False, "detail": "not installed"}
+    if name == "poppler":
+        ok, detail = _run([str(poppler.BINARY), "-v"])
+    elif name == "stepcode":
+        ok, detail = _run([str(stepcode.BINARY)])
+    else:
+        # Load the library and initialize OCR with both language files.
+        try:
+            reader = tesseract.Ocr()
+            reader.close()
+            ok, detail = True, f"initialized {tesseract.LANGUAGES}"
+        except (OSError, ValueError) as error:
+            ok, detail = False, str(error)[:300]
+    return {"ok": ok, "detail": detail}
+
+
+def report(probe: bool = True) -> dict[str, Any]:
+    """The capability report of each system tool. With probe, each installed tool also runs once."""
+    from .adapters import poppler, stepcode, tesseract
+
+    tools = {"poppler": poppler.capabilities(), "tesseract": tesseract.capabilities(), "stepcode": stepcode.capabilities()}
+    if probe:
+        for name, capability in tools.items():
+            capability["probe"] = _probe(name, capability)
+            capability["available"] = bool(capability.get("available")) and capability["probe"]["ok"]
+    return tools
 
 
 def missing(tools: dict[str, Any] | None = None) -> list[str]:
