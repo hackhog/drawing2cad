@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { RunFiles } from "@/components/run/RunFiles";
+import { ProjectionBadge } from "./ProjectionSection";
 import type { Run, RunPhase } from "@/lib/contract";
 import { time } from "@/lib/format";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
@@ -23,6 +24,9 @@ export function JobCard({ run }: { run: Run }) {
         <StatusBadge tone={tone}>{label}</StatusBadge>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs" role="group" aria-label="Source drawing agreement">
+          <span>Source drawing agreement</span><ProjectionBadge status={run.projection?.status} />
+        </div>
         <Progress value={(run.job.progress ?? 0) * 100} aria-label="Progress" className="h-1.5" />
         <ol className="flex flex-col gap-1">
           {SEQUENCE.map((phase, i) => {

@@ -22,6 +22,7 @@ const ROLE: Record<ArtifactRole, string> = {
   part_description: "Part description (JSON)", manifest: "Run manifest", trace: "MCP trace",
   events: "Domain events", report: "Review report (JSON)",
   verification_report: "Drawing verification report (JSON)", verification_preview: "Drawing verification preview (PNG)",
+  projection_report: "Source projection report (JSON)", projection_overlay: "Source projection overlay (PNG)",
 };
 
 // The STEP release records the drawing status. The drawing does not gate the release.

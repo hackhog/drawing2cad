@@ -1,7 +1,23 @@
 // Synthetic contract fixtures. They describe a fictitious plate, not a customer part.
 // Simulated data does not establish end-to-end acceptance.
-import type { Assumption, Operation, Parameter, Uncertainty, ValidationResult } from "./contract";
+import type { Assumption, Operation, Parameter, ProjectionCheck, ProjectionStatus, Uncertainty, ValidationResult } from "./contract";
 import type { Drawing, ExtractResult, Stroke } from "./drawing";
+
+/** Synthetic projection data for display tests, never an executed geometry check. */
+export function fixtureProjection(status: ProjectionStatus, revision: number): ProjectionCheck {
+  return {
+    status, revision, simulated: true, report_artifact_id: null, overlay_artifact_id: null,
+    reason: status === "not_tested" ? "No simulated projection check exists for this revision." : null,
+    page: status === "not_tested" ? null : 1, sheet_size_mm: [297, 210],
+    views: status === "not_tested" ? [] : [{
+      view_id: "front", status: status === "matches" ? "pass" : "fail", reason: null,
+      region_sheet_mm: [20, 20, 200, 140], max_capped: false,
+      metrics: { p95_mm: status === "matches" ? 0.12 : 0.49, max_mm: 0.8, coverage: 0.98 },
+      limits: { p95_mm: 0.3, max_mm: 1, coverage_min: 0.85 },
+      checks: { p95: status === "matches" ? "pass" : "fail", max: "pass", coverage: "pass" },
+    }],
+  };
+}
 
 const SHEET: [number, number] = [297, 210];
 
@@ -107,3 +123,6 @@ export function fixtureValidation(failed: boolean): ValidationResult[] {
     { check: "target_cad_open", status: "not_tested", detail: "Opening in the target CAD not tested." },
   ];
 }
+
+// Synthetic PNG with grey source lines, blue model lines, and a red deviation marker.
+export const FIXTURE_PROJECTION_PNG = "iVBORw0KGgoAAAANSUhEUgAAASkAAADSCAIAAACZ2aG7AAAAOXRFWHREZXNjcmlwdGlvbgBTSU1VTEFURUQgT1ZFUkxBWSAtIG5vdCB2ZXJpZmljYXRpb24gZXZpZGVuY2XVHnOuAAACVElEQVR42u3VQQqAIBCG0TlnR/RM3qUCYWjRMhzJ93BRW38+jBOoEK4AtAfaA7QH2gO0B9oDtAfaA7QH2gO0B9oD7QHaA+0B2gPtAdoD7QHaA+0B2gPtgfYA7YH2AO2B9gDtgfYA7YH2AO2B9gDtgfZAe4D2QHuA9kB7gPZAe4D2QHuA9kB7oD1Ae6A9QHugPUB7oD1Ae6A9VtUjxnEV2mN2eM8PtMe88F5/+XN7rbU4ulN17tLyO/PTw0btGaD23csVvHvaY3Z+4w0UnvYoyE942sMK2rO69tAeVtCe1bWH9rCC9qyuPbSHFbRnde2hPaygPatrD+1hBe1hBe1ZXXtoDytoz+raQ3tYQXtW1x7awwras7r20B5W0J7VtYf2sIL2rK497Vlde2gPK2jP6tpDe1hBe1bXHtrDCtqzuvbQHlbQntW1h/awgvasrj20pz0raA8raM/q2kN7WEF7Vtce2sMK2rO69tAeVtCe1bWH9rCC9qyuPbSHFbSH9rRnde2hPaygPatrD+1hBe19s7qzwpHBXu2B9gDtgfYA7YH2AO2B9gDtgfYA7YH2AO2B9kB7gPZAe4D2QHuA9kB7gPZAe4D2QHugPUB7oD1Ae6A9QHugPUB7oD1Ae6A90J4rAO2B9gDtgfYA7YH2AO2B9gDtgfYA7YH2QHuA9kB7gPZAe4D2QHuA9kB7gPZAe6A9QHugPUB7oD1Ae6A9QHugPUB7oD1Ae6A90B6gPdAeoD3QHqA90B6gPdAeoD3QHmgP0B5oD9AeaA/QHmgP0B5oD9AeLOICOrQI2hBmP1kAAAAASUVORK5CYII=";

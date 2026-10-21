@@ -3,13 +3,13 @@
 // revision conflicts, failed jobs, and unknown IDs. It does not execute CAD or analyze the uploaded PDF.
 import type {
   AgentProfileInput, AgentProfiles, Artifact, ArtifactRole, Capabilities, Measurement, MeasurementInput, Part, Run,
-  RunFiles, RunNote, RunPhase, Source,
+  ProjectionCheck, ProjectionStatus, RunFiles, RunNote, RunPhase, Source,
 } from "./contract";
 import { CONTRACT_VERSION } from "./contract";
 import type { ExtractResult, FlagChange, FlagDecision, FlagsPage } from "./drawing";
 import { ApiFailure, notFound, unavailable } from "./errors";
 import {
-  FIXTURE_ASSUMPTIONS, FIXTURE_OPERATIONS, FIXTURE_UNCERTAINTIES, fixtureAnalysis, fixtureParameters, fixtureValidation,
+  FIXTURE_ASSUMPTIONS, FIXTURE_OPERATIONS, FIXTURE_PROJECTION_PNG, FIXTURE_UNCERTAINTIES, fixtureAnalysis, fixtureParameters, fixtureProjection, fixtureValidation,
 } from "./fixtures";
 import { sha256Hex } from "./http";
 import { isActive } from "./release";
@@ -26,6 +26,7 @@ const OUTPUTS: [ArtifactRole, string, string][] = [
 const EXTENSION: Record<ArtifactRole, string> = {
   drawing_pdf: "pdf", drawing_diagnostic: "pdf", drawing_dxf: "dxf", step: "step", part_description: "json", manifest: "json", trace: "json", events: "json", report: "json",
   verification_report: "json", verification_preview: "png",
+  projection_report: "json", projection_overlay: "png",
 };
 
 interface RunRecord {
@@ -40,9 +41,10 @@ interface RunRecord {
   note: RunNote;
   /** Output creation in progress, shared by concurrent reads of the same finished revision. */
   building: Promise<void> | null;
+  projection: ProjectionCheck | null;
 }
 
-export interface FixtureOptions { now?: () => number; phaseMs?: number; latencyMs?: number }
+export interface FixtureOptions { now?: () => number; phaseMs?: number; latencyMs?: number; projection?: ProjectionStatus }
 
 export class FixtureApi implements WebApi {
   private readonly sources = new Map<string, Source>();
@@ -55,11 +57,13 @@ export class FixtureApi implements WebApi {
   private readonly phaseMs: number;
   private readonly latencyMs: number;
   private serial = 1;
+  private readonly projectionStatus: ProjectionStatus;
 
-  constructor({ now = () => Date.now(), phaseMs = 900, latencyMs = 120 }: FixtureOptions = {}) {
+  constructor({ now = () => Date.now(), phaseMs = 900, latencyMs = 120, projection = "matches" }: FixtureOptions = {}) {
     this.now = now;
     this.phaseMs = phaseMs;
     this.latencyMs = latencyMs;
+    this.projectionStatus = projection;
   }
 
   async capabilities(): Promise<Capabilities> {
@@ -190,6 +194,7 @@ export class FixtureApi implements WebApi {
         revision: 1, parameters: fixtureParameters(), operations: FIXTURE_OPERATIONS, capabilities: { parameter_edit: true },
       },
       startedAt: this.now(), firstPhase: 0, artifacts: [], note: { revision: 0, text: "" }, building: null,
+      projection: null,
     };
     this.runs.set(record.runId, record);
     return this.view(record);
@@ -326,13 +331,14 @@ export class FixtureApi implements WebApi {
         recovery: "Check the assumptions, adjust parameters, and run again.",
       } : null,
       simulated: true,
+      projection: finished && record.projection?.revision === revision ? structuredClone(record.projection) : fixtureProjection("not_tested", revision),
     };
   }
 
   private async outputs(record: RunRecord): Promise<Artifact[]> {
     const revision = record.part.revision;
     const base = record.source.filename.replace(/\.pdf$/i, "");
-    return Promise.all(OUTPUTS.map(async ([role, media_type, label]) => {
+    const outputs = await Promise.all(OUTPUTS.map(async ([role, media_type, label]) => {
       const text = `SIMULATED ARTIFACT - not a CAD result.\nrole: ${role}\nsource_sha256: ${record.source.sha256}\nmodel_revision: ${revision}\n`;
       const blob = new Blob([text], { type: "text/plain" });
       const artifact: Artifact = {
@@ -344,6 +350,20 @@ export class FixtureApi implements WebApi {
       this.contents.set(artifact.artifact_id, blob);
       return artifact;
     }));
+    record.projection = fixtureProjection(this.projectionStatus, revision);
+    if (this.projectionStatus === "not_tested") return outputs;
+    const add = async (role: ArtifactRole, blob: Blob) => {
+      const artifact: Artifact = { artifact_id: this.id("art"), role, media_type: blob.type,
+        filename: `${base}-${role}-r${revision}.simulated.${EXTENSION[role]}`, sha256: await sha256Hex(await blob.arrayBuffer()),
+        byte_count: blob.size, source_sha256: record.source.sha256, model_revision: revision, released: false };
+      this.contents.set(artifact.artifact_id, blob);
+      outputs.push(artifact);
+      return artifact.artifact_id;
+    };
+    const png = Uint8Array.from(atob(FIXTURE_PROJECTION_PNG), (character) => character.charCodeAt(0));
+    record.projection.overlay_artifact_id = await add("projection_overlay", new Blob([png], { type: "image/png" }));
+    record.projection.report_artifact_id = await add("projection_report", new Blob([JSON.stringify(record.projection)], { type: "application/json" }));
+    return outputs;
   }
 
   private source(sourceId: string): Source {

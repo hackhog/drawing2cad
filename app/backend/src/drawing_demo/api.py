@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .agent.mapping import acceptance_view, artifact_view, part_view, release_drawing_view, review_view
+from .agent.projection import not_tested, projection_result
 from .agent.model import check_connection
 from .agent.profiles import ProfileStore, Provider
 from .agent.runner import AgentRunner
@@ -46,7 +47,7 @@ CONTRACT_VERSION = "0.1.0-provisional"
 # Analyses are derived from immutable sources. The cache prevents a new page render for each request.
 ANALYSIS_CACHE_SIZE = 32
 # Each part_read is a recorded CAD call that counts against the step budget of its part run.
-# The UI polls runs, so the details of a finished run are read once and kept in memory.
+# The UI polls runs, so finished-run details are cached for each observed part revision.
 RESULT_CACHE_SIZE = 64
 # Run files open in a browser tab, so text formats are served as text instead of a download.
 TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt", ".md"}
@@ -77,11 +78,12 @@ class Services:
         self._results: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._lock = threading.Lock()
 
-    def result(self, record: dict[str, Any]) -> dict[str, Any]:
-        """Part, review, artifacts, and report of a finished run, read once from the domain service."""
+    def result(self, record: dict[str, Any], revision: int | None = None) -> dict[str, Any]:
+        """Cache finished-run details for one part revision. A new revision requires a new domain read."""
         with self._lock:
-            if record["run_id"] in self._results:
-                return self._results[record["run_id"]]
+            cached = self._results.get(record["run_id"])
+            if cached and (revision is None or cached["part"]["revision"] == revision):
+                return cached
         result = part_result(self, record)
         with self._lock:
             self._results[record["run_id"]] = result
@@ -188,22 +190,28 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
     view["agent"] = record.get("agent")
     view["iterations"] = record.get("iterations")  # Records from before this field have none.
-    view.update(part=None, review=None, artifacts=[], simulated=False, agent_report=None)
+    view.update(part=None, review=None, artifacts=[], simulated=False, agent_report=None, projection=not_tested())
     if record["job"]["status"] in ("queued", "running"):
         return view
     view["agent_report"] = agent_report(services, record)
     if record["part_run_id"] is None:
         return view
-    result = services.result(record)
+    current = services.backend.call("drawing_read", run_id=record["part_run_id"])
+    result = services.result(record, current["revision"])
     # The acceptance and the release freshness change with reviews, verifications, and file changes.
     # Read them each time; the cached result does not hold them.
     if result.get("review") is not None:
-        current = services.backend.call("drawing_read", run_id=record["part_run_id"])
         review = {**result["review"], "drawing_acceptance": acceptance_view(current.get("acceptance"))}
         if result["review"].get("release_state") == "released":
             review["drawing"] = release_drawing_view(current.get("release"))
         result = {**result, "review": review}
-    return {**view, **result}
+    source = services.backend.call("source_get", source_id=record["source_id"])
+    listed = sorted(_all(services.backend, "artifact_list", run_id=record["part_run_id"]), key=lambda a: a["created"])
+    projection = projection_result(services.backend, listed, record["part_run_id"], result["part"]["revision"], source,
+                                   tuple(services.analysis(source)["drawing"]["sheet_size_mm"]))
+    projection_files = [artifact_view(a, source["sha256"]) for a in listed if a["role"] in {"projection_overlay", "projection_report"}]
+    artifacts = [a for a in result["artifacts"] if a["role"] not in {"projection_overlay", "projection_report"}]
+    return {**view, **result, "projection": projection, "artifacts": artifacts + projection_files}
 
 
 def services(request: Request) -> Services:

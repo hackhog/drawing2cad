@@ -28,7 +28,9 @@ ROLE_BY_MEDIA_TYPE = {("released_step", "model/step"): "step", ("technical_drawi
                       ("run_manifest", "application/json"): "manifest", ("run_trace", "application/json"): "trace",
                       ("domain_run_events", "application/json"): "events",
                       ("drawing_verification_report", "application/json"): "verification_report",
-                      ("drawing_verification_preview", "image/png"): "verification_preview"}
+                      ("drawing_verification_preview", "image/png"): "verification_preview",
+                      ("projection_overlay", "image/png"): "projection_overlay",
+                      ("projection_report", "application/json"): "projection_report"}
 
 ORIGIN_BY_EVIDENCE = {"explicit": "source", "derived": "source", "inferred": "assumed", "assumed": "assumed", "unresolved": "assumed"}
 CHECK_STATUS = {"pass": "pass", "fail": "fail"}
