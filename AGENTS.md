@@ -39,15 +39,16 @@
 
 - For CAD work, use [skills/drawing2cad/SKILL.md](skills/drawing2cad/SKILL.md). The workflow must work without previous chat messages or a specific agent model.
 - Use only `drawing2cad-mcp` for PDF preparation and CAD execution. Keep backend-specific code in maintained server adapters.
-- Follow [ADR 0014](docs/adr/0014-headless-build123d-metric-prototype.md) for the M1 prototype, M2 complete service, and M3 AP242 boundaries.
+- Follow [ADR 0014](docs/adr/0014-headless-build123d-metric-prototype.md) for the historical milestone boundaries. Use [ADR 0034](docs/adr/0034-step-and-drawing-released-as-a-verified-pair.md) for complete-service delivery.
 - The complete service must deliver a dimensioned technical drawing and a verified 3D model. Either can be created first. Compare their final revisions before delivery.
+- Permit STEP-only delivery when the user explicitly requests it. Do not substitute it for an incomplete complete-service delivery.
 - Native 2D sketches alone do not meet the drawing requirement. Use [drawing-delivery.md](skills/drawing2cad/references/drawing-delivery.md) for drawing delivery and STEP-only tests.
 - Include necessary views, sections, dimensions, units, manufacturing data, and uncertainty markers. Give evidence for these data.
 - If a dimension or position is missing, infer a reasonable value from the drawing geometry. Record `assumed`, its reason, source region, units, and affected feature.
 - Mark radii without dimensions and all unclear details. Keep assumptions distinct from source dimensions and user design decisions.
 - Build a feature when a reasonable assumption supports it. Block only when no reasonable assumption is possible.
-- M1 uses a versioned JSON part description as the editable construction source. It does not prove editable construction or semantic PMI inside STEP.
-- AP242 and semantic PMI are optional for the hackathon metric. M3 covers construction, parameter changes through adapters, and semantic PMI. Test these claims separately from geometry export.
+- The service uses a versioned JSON part description as the editable construction source. It does not prove editable construction or semantic PMI inside STEP.
+- AP242 and semantic PMI are optional unless the requested delivery requires them. M3 covers construction, parameter changes through adapters, and semantic PMI. Test these claims separately from geometry export.
 - Export a STEP candidate from the validated build. Re-import it in a fresh worker and validate it before release.
 - Record independent STEP analysis and target-CAD opening separately. `not_tested` never means `pass`.
 - The production target is a fully headless Docker service. No required phase may depend on a CAD GUI or GUI dispatcher.
@@ -56,7 +57,7 @@
 - Keep historical adapter code and recorded hashes unchanged. Historical FreeCAD calls are unavailable through the current MCP.
 - Do not create ad hoc model scripts, macros, or executable helper files. This restriction does not prohibit authorized development of versioned MCP server code.
 - Use only permitted sources. Do not use verification resources as unreported construction inputs. Keep original resources unchanged.
-- Give suitable independent review tasks to subagents when available. A separate reviewer is optional for the hackathon metric. The acting agent can supply its identified review attestation. Run changes to the same model in sequence. Review the results before delivery.
+- Give suitable independent review tasks to subagents when available. A separate reviewer is optional for delivery. The acting agent can supply its identified review attestation. Run changes to the same model in sequence. Review the results before delivery.
 - Create requested target-format derivatives after the required STEP tests. Distinguish an imported body from reconstructed native features.
 
 ## Files and evidence

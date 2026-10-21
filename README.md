@@ -67,14 +67,14 @@ Without `.env`, omit `--env-file .env`; the app starts and shows runs as unavail
 To keep the key out of `.env`, leave `DRAWING2CAD_AGENT_API_KEY` empty there and pass it from the shell, for example from the macOS Keychain:
 `DRAWING2CAD_AGENT_API_KEY=$(security find-generic-password -a <account> -s <service> -w) docker compose --env-file .env -f deployment/compose.yaml up -d`.
 
-## Delivery milestones
+## Delivery scopes
 
-| Milestone | Deliverables and limits |
+| Scope | Deliverables and limits |
 |---|---|
-| M1 metric prototype | Editable JSON part description, validated STEP candidate, review list, coverage report, manifest, and trace. |
-| M2 MCP | Shared Python services, PDF uploads, source/artifact IDs, persistent jobs and notes, and dimensioned DXF/PDF drawing delivery. |
-| M2 Web | HTTP API and React/shadcn/TanStack interface in the same Python application, using the shared services. |
-| M3 AP242 | STEP-only construction reconstruction, driving parameter edits through adapters, semantic PMI, and graphical PMI. |
+| Complete service | Editable JSON description, validated STEP, dimensioned DXF/PDF, accepted verification and review, and a current STEP/PDF pair. Use domain `delivery: "complete_service"`. |
+| Explicit STEP-only request | Validated STEP, editable JSON description, review list, coverage, manifest, and trace. No complete-service drawing claim. The local-path profile supports this reduced scope. |
+| Optional web clients | HTTP API and React/shadcn/TanStack interface using the shared service. The MCP server works without them. |
+| Optional AP242 and PMI | STEP-only construction reconstruction, driving parameter edits through adapters, semantic PMI, and graphical PMI. Each claim requires separate evidence. |
 
 Complete M3 acceptance remains follow-up work. The web app (M2 Web) starts agent builds through the MCP; see "Web app with agent runs".
 The initial [AP242 adapter](docs/adr/0017-ap242-application-construction-and-pmi.md)
@@ -84,7 +84,7 @@ stored PMI strokes, with annotation-plane detail views. Full conformance and the
 remaining PMI scope are not complete. Product input is PDF; external STEP
 upload is out of scope. Internal re-import tests verify generated STEP output.
 CAD-specific export and native feature adapters are outside this adapter.
-The JSON description is the editable source for the declarative M1 path.
+The JSON description is the editable source for the declarative construction path.
 A free-code fallback also requires its exact recorded inline payload. JSON alone does not replay that construction.
 It does not prove editable construction or semantic PMI inside STEP.
 The technical drawing and 3D model can be created in either order.
@@ -94,7 +94,8 @@ Their final revisions must agree.
 A server-side geometry pass is separate from independent STEP analysis and an optional opening test in a target CAD system.
 Missing tests remain `not_tested`.
 [ADR 0016](docs/adr/0016-shared-domain-service-and-drawing-delivery.md) defines the M2 service boundary and drawing limits.
-The drawing adapter renders supplied 2D view geometry with native DXF dimensions. It does not derive arbitrary projections or sections from a solid.
+The drawing service derives supported views and sections from the validated model and renders native DXF dimensions and PDF.
+Complete-service release requires independent PDF verification, accepted review, and a current pair ([ADR 0034](docs/adr/0034-step-and-drawing-released-as-a-verified-pair.md)).
 Independent source review is still required. "Test run results" shows the current results of the sample drawings.
 
 ## Test run results

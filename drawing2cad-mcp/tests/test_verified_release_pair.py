@@ -33,6 +33,8 @@ def test_a_complete_service_release_records_one_verified_pair(domain):
     released = release(service, source)
     pair = released["pair"]
     assert released["delivery"] == "complete_service"
+    assert released["schema_version"] == 2 and released["profile"] == "validated_geometry_step"
+    assert "metric_acceptance" not in released
     assert pair["step_sha256"] == released["sha256"] == released["artifact"]["sha256"]
     assert pair["pdf_sha256"] == pdf["sha256"] and pair["report_sha256"] and pair["profile"] == "drawing2cad-verify-1"
     view = service.call(CTX, "part_read", {"run_id": "plate"})["part"]["release"]

@@ -41,7 +41,7 @@ DOMAIN_DESCRIPTIONS["export_step"] = ("Release validated STEP of the current mod
                                       "release.drawing records its status (accepted, unverified, unreviewed, rejected, failed, or missing) with the drawing files or the reason. "
                                       "With delivery complete_service, the release fails unless the drawing is accepted and verified against the released STEP bytes; "
                                       "release.pair records the STEP, PDF, and verification report hashes. release.pair_current is false after a change of either file. "
-                                      "Call again after a drawing change to record the new status. AP242 and semantic PMI remain separate M3 requirements.")
+                                      "Use delivery complete_service for a complete delivery. After a drawing change, repeat acceptance and release the new pair. AP242 and semantic PMI are optional unless requested.")
 
 PROJECTION_VIEW = _object({
     "view_id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},

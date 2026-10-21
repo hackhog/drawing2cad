@@ -93,7 +93,7 @@ Keep failed build results and their reasons. Correct the description before anot
 The report distinguishes changed inputs, potential dependencies, and measured effects.
 Later ordered features can depend on earlier geometry without a direct parameter reference.
 Equal volumes do not prove equal geometry.
-The prototype does not solve algebraic constraints or update independent source measurements automatically.
+The service does not solve algebraic constraints or update independent source measurements automatically.
 
 For an authorized change to an assumed dimension, supply the revised independent check explicitly.
 If a changed parameter conflicts with an unchanged printed requirement, retain and report that failure.

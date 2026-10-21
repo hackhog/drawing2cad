@@ -83,14 +83,25 @@ Aggregate disk quotas and completed-job retention limits are not implemented.
 
 The adapter accepts supplied view geometry, dimensions, sections, notes, and uncertainty markers.
 It creates native DXF dimensions and renders the same drawing into PDF.
-It does not automatically derive views or sections from the solid.
+Use `drawing_derive_views` for supported model-derived views and sections in DrawingSpec 2.0.
 Source accuracy, projection completeness, and drawing-to-solid equivalence require an identified review.
 Automatic layout checks do not prove those properties.
 
 Bind each drawing to the part revision and canonical description hash.
-Use `drawing_validate`, `drawing_render`, and `artifact_preview` before `drawing_review`.
+Use `drawing_validate`, `drawing_render`, `drawing_verify`, and `artifact_preview` before `drawing_review`.
 The final review also binds the validated model candidate.
-`export_step` does not require a drawing review. Its release records the drawing status (`accepted`, `unreviewed`, `rejected`, `failed`, or `missing`) with the drawing files or the reason.
+Complete-service delivery uses `export_step` with `delivery: "complete_service"`.
+It requires an accepted drawing verified against the released STEP bytes and a current pair binding.
+An explicitly requested STEP-only delivery uses `delivery: "step_only"`, the API default.
+It records the drawing status without claiming a verified pair.
+New release records use release `schema_version: 2` and profile `validated_geometry_step` for AP214.
+The AP242 profile remains `validated_ap242_application_construction`.
+The former `metric_acceptance` field has no per-run acceptance equivalent and is not written in new releases.
+Stored releases without a release schema version remain readable with their original fields, including profile `validated_prototype_step`.
+No new acceptance or pair claim is inferred from these legacy fields.
+See the [release compatibility guide](../../drawing2cad-mcp/README.md#release-record-compatibility) for reader migration.
+Use `pair_current: true` on the final `part_read` to establish current complete-service acceptance.
+Drawing, verification, and review changes make an earlier complete-service pair stale while retaining its release record.
 Parameter changes and rebuilds invalidate the applicable release evidence.
 Historical artifacts remain readable, but cannot authorize release of a later revision.
 
