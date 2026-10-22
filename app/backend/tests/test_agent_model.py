@@ -126,7 +126,30 @@ def test_each_attempt_has_its_own_bounded_timeout(monkeypatch):
     seen = fake_endpoint(monkeypatch, [httpx2.ReadTimeout("stalled"), httpx2.ReadTimeout("stalled"), OK_CHAT])
     monkeypatch.setattr(model, "RETRY_DELAY_SECONDS", 0)
     make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 300)
-    assert len(seen) == 3 and all(timeout <= model.ATTEMPT_TIMEOUT_SECONDS for *_, timeout in seen)
+    assert len(seen) == 3 and all(timeout <= 150 for *_, timeout in seen)
+
+
+def test_a_short_turn_deadline_keeps_the_minimum_attempt_timeout(monkeypatch):
+    seen = fake_endpoint(monkeypatch, OK_CHAT)
+    make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 200)
+    assert seen[0][-1] == pytest.approx(model.ATTEMPT_TIMEOUT_SECONDS, abs=1)
+
+
+def test_a_long_turn_deadline_allows_a_long_attempt_and_one_retry(monkeypatch):
+    # A slow model needs more than the minimum attempt timeout for one answer.
+    seen = fake_endpoint(monkeypatch, [httpx2.ReadTimeout("stalled"), OK_CHAT])
+    monkeypatch.setattr(model, "RETRY_DELAY_SECONDS", 0)
+    clock = [0.0]
+    monkeypatch.setattr(model.time, "monotonic", lambda: clock[0])
+    original = model._post
+
+    def slow_post(*args):
+        clock[0] += args[-1]  # A stalled attempt uses its complete timeout.
+        return original(*args)
+
+    monkeypatch.setattr(model, "_post", slow_post)
+    make_model_call(ModelSettings("https://example.test/v1", "m", "k"))({}, {"messages": [], "tools": []}, 1500)
+    assert [timeout for *_, timeout in seen] == [pytest.approx(750), pytest.approx(750)]
 
 
 def test_a_response_above_the_size_limit_is_rejected(monkeypatch):

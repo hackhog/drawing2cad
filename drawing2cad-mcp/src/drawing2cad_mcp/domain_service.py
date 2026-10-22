@@ -33,7 +33,7 @@ from .domain_tools import DOMAIN_SCHEMAS
 from . import derived_views, drawing_verification
 from .drawing_contract import DRAWING_SCHEMA_VERSION, drawing_schema, drawing_validate, render_gate
 from .measurements_tools import MEASUREMENT_METHODS
-from .pdf import MAX_STROKE_LIMIT, PdfError, PdfService
+from .pdf import MAX_STROKE_LIMIT, PdfError, PdfProcessError, PdfService
 from .part_schema import EdgeSelectionDiagnostic
 from .schema_errors import describe as describe_schema_error
 from .source_flags import check_decision, review_flags
@@ -217,10 +217,17 @@ class DomainService:
             raise DomainError(error.code, self._redact(message)) from None
         except StepError as error:
             raise DomainError(error.code, "The STEP inspection failed. Check the artifact and expected hash.") from None
-        except PdfError as error:
+        except PdfProcessError as error:
+            # Helper process output stays in the server log.
             LOG.warning("PDF operation %s failed: %s", name, self._redact(str(error)))
             raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options.",
                               next_action="Inspect the server diagnostic. Use PDF image tools if the vector profile does not support this page.") from None
+        except PdfError as error:
+            # Written messages name the argument or the evidence to correct.
+            message = self._redact(str(error))
+            LOG.warning("PDF operation %s failed: %s", name, message)
+            raise DomainError("PDF_PREPARATION_FAILED", "The uploaded PDF could not be prepared with the requested options: " + message,
+                              next_action="Correct the arguments or the evidence named in the message. Use PDF image tools if the vector profile does not support this page.") from None
         except Exception:
             LOG.exception("Domain operation %s failed", name)
             raise DomainError("DOMAIN_OPERATION_FAILED", "The domain operation failed. No private process details are returned.") from None
@@ -659,9 +666,16 @@ class DomainService:
     def _drawing_read(self, ctx, directory, state, run_id):
         drawing = self._drawing(directory, state)
         verification = None
+        current = None
         if drawing and drawing.get("verification"):
-            verification = drawing_verification.status(drawing["verification"], self._verification_binding(ctx, state, drawing))
+            current = self._verification_binding(ctx, state, drawing)
+            verification = drawing_verification.status(drawing["verification"], current)
+        acceptance = self._drawing_status(drawing, state, ctx, current)
+        release = self._release_view(state, drawing, ctx)
+        release_fields = ("delivery", "drawing", "drawing_current", "pair_current", "pair_reason")
         return {"run_id": run_id, "revision": state["revision"], "drawing": drawing, "verification": verification,
+                "acceptance": {key: acceptance.get(key) for key in ("status", "reason", "verification")},
+                "release": {key: release.get(key) for key in release_fields} if release else None,
                 "derived_views": derived_views.status(self._derivation(directory), state)}
 
     def _drawing_pdf(self, ctx, drawing):
@@ -677,23 +691,52 @@ class DomainService:
         digest = None
         if pdf is not None:
             metadata, path = pdf
-            try:
-                self.store._verify(path, metadata["size_bytes"], metadata["sha256"])
-                digest = metadata["sha256"]
-            except DomainError:
-                digest = "changed"
+            digest = metadata["sha256"] if self._file_has(path, metadata["sha256"], metadata["size_bytes"]) else "changed"
         built = derived_views.binding(state)
         candidate = None
         if built:
+            # The stored candidate bytes, not only the recorded hash. A missing candidate is a change, not an error.
             try:
-                # The stored candidate bytes, not only the recorded hash.
-                self._current_candidate(self._backend(ctx)[0], state, "the drawing verification")
-                candidate = built["candidate_sha256"]
-            except DomainError:
-                candidate = "changed"
+                path = self._backend(ctx)[0]._candidate((state.get("build") or {})["build"])
+                same_path = str(path) == (state.get("build") or {}).get("candidate_path")
+            except (DomainError, CadError, OSError, KeyError):
+                same_path = False
+            candidate = built["candidate_sha256"] if same_path and self._file_has(path, built["candidate_sha256"]) else "changed"
+        sources = sorted(source["sha256"] for source in state["sources"] if source["role"] == "construction")
         return {"part_revision": state["revision"], "description_sha256": state["description_sha256"],
+                "source_sha256s": sources, "profile": drawing_verification.PROFILE,
                 "candidate_sha256": candidate,
                 "drawing_sha256": drawing["drawing_sha256"], "pdf_sha256": digest}
+
+    def _file_has(self, path, digest, size=None) -> bool:
+        """True when the file has the digest. A verified result is reused while inode, size, mtime, and ctime stay the same.
+
+        A read of the drawing state can need the hashes of the PDF and the STEP candidate. The cache keeps repeated reads cheap.
+        """
+        try:
+            info = Path(path).stat()
+        except OSError:
+            return False
+        key = (str(path), info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, digest)
+        # On Windows, st_ctime is the creation time, not the time of the last change. Do not cache there.
+        cache = self.__dict__.setdefault("_verified_files", {}) if os.name != "nt" else {}
+        if key in cache:
+            return cache[key]
+        if size is not None and info.st_size != size:
+            result = False
+        else:
+            try:
+                actual = hashlib.sha256()
+                with Path(path).open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        actual.update(chunk)
+                result = actual.hexdigest() == digest
+            except OSError:
+                result = False
+        if len(cache) > 256:
+            cache.clear()
+        cache[key] = result
+        return result
 
     def _verify_drawing(self, ctx, cad, directory, state, args):
         """Verify the stored PDF bytes of the current drawing, or a construction source without a binding."""
@@ -745,6 +788,7 @@ class DomainService:
             snapshot.unlink(missing_ok=True)
 
     def _verify_snapshot(self, ctx, cad, directory, state, drawing, report, candidate, expected, path):
+        before = self._verification_binding(ctx, state, drawing) if drawing is not None else None
         rendered = cad.runner.run("render_pdf_poppler", input_pdf=path)
         pages = rendered.get("pages", []) if rendered.get("status") == "pass" else []
         image = None
@@ -777,8 +821,11 @@ class DomainService:
         body = result["report"]
         body["report_sha256"] = next(item["sha256"] for item in artifacts if item["role"] == "drawing_verification_report")
         if drawing is not None:
-            drawing["verification"] = drawing_verification.record(body, self._verification_binding(ctx, state, drawing),
-                                                                  [item["artifact_id"] for item in artifacts])
+            # The inputs must not change while the workers run. A changed input gives no record.
+            after = self._verification_binding(ctx, state, drawing)
+            if after != before:
+                raise DomainError("VERIFICATION_INPUT_CHANGED", "A bound input changed during the verification. Verify the drawing again.")
+            drawing["verification"] = drawing_verification.record(body, before, [item["artifact_id"] for item in artifacts])
             self._save_drawing(directory, drawing)
         open_findings = [item for item in body["findings"] if item["status"] in {"fail", "needs_review"}]
         return {"status": body["status"], "run_id": state["run_id"], "revision": state["revision"], "mode": body["mode"],
@@ -843,10 +890,10 @@ class DomainService:
         return bool(release.get("artifact") and release.get("sha256") == build.get("candidate_sha256")
                     and release.get("description_revision") == state.get("revision"))
 
-    @staticmethod
-    def _drawing_status(drawing, state):
+    def _drawing_status(self, drawing, state, ctx=None, current=None):
         """Summarize the technical drawing for a release record.
-        States: accepted, unreviewed, rejected, failed, or missing (with a reason)."""
+        States: accepted, unverified, unreviewed, rejected, failed, or missing (with a reason).
+        accepted needs an accepted review of the current model and a current verification that passes the acceptance gate."""
         if not drawing:
             return {"status": "missing", "drawing_sha256": None, "artifacts": [],
                     "reason": "No technical drawing was rendered for the current part revision."}
@@ -855,26 +902,81 @@ class DomainService:
             report = drawing.get("report") or {}
             return {**summary, "status": "failed", "defects": deepcopy(report.get("defects", [])),
                     "reason": "The latest drawing render did not pass its checks. The artifacts are diagnostic files, not an accepted drawing."}
+        verification = None
+        if drawing.get("verification"):
+            if current is None and ctx is not None:
+                current = self._verification_binding(ctx, state, drawing)
+            verification = drawing_verification.status(drawing["verification"], current)
         review = drawing.get("review") or {}
+        decisions = review.get("verification_decisions") if review.get("verification_report_sha256") == (verification or {}).get("report_sha256") else []
+        gate = drawing_verification.gate(verification, decisions)
+        summary["verification"] = {"validity": (verification or {}).get("validity"), "status": (verification or {}).get("status"),
+                                   "report_sha256": (verification or {}).get("report_sha256"), "gate": gate}
         candidate = (state.get("build") or {}).get("candidate_sha256")
-        if review.get("decision") == "accepted" and review.get("candidate_sha256") == candidate:
-            return {**summary, "status": "accepted", "review": deepcopy(review)}
         if review.get("decision") == "rejected" and review.get("candidate_sha256") == candidate:
             return {**summary, "status": "rejected", "review": deepcopy(review),
                     "reason": "The drawing review rejected the drawing for the current model."}
+        if review.get("decision") == "accepted" and review.get("candidate_sha256") == candidate:
+            if gate["passed"] and review.get("verification_report_sha256") == verification["report_sha256"]:
+                return {**summary, "status": "accepted", "review": deepcopy(review)}
+            return {**summary, "status": "unverified", "review": deepcopy(review),
+                    "reason": gate["reason"] or "The review does not cover the current verification. Record the review again."}
         return {**summary, "status": "unreviewed",
                 "reason": "The drawing rendered and passed its checks, but it has no review for the current model."}
 
-    def _release_view(self, state, drawing):
+    def _release_pair(self, ctx, state, drawing, drawing_status):
+        """The verified pair of STEP and drawing PDF, or None. Only an accepted drawing with a current verification forms a pair."""
+        if drawing_status.get("status") != "accepted" or not drawing or not drawing.get("verification"):
+            return None
+        record = drawing["verification"]
+        binding = record["binding"]
+        pdf = self._drawing_pdf(ctx, drawing)
+        if pdf is None or binding.get("pdf_sha256") != pdf[0]["sha256"]:
+            return None
+        report = next((item for item in record.get("artifact_ids", [])), None)
+        return {"step_sha256": binding["candidate_sha256"], "pdf_sha256": binding["pdf_sha256"], "pdf_artifact_id": pdf[0]["artifact_id"],
+                "report_sha256": record["report_sha256"], "report_artifact_id": report, "profile": record.get("profile"),
+                "drawing_sha256": drawing["drawing_sha256"], "part_revision": state["revision"],
+                "review_sha256": _digest(drawing.get("review") or {})}
+
+    def _pair_current(self, ctx, release, state, drawing, current_status):
+        """Whether the released pair is still the delivered pair: both files unchanged and the drawing still accepted for it."""
+        pair = release.get("pair")
+        if not pair:
+            return None, None
+        step = (release.get("artifact") or {})
+        files = (("STEP", step.get("artifact_id"), pair["step_sha256"]), ("PDF", pair["pdf_artifact_id"], pair["pdf_sha256"]))
+        for label, artifact_id, digest in files:
+            try:
+                path = self.store._path(ctx, "artifacts", artifact_id)
+            except DomainError:
+                return False, f"The released {label} file is missing."
+            if not self._file_has(path, digest):
+                return False, f"The released {label} file changed after the release."
+        now = self._release_pair(ctx, state, drawing, current_status)
+        keys = ("step_sha256", "pdf_sha256", "report_sha256", "profile", "drawing_sha256", "review_sha256")
+        if now is None or any(now[key] != pair[key] for key in keys):
+            return False, "The drawing, its verification, or its review changed after the release. Call export_step again."
+        return True, None
+
+    def _release_view(self, state, drawing, ctx=None):
         """Return the release with the current drawing status. Hide a release that is not current."""
         release = state.get("release")
         if not release or not self._release_is_current(state):
             return None
         release = deepcopy(release)
         recorded = release.get("drawing") or {}
-        current = self._drawing_status(drawing, state)
+        current = self._drawing_status(drawing, state, ctx)
+        def evidence(item):
+            verification = item.get("verification") or {}
+            review = item.get("review") or {}
+            return (verification.get("report_sha256"), verification.get("validity"), (verification.get("gate") or {}).get("passed"),
+                    review.get("decision"), review.get("reviewer"), review.get("verification_report_sha256"))
         release["drawing_current"] = (recorded.get("status") == current["status"]
-                                      and recorded.get("drawing_sha256") == current["drawing_sha256"])
+                                      and recorded.get("drawing_sha256") == current["drawing_sha256"]
+                                      and evidence(recorded) == evidence(current))
+        if ctx is not None:
+            release["pair_current"], release["pair_reason"] = self._pair_current(ctx, release, state, drawing, current)
         return release
 
     def _snapshot_read(self, ctx, name, args):
@@ -896,7 +998,7 @@ class DomainService:
             result = {"status": "pass", "part": deepcopy(state), "run_id": args["run_id"], "revision": state["revision"],
                       "call_count": state["call_count"], "step_budget": state["step_budget"]}
             result["drawing"] = self._drawing(directory, state)
-            result["part"]["release"] = self._release_view(result["part"], result["drawing"])
+            result["part"]["release"] = self._release_view(result["part"], result["drawing"], ctx)
         result["read_mode"] = "snapshot_during_active_operation"
         return result
 
@@ -976,23 +1078,57 @@ class DomainService:
         if name == "part_export_review":
             return self._export_review(ctx, cad, directory, state)
         if name == "export_step":
-            # The model validation gates the release. The drawing status is recorded, not required.
+            # The model validation gates each release. A complete-service release also needs a verified drawing of the same STEP bytes.
+            delivery = args.get("delivery", "step_only")
             drawing = self._drawing(directory, state)
-            drawing_status = self._drawing_status(drawing, state)
+            drawing_status = self._drawing_status(drawing, state, ctx)
             for artifact in drawing_status["artifacts"]:
                 self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
-            result = cad.call(name, args)
-            if result.get("status") == "pass":
-                release = result["release"]
-                artifact = self.store.artifact_register(ctx, release["path"], "released_step", args["run_id"],
-                                                        state["revision"], "model/step", Path(release["path"]).name)
-                result["release"]["artifact"] = artifact
-                result["release"]["drawing"] = drawing_status
+            pair = self._release_pair(ctx, state, drawing, drawing_status)
+            candidate = (state.get("build") or {}).get("candidate_sha256")
+            if delivery == "complete_service" and (pair is None or pair["step_sha256"] != candidate):
+                raise DomainError("RELEASE_PAIR_REQUIRED",
+                                  "A complete-service release needs an accepted drawing whose PDF verification is bound to the STEP bytes of this release. "
+                                  + (drawing_status.get("reason") or "The drawing verification belongs to other STEP bytes."),
+                                  next_action="Call drawing_verify and drawing_review for the current build, or release with delivery step_only.")
+            previous = deepcopy(state.get("release"))
+
+            def restore_and_fail(message):
+                # The CAD service saved its release before these checks. Put the previous release back before the failure.
                 with cad._lock(args["run_id"]) as saved_directory:
                     saved = cad._load(saved_directory)
-                    saved["release"]["artifact"] = artifact
-                    saved["release"]["drawing"] = drawing_status
+                    saved["release"] = previous
                     cad._save(saved_directory, saved)
+                raise DomainError("RELEASE_PAIR_REQUIRED", message, next_action="Verify the current drawing again, then release again.")
+
+            result = cad.call(name, {key: value for key, value in args.items() if key != "delivery"})
+            if result.get("status") == "pass":
+                release = result["release"]
+                if pair is not None and pair["step_sha256"] != release["sha256"]:
+                    pair = None
+                if delivery == "complete_service" and pair is None:
+                    restore_and_fail("The released STEP bytes differ from the verified STEP bytes.")
+                artifact = self.store.artifact_register(ctx, release["path"], "released_step", args["run_id"],
+                                                        state["revision"], "model/step", Path(release["path"]).name)
+                if pair is not None:
+                    # The registered copy and the stored PDF must still be the verified bytes when the release is saved.
+                    pdf_path = self.store._path(ctx, "artifacts", pair["pdf_artifact_id"])
+                    if artifact["sha256"] != pair["step_sha256"] or not self._file_has(pdf_path, pair["pdf_sha256"]):
+                        pair = None
+                if delivery == "complete_service" and pair is None:
+                    restore_and_fail("The STEP file or the PDF changed during the release. Release again.")
+                # Only a complete-service release claims a verified pair. A STEP-only release records the drawing status only.
+                recorded = {"artifact": artifact, "drawing": drawing_status, "delivery": delivery,
+                            "pair": {**pair, "step_artifact_id": artifact["artifact_id"]} if pair and delivery == "complete_service" else None}
+                result["release"].update(recorded)
+                with cad._lock(args["run_id"]) as saved_directory:
+                    saved = cad._load(saved_directory)
+                    saved["release"].update(recorded)
+                    cad._save(saved_directory, saved)
+                result["release"]["pair_current"], result["release"]["pair_reason"] = self._pair_current(
+                    ctx, result["release"], state, drawing, drawing_status)
+                if delivery == "complete_service" and result["release"]["pair_current"] is not True:
+                    restore_and_fail("The verified pair changed during the release: " + (result["release"]["pair_reason"] or "unknown change."))
                 result["drawing"] = drawing
             return result
         if name not in CAD_SCHEMAS:
@@ -1008,7 +1144,7 @@ class DomainService:
         result = cad.call(name, args)
         if name == "part_read":
             result["drawing"] = self._drawing(directory, state)
-            result["part"]["release"] = self._release_view(result["part"], result["drawing"])
+            result["part"]["release"] = self._release_view(result["part"], result["drawing"], ctx)
         return result
 
     def _render(self, ctx, cad, directory, state, spec):
@@ -1105,9 +1241,19 @@ class DomainService:
             self.store.source_path(ctx, source["source_id"])
         for artifact in drawing["artifacts"]:
             self.store.artifact_read(ctx, artifact["artifact_id"], length=1)
+        verification = drawing.get("verification") or {}
+        decisions = args.get("verification_decisions", [])
+        if decisions:
+            open_keys = {(item["rule_id"], item.get("feature")) for item in verification.get("findings", []) if item["status"] == "needs_review"}
+            unknown = [item for item in decisions if (item["rule_id"], item.get("feature")) not in open_keys]
+            if unknown:
+                raise DomainError("REVIEW_DECISION_INVALID",
+                                  "A verification decision must name a needs_review finding of the current verification: "
+                                  + ", ".join(f"{item['rule_id']}/{item.get('feature')}" for item in unknown[:5]) + ".")
         drawing["review"] = {**args, "scope": "identified_drawing_and_model_review_attestation",
                              "automatic_cad_equivalence": "not_tested",
-                             "candidate_sha256": (state.get("build") or {}).get("candidate_sha256")}
+                             "candidate_sha256": (state.get("build") or {}).get("candidate_sha256"),
+                             "verification_report_sha256": verification.get("report_sha256")}
         # A review does not invalidate a STEP release. Call export_step again to record the new drawing status.
         self._save_drawing(directory, drawing)
         return {"status": "pass", "drawing": drawing}
@@ -1153,7 +1299,7 @@ class DomainService:
             domain_events.append(json.loads(read_record(path)))
         drawing = self._drawing(directory, state)
         public_state = deepcopy(state)
-        public_state["release"] = self._release_view(public_state, drawing)
+        public_state["release"] = self._release_view(public_state, drawing, ctx)
         manifest = {"schema_version": "1.0", "package_version": __version__, "run": public_state,
                     "drawing": drawing, "notes": self._notes(ctx, state["run_id"]),
                     "scope": "Path-free application evidence. Target CAD and AP242 acceptance require separate tests.",

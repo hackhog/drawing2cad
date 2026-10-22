@@ -7,11 +7,14 @@ Do not treat it as success.
 Define required features, dimensions, source views, and measurement tolerances before building.
 A correct JSON input does not prove that the resulting solid matches the drawing.
 
-## M1 prototype
+## Delivery requirements
 
-The table separates claims and their evidence. It does not make every claim a prerequisite for the hackathon metric.
-The metric requires three parts, passing MCP validations, and complete source review. A target-CAD opening test is optional.
-AP242 and semantic PMI are optional M3 capabilities. Complete-service drawing acceptance applies to the domain profile.
+Complete-service delivery requires validated geometry, complete source review, an accepted verified drawing, and a current STEP/PDF pair.
+Use domain `export_step` with `delivery: "complete_service"`. Retain the verification report and pair hashes.
+An explicitly requested STEP-only delivery requires validated geometry and complete source review, without a drawing claim.
+The local-path profile supports only this reduced scope. Domain STEP-only delivery uses `delivery: "step_only"`.
+AP242, semantic PMI, and target-CAD opening are optional unless requested. AP242 builds also require the server's independent analysis.
+The table separates claims and their evidence; it does not make every optional claim a delivery prerequisite.
 
 | Claim | Required evidence |
 |---|---|
@@ -50,16 +53,16 @@ It runs on the final shape and the fresh STEP import. It does not verify thread 
 
 A technical release records passing geometry checks and an identified source-review attestation.
 Its coverage counts do not prove that every source feature was identified.
-If independent source review fails, mark source accuracy and the metric result as failed.
+If independent source review fails, mark source accuracy and delivery acceptance as failed.
 Preserve the technical release response as historical evidence, with the later rejection recorded separately.
 
-The M1 JSON description is the editable construction source.
+The JSON description is the editable construction source.
 Its existence does not prove editable construction inside STEP.
 An AP242 schema label does not prove construction or PMI content.
 
 ## Complete-service drawing checks
 
-M2 adds the editable technical drawing and its inspected rendering.
+Complete-service delivery includes the editable technical drawing, independent PDF verification, and an accepted review.
 Verify dimensions, projection and section orientation, units, revision, notes, and uncertainty markers.
 Verify final drawing/model consistency.
 Use [drawing-delivery.md](drawing-delivery.md) for the current drawing requirements.

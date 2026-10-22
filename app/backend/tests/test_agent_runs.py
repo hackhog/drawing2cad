@@ -81,7 +81,8 @@ def test_release_reports_its_drawing_status_and_released_files():
              "release": {"drawing": {"status": "failed", "reason": "The latest drawing render did not pass its checks."}}}
     review = review_view(state, part_validate(state["description"])["review_items"], (200, 100), released=True)
     assert review["release_state"] == "released"
-    assert review["drawing"] == {"status": "failed", "reason": "The latest drawing render did not pass its checks.", "current": True}
+    assert review["drawing"] == {"status": "failed", "reason": "The latest drawing render did not pass its checks.", "current": True,
+                                 "delivery": "step_only", "pair_current": None}
     state["release"]["drawing_current"] = False
     assert review_view(state, [], (200, 100), released=True)["drawing"]["current"] is False
     assert review_view(state, [], (200, 100), released=False)["drawing"] is None
@@ -403,10 +404,64 @@ def test_a_conversation_error_fails_the_run_even_with_a_built_part(environment):
         run = services.jobs.add(source["source_id"])
         services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
         summary = {"status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}}
-        services.runner.finish(run["run_id"], summary)  # No part_read: the error decides before the part state.
+        services.runner.finish(run["run_id"], summary)  # The domain part does not exist; keep the conversation error.
         result = services.jobs.get(run["run_id"])
         assert result["error"]["code"] == "AGENT_FAILED" and "HTTP 429" in result["error"]["message"]
         assert result["failed_phase"] == "drawing"
+
+
+@pytest.mark.parametrize("note_text", ["", "Previous review note"])
+def test_a_released_part_succeeds_with_a_warning_when_the_final_report_fails(environment, note_text):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        part_run = run["part_prefix"] + "-plate"
+        services.backend.call("part_create", run_id=part_run, description=description(source["source_id"], source["sha256"]),
+                              sources=[{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}])
+        if note_text:
+            services.runner.store_report(part_run, note_text)
+        note_url = f"/api/runs/{run['run_id']}/note"
+        services.jobs.update(run["run_id"], part_run_id=part_run, phase="validating")
+        previous_note = client.get(note_url).json()
+        original = services.backend.call
+        environment.setattr(services.backend, "call", lambda operation, **arguments:
+                            {"part": {"build": {"status": "pass"}, "release": {"sha256": SHA}}}
+                            if operation == "part_read" else original(operation, **arguments))
+        environment.setattr(services.runner, "store_report", lambda *args:
+                            pytest.fail("No final text was supplied; the note must not change."))
+        services.runner.finish(run["run_id"], {
+            "status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}})
+        result = services.jobs.get(run["run_id"])
+        assert result["phase"] == "done" and result["job"]["status"] == "succeeded"
+        assert result["job"]["progress"] == 1 and result["job"]["finished_at"] is not None
+        assert result["error"] is None and result["failed_phase"] is None
+        assert result["warning"] == {
+            "code": "AGENT_REPORT_MISSING",
+            "message": "Final report missing: RuntimeError: Model endpoint returned HTTP 429"}
+        assert client.get(note_url).json() == previous_note
+        assert previous_note["text"] == note_text
+        # The web adapter forwards the warning without a domain result.
+        view = api.run_view(services, {**result, "part_run_id": None})
+        assert view["warning"] == result["warning"] and view["error"] is None
+
+
+def test_a_built_part_without_release_still_fails_after_a_conversation_error(environment):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
+        original = services.backend.call
+        environment.setattr(services.backend, "call", lambda operation, **arguments:
+                            {"part": {"build": {"status": "pass"}, "release": None}}
+                            if operation == "part_read" else original(operation, **arguments))
+        services.runner.finish(run["run_id"], {
+            "status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}})
+        result = services.jobs.get(run["run_id"])
+        assert result["phase"] == "failed" and result["job"]["status"] == "failed"
+        assert result["error"]["code"] == "AGENT_FAILED" and "HTTP 429" in result["error"]["message"]
+        assert result["failed_phase"] == "drawing" and result["warning"] is None
 
 
 def test_a_repeated_failed_request_fails_the_run_with_its_tool_field_and_count_without_a_part(environment):
@@ -634,3 +689,88 @@ def test_the_skill_version_comes_from_the_front_matter(tmp_path):
     assert runner.skill_version == "0.20.0"
     skill.write_text("# drawing2cad\n\n  version: 1\n")
     assert runner.skill_version is None
+
+
+def test_drawing_acceptance_and_verification_artifacts_are_shown_separately():
+    from drawing_demo.agent.mapping import acceptance_view, artifact_view
+
+    acceptance = {"status": "unverified", "reason": "1 mandatory verification findings block the acceptance.",
+                  "verification": {"validity": "current", "status": "fail",
+                                   "gate": {"passed": False, "blocking_count": 1, "reviewed": [],
+                                            "blocking": [{"rule_id": "MODEL-01", "status": "fail", "feature": "top", "message": "Missing edges."}]}}}
+    view = acceptance_view(acceptance)
+    assert view["status"] == "unverified" and view["verification"]["gate_passed"] is False
+    assert view["verification"]["blocking"] == [{"rule_id": "MODEL-01", "status": "fail", "feature": "top", "message": "Missing edges."}]
+    assert acceptance_view(None) is None
+    base = {"artifact_id": "art_" + "a" * 32, "filename": "f", "sha256": "b" * 64, "size_bytes": 1, "revision": 1}
+    report = artifact_view({**base, "role": "drawing_verification_report", "media_type": "application/json"}, "c" * 64)
+    preview = artifact_view({**base, "role": "drawing_verification_preview", "media_type": "image/png"}, "c" * 64)
+    diagnostic = artifact_view({**base, "role": "drawing_diagnostic_preview", "media_type": "application/pdf"}, "c" * 64)
+    assert (report["role"], preview["role"], diagnostic["role"]) == ("verification_report", "verification_preview", "drawing_diagnostic")
+
+
+def test_run_view_reads_the_drawing_acceptance_for_each_request(tmp_path):
+    from types import SimpleNamespace
+
+    from drawing_demo.api import run_view
+
+    states = iter(["accepted", "unverified"])
+
+    class Backend:
+        def call(self, operation, **arguments):
+            if operation == "source_get":
+                return {"source_id": "src", "sha256": SHA}
+            if operation == "artifact_list":
+                return {"items": [], "next_cursor": None}
+            assert operation == "drawing_read" and arguments == {"run_id": "part"}
+            return {"revision": 1, "acceptance": {"status": next(states), "reason": None, "verification": None}}
+
+    cached = {"part": {"revision": 1}, "review": {"release_state": "released", "drawing_acceptance": None}, "artifacts": []}
+    services = SimpleNamespace(backend=Backend(), result=lambda record, revision=None: cached,
+                               analysis=lambda source: {"drawing": {"sheet_size_mm": [420, 297]}},
+                               jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
+    record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"}, "error": None, "part_run_id": "part"}
+    assert run_view(services, record)["review"]["drawing_acceptance"]["status"] == "accepted"
+    # The cached result stays, but the acceptance is new.
+    assert run_view(services, record)["review"]["drawing_acceptance"]["status"] == "unverified"
+    assert cached["review"]["drawing_acceptance"] is None
+
+
+def test_review_view_marks_a_changed_complete_service_pair_as_outdated():
+    from drawing_demo.agent.mapping import review_view
+
+    state = {"build": {"status": "pass"}, "release": {"delivery": "complete_service", "pair_current": False, "drawing_current": True,
+                                                      "pair_reason": "The released PDF file changed after the release.",
+                                                      "drawing": {"status": "accepted", "reason": None}}}
+    drawing = review_view(state, [], (420.0, 297.0), released=True)["drawing"]
+    assert drawing == {"status": "accepted", "reason": "The released PDF file changed after the release.", "current": False,
+                       "delivery": "complete_service", "pair_current": False}
+    state["release"].update(pair_current=True, pair_reason=None)
+    assert review_view(state, [], (420.0, 297.0), released=True)["drawing"]["current"] is True
+
+
+def test_run_view_reads_the_release_freshness_for_each_request(tmp_path):
+    from types import SimpleNamespace
+
+    from drawing_demo.api import run_view
+
+    pair = iter([True, False])
+
+    class Backend:
+        def call(self, operation, **arguments):
+            if operation == "source_get":
+                return {"source_id": "src", "sha256": SHA}
+            if operation == "artifact_list":
+                return {"items": [], "next_cursor": None}
+            current = next(pair)
+            return {"revision": 1, "acceptance": None, "release": {"delivery": "complete_service", "drawing": {"status": "accepted", "reason": None},
+                                                    "drawing_current": True, "pair_current": current,
+                                                    "pair_reason": None if current else "The released PDF file changed after the release."}}
+
+    cached = {"part": {"revision": 1}, "review": {"release_state": "released", "drawing": {"status": "accepted"}, "drawing_acceptance": None}, "artifacts": []}
+    services = SimpleNamespace(backend=Backend(), result=lambda record, revision=None: cached,
+                               analysis=lambda source: {"drawing": {"sheet_size_mm": [420, 297]}}, jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
+    record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"}, "error": None, "part_run_id": "part"}
+    assert run_view(services, record)["review"]["drawing"]["current"] is True
+    stale = run_view(services, record)["review"]["drawing"]
+    assert stale["current"] is False and stale["pair_current"] is False and "PDF" in stale["reason"]

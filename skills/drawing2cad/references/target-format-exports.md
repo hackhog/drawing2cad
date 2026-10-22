@@ -14,7 +14,7 @@ Use this sequence:
 4. Create the requested target-format derivative from that verified master.
 5. Reopen the derivative in the specified target version and verify the requested claims.
 
-This sequence applies to the final M3 AP242 master. The M1 prototype keeps its JSON description as the editable source.
+This sequence applies to the final M3 AP242 master. The STEP-only profile keeps its JSON description as the editable source.
 A derivative is an additional delivery artifact.
 Keep the master unchanged and record its hash in the derivative manifest.
 Do not make upstream modeling depend on an optional final-format adapter.

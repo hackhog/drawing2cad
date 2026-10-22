@@ -231,31 +231,55 @@ Schema and layout checks cannot prove that the source was interpreted correctly 
 Use `drawing_validate`, then `drawing_render`. Inspect the returned PDF artifact and layout report.
 Either drawing or model can be created first. After the model build, record `drawing_review` for the exact drawing hash, current part revision, construction-source hashes, reviewer, decision, and reason.
 A model rebuild invalidates the earlier drawing review, including a rebuild of the same revision.
-The STEP release requires the validated model, not the drawing. `release.drawing.status` is `accepted`, `unreviewed`, `rejected`, `failed`, or `missing`, with the drawing files or the reason.
-A drawing render or review does not invalidate the release. Call `export_step` again to record the new drawing status; `drawing_current` in `part_read` shows whether the recorded status is still current.
+With `delivery: "complete_service"`, `export_step` also requires the accepted drawing whose verification is bound to the released STEP bytes, and it records
+`release.pair` (STEP, PDF, and report hashes). `release.pair_current` is false after a change of either file or of the drawing acceptance (ADR 0034).
+With the default `delivery: "step_only"`, the STEP release requires the validated model, not the drawing. `release.drawing.status` is `accepted`, `unverified`, `unreviewed`, `rejected`, `failed`, or `missing`, with the drawing files or the reason.
+`accepted` needs an accepted review and a current `drawing_verify` result that passes the acceptance gate (ADR 0033): each mandatory rule passes,
+is not applicable for a recorded reason, or is a `needs_review` finding that the review decided in `verification_decisions`.
+A new drawing, verification, or review makes a complete-service pair stale. Repeat the affected checks and release the new pair.
+The STEP record remains readable. Use `pair_current` on the final `part_read` to confirm complete-service acceptance.
 The review is an identified attestation; automatic CAD equivalence remains `not_tested`.
 
-## Validation and milestone limits
+## Validation and delivery scopes
 
 Call `cad_worker_probe` before CAD work.
 Use the current revision returned by `part_read` for mutations.
 After a lost response, inspect stored state and artifacts before another mutation.
 
 The build creates the first STEP candidate and validates its import in a fresh worker.
-`export_step` releases that candidate only after dimension checks, complete source-review coverage, and the current drawing-review gate.
+`export_step` releases that candidate after dimension checks and complete source-review coverage.
+Use domain `delivery: "complete_service"` for the main delivery path. This also requires the accepted, verified drawing of the same STEP bytes.
+The explicit `step_only` scope does not establish complete-service acceptance.
 The coverage record is a reviewer attestation, not automatic proof of source interpretation.
 The geometry test is separate from independent STEP conformance analysis and an optional opening test in a target CAD system.
 Unavailable external tests remain `not_tested`.
-They prevent a complete metric pass where required.
+A missing required result prevents the corresponding delivery claim.
 
 Drawing delivery and model validation are separate checks. Their final revisions must agree.
 M3 must prove construction and parameter changes from STEP alone, plus separate semantic and graphical PMI results.
-The web interface belongs to the M2 web part. AP242 and PMI belong to M3.
-Resource acceptance trials follow after the delivery milestones.
+The standalone MCP server works without the optional web backend and UI.
+AP242 and PMI are optional unless requested; AP242 builds require the additional independent analysis.
+The local-path profile supports explicit STEP-only delivery and development tests. It does not supply drawings.
 
 See the [skill workflow](../skills/drawing2cad/references/managed-workflow.md)
 and [validation contract](../skills/drawing2cad/references/validation.md).
 Neither a metadata append nor a structural evidence attestation replaces geometric validation.
+
+## Release record compatibility
+
+New release records have `schema_version: 2`. The AP214 release profile is `validated_geometry_step`.
+The AP242 profile remains `validated_ap242_application_construction`.
+The former `metric_acceptance` field is removed. It has no per-run acceptance equivalent.
+Read the actual validation, source review, drawing acceptance, and pair results for delivery claims.
+The capability field `cad.metric_acceptance` is replaced by `cad.delivery_requirements`, with separate delivery scopes.
+The local CAD capability profile is now `validated_geometry_step` instead of `prototype_geometry_step`.
+
+Stored releases without a release `schema_version` remain readable with their original fields and profile names, including `validated_prototype_step`.
+Readers must accept these records as legacy data. Historical release fields, recorded traces, and artifact hashes are preserved. Reads can append normal call events.
+No complete-service acceptance is inferred from an old profile or its former acceptance field.
+Domain releases without `delivery` remain STEP-only. A current complete-service release needs `delivery: "complete_service"` and `pair_current: true`.
+A new export writes the current release format after the applicable release gates pass.
+The outer part-state and manifest schema versions are unchanged.
 
 ## Recorded evaluations
 

@@ -50,7 +50,7 @@ Read the current revision before a mutation.
 Model edits increment the revision and invalidate prior builds and releases.
 Supply `run_id` and `expected_revision` for each mutation.
 Granular calls also take a typed `feature`.
-The minimum path does not use `build_code`. Use it only when explicitly requested, listed, and permitted by the client.
+The main workflow does not use `build_code`. Use it only when explicitly requested, listed, and permitted by the client.
 `build_code` takes an in-memory `code` string and must assign the resulting build123d shape to `result`.
 The namespace supplies `build123d` and a separate copy of the current `description`.
 Read named parameters from that description. Do not keep a second set of unlinked model values in code.
@@ -82,10 +82,10 @@ The queue has a finite pending-job limit. Do not repeatedly submit when it repor
 If the profile supplies notes tools, use `notes_read` and `notes_update` for run notes.
 Their revision is separate from the part revision.
 
-The description is the editable source for the declarative M1 path.
+The description is the editable source for the declarative construction path.
 Changing a stored number alone does not prove editability.
 Rebuild the changed description and measure the intended geometric effects.
-Scalar references update their direct uses. The prototype does not have an algebraic constraint solver.
+Scalar references update their direct uses. The service does not have an algebraic constraint solver.
 Derived profile points and edge selectors can require coordinated edits after a dimension change.
 
 Closed profiles can contain straight lines and three-point circular arcs.
@@ -124,23 +124,23 @@ Toroidal lips and partial or noncircular transitions are outside this check.
 If `entry_position` is omitted, `entry_side` remains `not_tested`.
 A cylindrical diameter/depth pass alone does not prove the correct entry side.
 
-Thread data in M1 describe a tap-drill representation and thread attributes.
+Thread data in the part description describe a tap-drill representation and thread attributes.
 They do not prove modeled helical flanks or semantic thread PMI in STEP.
 
 ## Drawing and review
 
-This section applies to the domain profile. The local-path metric skips drawing tools.
+This section applies to the domain profile. The local-path STEP-only profile skips drawing tools.
 
-Read `drawing_schema` and prepare DrawingSpec 1.0 with the current `part_revision` and `description_sha256` from `part_read`.
+Read `drawing_schema` and prepare DrawingSpec 2.0 for complete-service delivery with the current `part_revision` and `description_sha256` from `part_read`.
 After a passed build, `drawing_derive_views` derives orthographic, isometric, and section views. A 2.0 view refers to one with `derivation`.
 After `drawing_render`, `drawing_verify` checks the stored PDF bytes against the bound model with a Poppler raster and OCR.
 DrawingSpec 2.0 adds isometric views, sections, the title block, the border, and GPS data. `drawing_validate` checks them, and `drawing_render` draws them
 (see drawing-delivery.md).
-Supply 2D views, line/circle/arc geometry, feature and evidence references, dimensions, notes, and uncertainty markers.
+Use derived views with their feature and evidence references. Supply dimensions, notes, sheet data, and uncertainty markers.
 Drawing scalar references can use a parameter, factor, and offset. Rebind and regenerate after model changes.
 Use `drawing_validate`, then `drawing_render` with `run_id`, `expected_revision`, and `drawing_spec`.
 The worker produces DXF with native dimensions and a PDF rendered from those same entities.
-This is supplied view geometry; automatic solid projection and section extraction are unsupported.
+The maintained adapter supports model-derived views and sections through `drawing_derive_views`. Use its returned geometry and provenance.
 
 Inspect the PDF and layout report. Compare geometry, dimensions, sections, and manufacturing data with the permitted source and measured model.
 Either drawing or model may be created first. The final accepted review must follow the current model build.
@@ -168,8 +168,9 @@ The reviewer must also check features that do not have dimensions, such as a vis
 Do not replace a failed local check with a bounding-box check that does not measure the same feature.
 
 Release requires trusted re-import, passing source-dimension checks, and complete source-review coverage.
-Domain release does not require a drawing review. The release records the current drawing status and its files, or the reason why no drawing exists.
-An identified acting-agent attestation is sufficient for the metric; a separate reviewer is optional when available.
+Complete-service release requires an accepted, verified drawing of the same STEP bytes. Set `delivery: "complete_service"`.
+An explicitly requested domain STEP-only release uses `delivery: "step_only"` and records the actual drawing status.
+An identified acting-agent attestation is sufficient for source review; use a separate reviewer when available.
 Record the actual AP214 schema, units, product identity, and geometry.
 A passed re-import does not prove STEP-only feature reconstruction.
 
@@ -179,11 +180,11 @@ The bounded local-model runner returns artifact IDs and hashes to that host; it 
 Local-path tools return server output paths.
 Artifacts are immutable snapshots. A later run revision does not replace an earlier artifact ID.
 Keep unexecuted target-CAD opening, independent conformance, model comparison, and PMI tests as `not_tested`.
-A successful server operation is not a complete metric pass when required external checks are missing.
+A successful server operation does not establish delivery acceptance when required checks are missing.
 
 ## Legacy evidence and STEP tools
 
-This section is optional and outside the minimum path. Use these tools only when the server and client permit them.
+This section is optional and outside the main workflow. Use these tools only when the server and client permit them.
 
 The `workflow_*` tools retain a separate legacy evidence profile.
 They are hidden by default; `server.expose_legacy_workflow=true` explicitly enables that development profile.

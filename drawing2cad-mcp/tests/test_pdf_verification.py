@@ -363,3 +363,137 @@ def test_a_removed_note_fails(drawing, tmp_path):
     intact = (out / "drawing.pdf").read_bytes()
     report = run(tmp_path / "intact", intact, spec=spec, description=description, expected={**expected, "pdf_sha256": hashlib.sha256(intact).hexdigest()})
     assert by_rule(report, "TEXT-03", "pass")
+
+
+def test_the_correct_flange_passes_the_acceptance_gate_after_its_review_decisions(drawing, tmp_path):
+    from drawing2cad_mcp.drawing_verification import PROFILE, gate, record
+    from drawing2cad_mcp.pdf_verifier import MANDATORY_RULES
+
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
+                 expected={**expected_for(drawing, data)}, raster_sha=hashlib.sha256(data).hexdigest())
+    # Each mandatory rule has a finding: a result, or not_applicable with its reason.
+    assert {item["rule_id"] for item in report["findings"]} >= set(MANDATORY_RULES)
+    assert not [item for item in report["findings"] if item["rule_id"] in MANDATORY_RULES and item["status"] == "not_tested"]
+    stored = {**record(report, {}, []), "validity": "current"}
+    assert stored["profile"] == PROFILE
+    open_items = [item for item in stored["findings"] if item["status"] == "needs_review"]
+    assert open_items and not gate(stored, [])["passed"]
+    decisions = [{"rule_id": item["rule_id"], "feature": item["feature"], "reason": "Reviewed."} for item in open_items]
+    assert gate(stored, decisions)["passed"]
+
+
+def test_each_dimension_states_the_model_value(drawing, tmp_path):
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path, data, step=drawing["step"], spec=drawing["spec"], description=drawing["description"],
+                 expected=expected_for(drawing, data))
+    values = {item["feature"]: item for item in by_rule(report, "DIM-06")}
+    assert len(values) == 8 and all(item["status"] == "pass" for item in values.values()), [
+        (key, item["message"]) for key, item in values.items() if item["status"] != "pass"]
+    height = values["h_total"]["observed"]
+    assert height["model"] == 32 and height["declared"] == 32 and height["observed"] and height["unit"] == "mm"
+    assert "GPS-10" in report["untested_rules"]
+
+
+def test_a_dimension_that_differs_from_the_step_fails_also_with_the_same_wrong_specification(drawing, tmp_path):
+    # The drawing and its specification agree with each other (height 32), but the bound STEP has a hub of 24 mm (height 36).
+    description = flange()
+    next(f for f in description["features"] if f["id"] == "hub")["height"] = 24
+    next(f for f in description["features"] if f["id"] == "bore")["position"][2] = 36
+    description["measurements"][0]["expected"] = [100, 100, 36]
+    step = candidate(description, tmp_path / "taller")
+    data = drawing["pdf"].read_bytes()
+    report = run(tmp_path, data, step=step, spec=drawing["spec"], description=drawing["description"], expected=expected_for(drawing, data))
+    height = next(item for item in by_rule(report, "DIM-06") if item["feature"] == "h_total")
+    assert height["status"] == "fail" and height["observed"]["model"] == 36 and height["observed"]["declared"] == 32
+
+
+def test_dimension_values_in_synthetic_views():
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimension_values
+
+    true_size = {"scale_convention": "true_size"}
+    model = {"geometry": [{"type": "line", "style": "visible", "start": [0, 0], "end": [40, 0], "id": "a"},
+                          {"type": "line", "style": "visible", "start": [0, 0], "end": [0, 25], "id": "b"}]}
+    base = {"evidence_ids": ["drawing"]}
+    length = {**base, "id": "length", "type": "linear", "axis": "horizontal", "p1": [0, 0], "p2": [38, 0], "expected": 38}
+    angle = {**base, "id": "angle", "type": "angular", "center": [0, 0], "p1": [40, 0], "p2": [0, 25], "expected": 90}
+    report = Report()
+    report.add("DIM-01", "pass", "info", "read", feature="length", observed="38")
+    report.add("DIM-01", "pass", "info", "read", feature="angle", observed="90°")
+    views = [{"id": "front", "kind": "orthographic", "projection": true_size, "frame": [0, 0, 50, 50], "dimensions": [length, angle]},
+             {"id": "iso", "kind": "isometric", "projection": {"scale_convention": "isometric_drawing"}, "frame": [0, 0, 50, 50],
+              "dimensions": [{**length, "id": "iso_length", "p2": [40, 0], "expected": 40}]}]
+    check_dimension_values(report, views, {"front": model, "iso": model})
+    results = {item["feature"]: item for item in report.findings if item["rule_id"] == "DIM-06"}
+    # The specification declares 38 mm, the model has 40 mm: the length fails although the specification agrees with itself.
+    assert results["length"]["status"] == "fail" and results["length"]["observed"]["model"] == 40
+    assert results["angle"]["status"] == "pass" and results["angle"]["observed"]["model"] == 90
+    assert results["iso_length"]["status"] == "fail" and "not true size" in results["iso_length"]["message"]
+
+
+def _rectangle(width, height):
+    corners = [[0, 0], [width, 0], [width, height], [0, height]]
+    return [{"type": "line", "style": "visible", "start": corners[i], "end": corners[(i + 1) % 4], "id": f"e{i}"} for i in range(4)]
+
+
+def test_dimension_values_with_anchors_inside_edges_and_concentric_circles():
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimension_values
+
+    base = {"evidence_ids": ["drawing"]}
+    width = {**base, "id": "width", "type": "linear", "axis": "horizontal", "p1": [0, 10], "p2": [40, 10], "expected": 40}
+    tangent = {**base, "id": "tangent", "type": "linear", "axis": "horizontal", "p1": [0, 10], "p2": [25, 10], "expected": 25}
+    leg = {**base, "id": "leg", "type": "angular", "center": [0, 0], "p1": [20, 0], "p2": [0, 10], "expected": 90}
+    bore = {**base, "id": "bore", "type": "radius", "center": [0, 0], "radius": 10, "expected": 10}
+    circles = [{"type": "circle", "style": "visible", "center": [20, 10], "radius": 5, "id": "hole"},
+               {"type": "circle", "style": "visible", "center": [0.0000001, 0], "radius": 10, "id": "inner"},
+               {"type": "circle", "style": "visible", "center": [0, 0], "radius": 20, "id": "outer"}]
+    view = {"id": "front", "kind": "orthographic", "projection": {"scale_convention": "true_size"}, "frame": [0, 0, 50, 50],
+            "dimensions": [width, tangent, leg, bore]}
+
+    def run(geometry, declared_width=40):
+        report = Report()
+        for feature in ("width", "tangent", "leg", "bore"):
+            report.add("DIM-01", "pass", "info", "read", feature=feature, observed="x")
+        check_dimension_values(report, [{**view, "dimensions": [{**width, "expected": declared_width}, tangent, leg, bore]}],
+                               {"front": {"geometry": geometry}})
+        return {item["feature"]: item for item in report.findings if item["rule_id"] == "DIM-06"}
+
+    # Anchors inside the vertical edges and at the extreme point of a hole: the correct values pass.
+    results = run(_rectangle(40, 20) + circles)
+    assert all(results[name]["status"] == "pass" for name in ("width", "tangent", "leg", "bore")), results
+    assert results["width"]["observed"]["model"] == 40 and results["tangent"]["observed"]["model"] == 25
+    # A model of 36 mm width: the anchor inside the edge snaps to the real edge, and the declared 40 mm fails.
+    results = run(_rectangle(36, 20) + circles)
+    assert results["width"]["status"] == "fail" and results["width"]["observed"]["model"] == 36
+
+
+def test_dimension_values_with_midpoints_ellipses_and_leg_directions():
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimension_values
+
+    base = {"evidence_ids": ["drawing"]}
+    # From the midpoint of the bottom edge to the midpoint of the right edge: 20 mm.
+    half = {**base, "id": "half", "type": "linear", "axis": "horizontal", "p1": [20, 0], "p2": [40, 10], "expected": 20}
+    # From the top point of a circle, a contract anchor across the measurement axis, to a line end point: 20 mm.
+    top = {**base, "id": "top", "type": "linear", "axis": "horizontal", "p1": [10, 30], "p2": [30, 30], "expected": 20}
+    # The legs are an edge that starts 0.04 mm above the vertex and a vertical edge: the model angle is 90 degrees,
+    # also when the leg anchors give 89.54 degrees from the vertex.
+    skew = {**base, "id": "skew", "type": "angular", "center": [0, 0], "p1": [5, 0.04], "p2": [0, 5], "expected": 89.54164354}
+    ellipse = {"type": "ellipse", "style": "visible", "center": [20, 10], "major_axis": [4, 0], "ratio": 0.5,
+               "start_parameter": 0, "end_parameter": 360, "id": "oblique_hole"}
+    geometry = [{"type": "line", "style": "visible", "start": [0, 0], "end": [40, 0], "id": "bottom"},
+                {"type": "line", "style": "visible", "start": [40, 0], "end": [40, 20], "id": "right"},
+                {"type": "line", "style": "visible", "start": [0, 0.04], "end": [10, 0.04], "id": "ledge"},
+                {"type": "line", "style": "visible", "start": [0, 0], "end": [0, 10], "id": "left"}, ellipse,
+                {"type": "circle", "style": "visible", "center": [10, 20], "radius": 10, "id": "boss"},
+                {"type": "line", "style": "visible", "start": [30, 30], "end": [30, 40], "id": "post"}]
+    report = Report()
+    for feature in ("half", "skew", "top"):
+        report.add("DIM-01", "pass", "info", "read", feature=feature, observed="x")
+    view = {"id": "front", "kind": "orthographic", "projection": {"scale_convention": "true_size"}, "frame": [0, 0, 50, 50],
+            "dimensions": [half, skew, top]}
+    # The ellipse in the view does not stop the check.
+    check_dimension_values(report, [view], {"front": {"geometry": geometry}})
+    results = {item["feature"]: item for item in report.findings if item["rule_id"] == "DIM-06"}
+    assert results["half"]["status"] == "pass" and results["half"]["observed"]["model"] == 20
+    assert results["top"]["status"] == "pass" and results["top"]["observed"]["model"] == 20
+    assert results["skew"]["status"] == "fail" and results["skew"]["observed"]["model"] == 90

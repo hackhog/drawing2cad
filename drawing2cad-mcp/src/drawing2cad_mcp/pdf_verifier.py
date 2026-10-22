@@ -16,6 +16,36 @@ from pathlib import Path
 from typing import Any
 
 VERIFIER = "drawing2cad-pdf-verifier"
+# Rules that a complete-service drawing must pass. STYLE-01 is reported but is not part of the acceptance.
+# REVIEW-01 is the identified review, which drawing_review records.
+MANDATORY_RULES = (
+    "PDF-INTEGRITY-01", "PDF-STRUCT-01", "PDF-STRUCT-02", "PDF-STRUCT-03", "PDF-STRUCT-04", "PDF-BIND-01",
+    "RENDER-01", "RENDER-02", "RENDER-03", "RENDER-04", "VIEW-REQ-01", "VIEW-REQ-02", "ISO-01",
+    "MODEL-01", "MODEL-02", "MODEL-03", "MODEL-04", "MODEL-05", "DIM-01", "DIM-02", "DIM-03", "DIM-04", "DIM-05", "DIM-06",
+    "UNITS-01", "REV-01", "REV-02", "TEXT-01", "TEXT-02", "TEXT-03", "TEXT-04", "TEXT-05", "TEXT-LIMIT", "SEC-01",
+    "GPS-01", "GPS-02", "GPS-03", "GPS-04", "GPS-05", "GPS-06", "GPS-07", "GPS-08", "GPS-09",
+)
+# A mandatory rule without a finding is not applicable only for these reasons. Any other missing rule is not tested.
+ABSENT_REASONS = {
+    "MODEL-02": "The drawing does not draw hidden edges.",
+    "DIM-04": "The drawing has no radius or diameter dimension in a true-size view.",
+    "DIM-06": "The drawing has no dimension in a view with a model projection.",
+    "REV-01": "A current validated build exists.",
+    "TEXT-01": "The title block has no other field with a value.",
+    "TEXT-03": "The drawing has no notes.",
+    "TEXT-04": "The drawing has no uncertainty markers.",
+    "TEXT-05": "The drawing has no other labels.",
+    "TEXT-LIMIT": "The verifier read each text region of the drawing.",
+    "GPS-01": "The drawing has no tolerance frames.",
+    "GPS-02": "The drawing has no tolerance frames.",
+    "GPS-03": "No tolerance frame is outside the supported profile.",
+    "GPS-04": "The drawing has no unsupported GPS requirements.",
+    "GPS-05": "The drawing has no tolerance frames.",
+    "GPS-06": "No tolerance frame has a datum reference.",
+    "GPS-07": "No tolerance frame has a modifier.",
+    "GPS-08": "The drawing has no datum symbols.",
+    "GPS-09": "The drawing has no datum symbols.",
+}
 VERIFIER_VERSION = "1.0.0"
 REPORT_SCHEMA = "1.0"
 THRESHOLDS = {
@@ -26,6 +56,9 @@ THRESHOLDS = {
     "geometry_on_model_mm": 0.20,     # A drawn primitive point must be this close to a model edge.
     "geometry_on_model": 0.95,
     "anchor_mm": 0.05,                # A dimension anchor must be this close to a model edge.
+    "anchor_snap_mm": 5.0,            # DIM-06 takes the nearest model point within this distance of a declared anchor.
+    "dimension_value_mm": 0.01,       # Largest difference between a model length and a declared or read length.
+    "dimension_value_deg": 0.01,      # Largest difference between a model angle and a declared or read angle.
     "radius_mm": 0.01,
     "blank_ink_fraction": 0.002,
     "page_edge_mm": 0.5,
@@ -312,6 +345,7 @@ def check_pdf(report: Report, path: Path, expected: dict, sheet: dict | None) ->
         if document.needs_pass or document.is_encrypted:
             report.add("PDF-STRUCT-01", "fail", "critical", "The PDF is encrypted. Its pages cannot be inspected.")
             return {"pages": 0, "page_size_mm": None}
+        report.add("PDF-STRUCT-01", "pass", "info", "The PDF opens without a password.")
         count = document.page_count
         page = document[0] if count else None
         size = [page.rect.width * 25.4 / 72, page.rect.height * 25.4 / 72] if page else None
@@ -416,6 +450,10 @@ def check_model(report: Report, raster: Raster, directory: Path, views: list[dic
     """Derive the views again from the bound STEP and compare them with the raster and the declared geometry."""
     from .view_derivation import derive
 
+    for view in views:
+        if not view.get("derivation_request"):
+            report.add("MODEL-01", "not_tested", "info", f"View {view['id']} has no projection, so the model cannot be compared with it.",
+                       region=view["frame"], feature=view["id"])
     requests = [view["derivation_request"] for view in views if view.get("derivation_request")]
     if not requests:
         return {}
@@ -632,6 +670,156 @@ def _largest_component(mask, dpi) -> dict | None:
     return best
 
 
+def _model_edges(model: dict) -> list[dict]:
+    return [item for item in model["geometry"] if item.get("style") in {"visible", "hidden", "section"}]
+
+
+def _on_arc(item: dict, angle: float) -> bool:
+    if item["type"] == "circle":
+        return True
+    span = (item["end_angle"] - item["start_angle"]) % 360 or 360
+    return (angle - item["start_angle"]) % 360 <= span + 1e-9
+
+
+def _model_points(edges: list[dict], direction: list[float] | None = None) -> list[list[float]]:
+    """The characteristic points of the model geometry of a view: end points, midpoints of straight edges, centers,
+    the left, right, top, and bottom points of circles, and, for a measurement direction, the extreme points of circles
+    and arcs along that direction. These include the anchor points of the drawing contract."""
+    points = []
+    for item in edges:
+        if item["type"] == "line":
+            points += [item["start"], item["end"], [(item["start"][i] + item["end"][i]) / 2 for i in (0, 1)]]
+            continue
+        center = item["center"]
+        points.append(center)
+        if item["type"] not in {"circle", "arc"}:
+            continue
+        radius = item["radius"]
+        angles = [item[key] for key in ("start_angle", "end_angle")] if item["type"] == "arc" else [0, 90, 180, 270]
+        if direction is not None:
+            base = math.degrees(math.atan2(direction[1], direction[0]))
+            angles += [angle for angle in (base, base + 180) if _on_arc(item, angle)]
+        points += [[center[0] + radius * math.cos(math.radians(angle)), center[1] + radius * math.sin(math.radians(angle))] for angle in angles]
+    return points
+
+
+def _foot(point, item: dict) -> list[float]:
+    a, b = item["start"], item["end"]
+    d = [b[0] - a[0], b[1] - a[1]]
+    length = d[0] ** 2 + d[1] ** 2
+    t = 0.0 if length == 0 else max(0.0, min(1.0, ((point[0] - a[0]) * d[0] + (point[1] - a[1]) * d[1]) / length))
+    return [a[0] + t * d[0], a[1] + t * d[1]]
+
+
+def _snap(point, points):
+    """The nearest model point within the snap distance, or None."""
+    best = min(points, key=lambda candidate: math.dist(candidate, point), default=None)
+    return best if best is not None and math.dist(best, point) <= THRESHOLDS["anchor_snap_mm"] else None
+
+
+def _unit(vector) -> list[float] | None:
+    length = math.hypot(*vector)
+    return None if length == 0 else [vector[0] / length, vector[1] / length]
+
+
+def _model_value(dimension: dict, model: dict) -> tuple[float | None, str | None]:
+    """Measure a dimension on the model geometry of its view, from model points near its anchors. True-size views only."""
+    edges = _model_edges(model)
+    kind = dimension["type"]
+    if kind == "linear":
+        axis = dimension.get("axis", "horizontal")
+        direction = [1.0, 0.0] if axis == "horizontal" else [0.0, 1.0] if axis == "vertical" else \
+            _unit([dimension["p2"][0] - dimension["p1"][0], dimension["p2"][1] - dimension["p1"][1]])
+        if direction is None:
+            return None, "The aligned dimension has two equal anchors."
+        # An anchor can also lie inside a straight edge across the measurement direction: that edge fixes the measured coordinate.
+        across = [item for item in edges if item["type"] == "line" and (edge := _unit([item["end"][0] - item["start"][0],
+                  item["end"][1] - item["start"][1]])) is not None and abs(edge[0] * direction[0] + edge[1] * direction[1]) <= 1e-6]
+        points = _model_points(edges, direction)
+        q1, q2 = (_snap(p, points + [_foot(p, item) for item in across]) for p in (dimension["p1"], dimension["p2"]))
+        if q1 is None or q2 is None:
+            return None, "An anchor has no model point near it."
+        return abs((q2[0] - q1[0]) * direction[0] + (q2[1] - q1[1]) * direction[1]), None
+    if kind in {"radius", "diameter"}:
+        circles = [(math.dist(item["center"], dimension["center"]), item) for item in model["geometry"] if item["type"] in {"circle", "arc"}
+                   and math.dist(item["center"], dimension["center"]) <= THRESHOLDS["anchor_snap_mm"]]
+        if not circles:
+            return None, "No round model edge is near the dimensioned center."
+        # Concentric edges: among the edges at the nearest center, the radius nearest to the declared radius.
+        closest = min(distance for distance, _ in circles)
+        nearest = min((item for distance, item in circles if distance <= closest + THRESHOLDS["anchor_mm"]),
+                      key=lambda item: abs(item["radius"] - dimension["radius"]))
+        return nearest["radius"] * (2 if kind == "diameter" else 1), None
+    points = _model_points(edges)
+    center = _snap(dimension["center"], points)
+    if center is None:
+        return None, "The angle vertex has no model point near it."
+    # A leg anchor can also lie inside a straight edge from the vertex. Then the direction of that edge is the leg direction,
+    # not the direction from the vertex to the anchor. The edge candidates come first and win a tie.
+    candidates = []
+    for item in edges:
+        if item["type"] != "line":
+            continue
+        near, far = sorted((item["start"], item["end"]), key=lambda point: math.dist(point, center))
+        if math.dist(near, center) <= THRESHOLDS["anchor_mm"]:
+            candidates.append((item, [far[0] - near[0], far[1] - near[1]]))
+    legs = []
+    for anchor in (dimension["p1"], dimension["p2"]):
+        options = [(_foot(anchor, item), vector) for item, vector in candidates] + \
+            [(point, [point[0] - center[0], point[1] - center[1]]) for point in points]
+        best = min(options, key=lambda option: math.dist(option[0], anchor), default=None)
+        if best is None or math.dist(best[0], anchor) > THRESHOLDS["anchor_snap_mm"] or math.hypot(*best[1]) == 0:
+            return None, "An angle leg has no model point near it."
+        legs.append(best[1])
+    angle = math.degrees(math.atan2(legs[1][1], legs[1][0]) - math.atan2(legs[0][1], legs[0][0])) % 360
+    return angle, None
+
+
+def check_dimension_values(report: Report, views: list[dict], derived: dict[str, dict]) -> None:
+    """DIM-06: each dimension states the value of the bound model. The model value comes from the model geometry, projected again,
+    not from the anchor coordinates of the specification. It is compared with the declared value and with the value read from the PDF."""
+    read = {}
+    for item in report.findings:
+        if item["rule_id"] == "DIM-01" and item.get("feature"):
+            read[item["feature"]] = (item["status"] == "pass", item.get("observed"))
+    for view in views:
+        model = derived.get(view["id"])
+        if model is None:
+            continue
+        projection = view.get("projection") or {}
+        true_size = view["kind"] in {"orthographic", "section", "detail"} and projection.get("scale_convention") == "true_size"
+        for dimension in view["dimensions"]:
+            unit = "deg" if dimension["type"] == "angular" else "mm"
+            declared = dimension["expected"]
+            ok_read, observed = read.get(dimension["id"], (False, None))
+            values = {"model": None, "declared": declared, "observed": observed, "unit": unit}
+            if not true_size:
+                report.add("DIM-06", "fail", "major", f"Dimension {dimension['id']} is in a view that is not true size. "
+                           "Its value is not a model value. Dimension it in an orthographic or section view.",
+                           region=view["frame"], feature=dimension["id"], expected="a true-size view", observed=values,
+                           evidence=dimension["evidence_ids"])
+                continue
+            measured, problem = _model_value(dimension, model)
+            if measured is None:
+                report.add("DIM-06", "fail", "major", f"Dimension {dimension['id']}: {problem}", region=view["frame"],
+                           feature=dimension["id"], expected="a model value", observed=values, evidence=dimension["evidence_ids"])
+                continue
+            values["model"] = round(measured, 4)
+            tolerance = THRESHOLDS["dimension_value_deg" if unit == "deg" else "dimension_value_mm"]
+            if abs(measured - declared) > tolerance:
+                report.add("DIM-06", "fail", "major", f"Dimension {dimension['id']} states {number_text(declared)} {unit}, "
+                           f"but the bound model has {number_text(measured)} {unit}.", region=view["frame"], feature=dimension["id"],
+                           expected=values["model"], observed=values, evidence=dimension["evidence_ids"])
+            elif not ok_read:
+                report.add("DIM-06", "fail", "major", f"Dimension {dimension['id']}: the model value is right, but the PDF does not show it readably.",
+                           region=view["frame"], feature=dimension["id"], expected=values["model"], observed=values,
+                           evidence=dimension["evidence_ids"])
+            else:
+                report.add("DIM-06", "pass", "info", f"Dimension {dimension['id']} states the model value in the PDF.",
+                           region=view["frame"], feature=dimension["id"], expected=values["model"], observed=values,
+                           evidence=dimension["evidence_ids"])
+
+
 def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]) -> None:
     """Anchors on the model, round values against the model, and round-feature coverage."""
     dimensioned = set()
@@ -669,6 +857,7 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
                 report.add("DIM-02", "fail", "major", f"Dimension {dimension['id']} has an anchor that is not on an edge of the bound model.",
                            feature=dimension["id"], expected=f"<= {THRESHOLDS['anchor_mm']} mm", observed=[round(d, 4) for d in distances],
                            evidence=dimension["evidence_ids"])
+    round_views = model_views = 0
     for view in views:
         model = derived.get(view["id"])
         if model is None or view["kind"] != "orthographic":
@@ -680,6 +869,10 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
                            region=view["frame"], feature=view["id"], expected=f"diameter {number_text(2 * radius)}", observed=None)
         if radii and all(radius in dimensioned for radius in radii):
             report.add("DIM-03", "pass", "info", f"View {view['id']}: each round feature of the bound model has a dimension.", feature=view["id"])
+        round_views += bool(radii)
+        model_views += 1
+    if model_views and not round_views:
+        report.add("DIM-03", "not_applicable", "info", "The bound model shows no round feature in an orthographic view.")
 
 
 def check_datums(report: Report, raster: Raster, datums: list[dict]) -> None:
@@ -810,8 +1003,20 @@ def verify(directory: Path, request: dict) -> dict:
             check_texts(report, raster, request.get("texts", []), ocr)
         finally:
             ocr.close()
+        # After the text check: DIM-06 compares the model value, the declared value, and the value read from the PDF.
+        check_dimension_values(report, views, derived)
+        report.add("GPS-10", "not_tested", "info", "Tolerance values are read from the PDF (GPS-02), but the part description has no "
+                   "structured GPS values to compare them with.")
     for rule, reason in request.get("service_findings", []):
         report.add(rule["rule_id"], rule["status"], rule["severity"], reason, expected=rule.get("expected"), observed=rule.get("observed"))
+    present = {item["rule_id"] for item in report.findings}
+    for rule in MANDATORY_RULES:
+        if rule in present:
+            continue
+        if rule in ABSENT_REASONS and request["mode"] == "bound":
+            report.add(rule, "not_applicable", "info", ABSENT_REASONS[rule])
+        else:
+            report.add(rule, "not_tested", "info", "The verifier did not run this mandatory rule for this PDF.")
     report.add("STYLE-01", "not_tested", "info", "Line types and line widths are not tested in the raster.")
     report.add("REVIEW-01", "not_tested", "info", "An identified review is not part of this report. Record it with drawing_review.")
     artifacts = [preview(raster, report, directory / "verification-preview.png")] if raster is not None else []

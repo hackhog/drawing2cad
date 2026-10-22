@@ -1,4 +1,4 @@
-// Presentation of the run timeline (ADR 0033): layers, labels, problem groups, and plain explanations of each step.
+// Presentation of the run timeline (ADR 0038): layers, labels, problem groups, and plain explanations of each step.
 // The steps come from the agent trace; this module adds no CAD, drawing, or release rule.
 import type { RunLoopSummary, RunStep, StepProblem } from "./contract";
 

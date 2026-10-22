@@ -16,6 +16,8 @@ class VerifyingRunner(DrawingRunner):
     def __init__(self, storage):
         super().__init__(storage)
         self.requests = []
+        self.report_status = "fail"
+        self.findings = [{"rule_id": "VIEW-REQ-01", "status": "fail", "severity": "major", "message": "Synthetic.", "feature": None}]
 
     def run(self, operation, *, input_pdf=None, input_image=None, verification=None, **kwargs):
         if operation == "render_pdf_poppler":
@@ -28,14 +30,15 @@ class VerifyingRunner(DrawingRunner):
                     "worker": {"worker_id": directory.name, "work_dir": str(directory)}}
         if operation == "verify_drawing_pdf":
             self.calls.append(operation)
+            if getattr(self, "during", None):
+                self.during()
             self.requests.append({"request": verification, "pdf": hashlib.sha256(input_pdf.read_bytes()).hexdigest(),
                                   "step": kwargs.get("input_step") is not None, "image": input_image is not None})
             directory = self.storage / uuid4().hex
             directory.mkdir(parents=True)
-            body = {"schema_version": "1.0", "verifier_version": "1.0.0", "status": "fail", "mode": verification["mode"],
-                    "binding": verification["expected"], "untested_rules": ["STYLE-01"],
-                    "findings": [{"rule_id": "VIEW-REQ-01", "status": "fail", "severity": "major", "message": "Synthetic."}],
-                    "scope": "Synthetic."}
+            body = {"schema_version": "1.0", "verifier_version": "1.0.0", "status": self.report_status, "mode": verification["mode"],
+                    "profile": verification["profile"], "binding": verification["expected"], "untested_rules": ["STYLE-01"],
+                    "findings": deepcopy(self.findings), "scope": "Synthetic."}
             artifacts = []
             for name, data in (("verification-report.json", json.dumps(body).encode()), ("verification-preview.png", b"synthetic")):
                 path = directory / name

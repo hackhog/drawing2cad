@@ -46,14 +46,45 @@ export interface Part {
   capabilities: { parameter_edit: boolean };
 }
 
-export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report";
+export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report"
+  | "verification_report" | "verification_preview" | "projection_overlay" | "projection_report";
+
+export type ProjectionStatus = "matches" | "deviates" | "not_tested";
+
+/** The newest source-projection check of the current part revision. Limits and check results come from the MCP. */
+export interface ProjectionCheck {
+  status: ProjectionStatus;
+  revision: number | null;
+  reason: string | null;
+  report_artifact_id: string | null;
+  overlay_artifact_id: string | null;
+  page: number | null;
+  sheet_size_mm: [number, number] | null;
+  views: ProjectionView[];
+  simulated?: boolean;
+}
+
+export interface ProjectionView {
+  view_id: string;
+  status: "pass" | "fail" | "not_tested";
+  reason: string | null;
+  region_sheet_mm: Box;
+  metrics: { p95_mm: number | null; max_mm: number | null; coverage: number | null };
+  limits: { p95_mm: number | null; max_mm: number | null; coverage_min: number | null };
+  checks: Record<"p95" | "max" | "coverage", "pass" | "fail" | "not_tested">;
+  max_capped: boolean;
+}
 
 /** Drawing status that a STEP release records. The drawing does not gate the release. */
 export interface ReleaseDrawing {
-  status: "accepted" | "unreviewed" | "rejected" | "failed" | "missing";
+  status: "accepted" | "unverified" | "unreviewed" | "rejected" | "failed" | "missing";
   reason: string | null;
   /** False when the drawing changed after the release. Call export_step again to record the new status. */
   current: boolean;
+  /** complete_service: the release needed a drawing verified against the released STEP bytes. Older records have none. */
+  delivery?: "step_only" | "complete_service";
+  /** True while the released STEP and drawing PDF are the verified pair; false after a change; null without a pair. */
+  pair_current?: boolean | null;
 }
 
 /** An output file. Content is read by `artifact_id` only. */
@@ -87,7 +118,7 @@ export interface StepProblem {
   message: string;
 }
 
-/** One step of the agent trace (ADR 0033). Texts are shortened; `runStep` supplies the full details. */
+/** One step of the agent trace (ADR 0038). Texts are shortened; `runStep` supplies the full details. */
 export type RunStep = { sequence: number; at: string | null; turn: number | null } & (
   | { kind: "skill"; paths: string[]; text: string }
   | { kind: "model"; seconds: number | null; prompt_tokens: number | null; output_tokens: number | null; text: string; tool_calls: string[] }
@@ -161,6 +192,31 @@ export interface Review {
   validation: ValidationResult[];
   /** Drawing status of the current release, or null without a release. */
   drawing?: ReleaseDrawing | null;
+  /** Acceptance of the current drawing: review plus the gate of the final PDF verification. */
+  drawing_acceptance?: DrawingAcceptance | null;
+}
+
+/** One mandatory verification finding that blocks the acceptance. */
+export interface BlockingFinding {
+  rule_id: string;
+  status: "fail" | "needs_review" | "not_tested" | "not_applicable";
+  feature: string | null;
+  message: string;
+}
+
+/** The service decides the acceptance. The UI only shows it: automated results, review decisions, and untested rules stay distinct. */
+export interface DrawingAcceptance {
+  status: ReleaseDrawing["status"];
+  reason: string | null;
+  verification: {
+    validity: "current" | "stale" | null;
+    status: "pass" | "fail" | "needs_review" | null;
+    gate_passed: boolean;
+    blocking_count: number;
+    blocking: BlockingFinding[];
+    /** needs_review findings that the identified review decided. */
+    reviewed_count: number;
+  } | null;
 }
 
 /** The one note of a run, with its own revision. Revision 0 means that no note exists yet. */
@@ -193,9 +249,12 @@ export interface Run {
   artifacts: Artifact[];
   review: Review | null;
   error: ServiceError | null;
+  warning?: RunWarning | null;
   simulated: boolean;
   /** Final text of the agent conversation, from its trace. It is also the first text of the run note (ADR 0018). */
   agent_report?: string | null;
+  /** Separate from release and generated-PDF verification. Absent on older servers. */
+  projection?: ProjectionCheck;
 }
 
 export interface ServiceError {
@@ -203,6 +262,11 @@ export interface ServiceError {
   message: string;
   field: string | null;
   recovery: string | null;
+}
+
+export interface RunWarning {
+  code: string;
+  message: string;
 }
 
 /** Actual capabilities of the connected service. The UI hides or explains every unavailable one. */

@@ -21,11 +21,14 @@ const ROLE: Record<ArtifactRole, string> = {
   drawing_pdf: "Technical drawing (PDF)", drawing_diagnostic: "Drawing diagnostic (PDF)", drawing_dxf: "Technical drawing (DXF)", step: "3D model (STEP)",
   part_description: "Part description (JSON)", manifest: "Run manifest", trace: "MCP trace",
   events: "Domain events", report: "Review report (JSON)",
+  verification_report: "Drawing verification report (JSON)", verification_preview: "Drawing verification preview (PNG)",
+  projection_report: "Source projection report (JSON)", projection_overlay: "Source projection overlay (PNG)",
 };
 
 // The STEP release records the drawing status. The drawing does not gate the release.
 const DRAWING_STATUS: Record<ReleaseDrawing["status"], string> = {
-  accepted: "Drawing reviewed and released.",
+  accepted: "Drawing reviewed, verified, and released.",
+  unverified: "Drawing reviewed, but its final PDF verification did not pass the acceptance gate.",
   unreviewed: "Drawing created, but not reviewed.",
   rejected: "Drawing rejected in review.",
   failed: "Drawing faulty. The diagnostic files belong to the release.",
@@ -54,7 +57,11 @@ export function ArtifactsPanel({ run }: { run: Run }) {
           <AlertTitle>Released: model of revision {revision}</AlertTitle>
           {run.review?.drawing && (
             <AlertDescription>
-              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " This state is outdated: the drawing was changed after the release."}</p>
+              <p>{DRAWING_STATUS[run.review.drawing.status]}{run.review.drawing.current ? "" : " This state is outdated: the drawing or a released file was changed after the release."}</p>
+              {run.review.drawing.delivery === "complete_service" && (
+                <p>{run.review.drawing.pair_current ? "Complete-service delivery: the STEP model and the drawing PDF are verified as one pair."
+                  : "Complete-service delivery is outdated: the released STEP and drawing no longer form the verified pair."}</p>
+              )}
               {run.review.drawing.reason && <p>{run.review.drawing.reason}</p>}
             </AlertDescription>
           )}

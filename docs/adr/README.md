@@ -33,6 +33,10 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0030](0030-views-derived-from-the-validated-model.md) | Views derived from the validated model |
 | [0031](0031-render-complete-drawings-from-contract-2.md) | Render complete drawings from contract 2.0 |
 | [0032](0032-independent-verification-of-the-final-drawing-pdf.md) | Independent verification of the final drawing PDF |
-| [0033](0033-run-timeline-from-the-agent-trace.md) | Run timeline from the agent trace |
+| [0033](0033-drawing-acceptance-gate.md) | Drawing acceptance gate |
+| [0034](0034-step-and-drawing-released-as-a-verified-pair.md) | STEP and drawing released as a verified pair |
+| [0035](0035-shared-runtime-base-for-the-mcp-and-backend-images.md) | Shared runtime base for the MCP and backend images |
+| [0036](0036-dimension-values-against-the-step-geometry.md) | Dimension values against the STEP geometry |
+| [0038](0038-run-timeline-from-the-agent-trace.md) | Run timeline from the agent trace |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

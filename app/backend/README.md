@@ -73,7 +73,7 @@ Commit the changed `poetry.lock`. The backend CI job stops if the lock is out of
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
 | `GET`/`PUT` | `/api/runs/{id}/note` | Read / replace the run note; `PUT` takes `expected_revision` and `text` (409 on a stale revision or an active run) |
 | `GET` | `/api/runs/{id}/files`, `/api/runs/{id}/archive` | Run record and agent trace, as single files or a ZIP archive |
-| `GET` | `/api/runs/{id}/steps`, `/api/runs/{id}/steps/{sequence}` | Agent trace as timeline steps with the loop summary; full details and images of one step ([ADR 0033](../../docs/adr/0033-run-timeline-from-the-agent-trace.md)) |
+| `GET` | `/api/runs/{id}/steps`, `/api/runs/{id}/steps/{sequence}` | Agent trace as timeline steps with the loop summary; full details and images of one step ([ADR 0038](../../docs/adr/0038-run-timeline-from-the-agent-trace.md)) |
 | `GET` | `/api/artifacts/{id}/content` | Artifact content by opaque ID, verified against its SHA-256 |
 | `POST` | `/api/model` | GLB for a STEP file that the user supplies (display only) |
 
@@ -164,7 +164,9 @@ A backend that still has another master key saves no key after this command.
 - `src/drawing_demo/jobs.py`: web run records (job state, agent trace, domain part run ID).
 - `src/drawing_demo/measurements.py`: review measurements per source (review time, manual-effort estimate).
 - `src/drawing_demo/agent/`: model adapter (`model.py`), runner (`runner.py`), model profiles and run limits (`profiles.py`), the SQLite configuration store with encrypted keys (`config_store.py`), and mapping of domain results to the contract (`mapping.py`).
-- `Dockerfile`: Python runtime with the MCP package, build123d, the sandbox libraries, Poppler, and the agent skill. Poetry installs the locked runtime dependencies.
+- The image is the target `backend` of `deployment/Dockerfile` (ADR 0035). It starts from the shared runtime stage of the MCP image:
+  Poppler, Tesseract with `eng` and `deu`, the STEPcode reader, and the sandbox libraries. It adds the MCP package, the backend, and the agent skill.
+  Poetry installs the locked runtime dependencies. The backend refuses to start in the image when a system tool is missing.
 
 The Docker build context is the repository root because the MCP package is a path dependency.
 The image excludes input drawings and local configuration.

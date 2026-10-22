@@ -6,6 +6,8 @@ app/frontend) and an installed Google Chrome; without them they are skipped.
 """
 
 from pathlib import Path
+import io
+import json
 import re
 import socket
 import threading
@@ -14,6 +16,7 @@ import time
 import httpx2
 import pytest
 import uvicorn
+from PIL import Image, ImageDraw
 from starlette.responses import HTMLResponse
 from starlette.staticfiles import StaticFiles
 
@@ -115,6 +118,10 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
 
     page.get_by_role("tab", name="Review").click()
     expect(page.get_by_text("Report: part created, not built.")).to_be_visible()
+    projection = page.get_by_role("region", name="Does the model match the drawing?")
+    expect(projection).to_be_visible()
+    expect(projection.get_by_text("not tested", exact=True)).to_be_visible()
+    expect(page.get_by_label("Source drawing agreement")).to_contain_text("not tested")
 
     # The note starts with the agent report as rendered Markdown and keeps the report in the review tab after a change.
     page.get_by_role("tab", name="Notes").click()
@@ -159,3 +166,45 @@ def test_failures_show_a_message_with_recovery(site, page):
     expect(page.get_by_text("Not found")).to_be_visible()
     page.get_by_role("link", name="To overview").click()
     expect(page).to_have_url(f"{site}/")
+
+
+def test_projection_overlay_and_limits_in_the_review_tab(site, page, tmp_path):
+    """The browser receives a simulated projection report and PNG through its usual API paths."""
+    expect = playwright.expect
+    page.goto(site)
+    upload(page, "Plate_dwg.pdf", pdf_bytes())
+    expect(page.get_by_text("Plate read")).to_be_visible()
+    page.get_by_role("cell", name="Plate", exact=True).click()
+    page.get_by_role("button", name="Start run").click()
+    page.get_by_role("dialog", name="Start a CAD run").get_by_role("button", name="Start run").click()
+    expect(page.get_by_text("The agent built no valid model", exact=False)).to_be_visible()
+    run_id = page.url.split("/runs/")[1].split("?")[0]
+    with httpx2.Client(base_url=site, trust_env=False) as client:
+        value = client.get(f"/api/runs/{run_id}").json()
+    overlay_id = "art_" + "f" * 32
+    value["simulated"] = True
+    value["projection"] = {
+        "status": "deviates", "revision": 1, "simulated": True, "reason": None, "page": 1,
+        "overlay_artifact_id": overlay_id, "report_artifact_id": None, "sheet_size_mm": [297, 210],
+        "views": [{"view_id": "front", "status": "fail", "reason": None, "region_sheet_mm": [20, 20, 200, 140],
+                   "metrics": {"p95_mm": 0.49, "max_mm": 0.8, "coverage": 0.98},
+                   "limits": {"p95_mm": 0.3, "max_mm": 1, "coverage_min": 0.85},
+                   "checks": {"p95": "fail", "max": "pass", "coverage": "pass"}, "max_capped": False}],
+    }
+    image = Image.new("RGB", (594, 420), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((80, 120, 340, 230), outline="grey", width=4)
+    draw.rectangle((82, 120, 342, 230), outline="blue", width=2)
+    draw.ellipse((336, 114, 348, 126), outline="red", width=2)
+    content = io.BytesIO()
+    image.save(content, format="PNG")
+    page.route(f"**/api/runs/{run_id}", lambda route: route.fulfill(content_type="application/json", body=json.dumps(value)))
+    page.route(f"**/api/artifacts/{overlay_id}/content", lambda route: route.fulfill(content_type="image/png", body=content.getvalue()))
+    page.goto(f"{site}/runs/{run_id}?tab=review")
+    section = page.get_by_role("region", name="Does the model match the drawing?")
+    expect(section.get_by_role("img", name="Source and model overlay for front")).to_be_visible()
+    expect(section.get_by_text("0.490 mm", exact=True)).to_be_visible()
+    expect(section.get_by_text("Minimum 85.0%", exact=True)).to_be_visible()
+    expect(section.get_by_text("Simulated projection data", exact=False)).to_be_visible()
+    expect(page.get_by_label("Source drawing agreement")).to_contain_text("deviates")
+    section.screenshot(path=str(tmp_path / "projection-review.png"))

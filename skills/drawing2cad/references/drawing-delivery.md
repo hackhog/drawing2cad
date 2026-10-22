@@ -3,9 +3,9 @@
 Create both the technical drawing and the 3D model for the complete service.
 Either artifact can be created first. Compare their final revisions before delivery.
 
-The M1 prototype delivers a validated STEP candidate and an editable JSON part description.
+The STEP-only profile delivers a validated STEP file and an editable JSON part description.
 It does not satisfy the complete drawing deliverable.
-The M2 domain profile supplies dimensioned DXF and PDF rendering from an explicit drawing specification.
+The domain profile supplies dimensioned DXF and PDF rendering from an explicit drawing specification.
 
 ## Drawing requirements
 
@@ -79,8 +79,12 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
   Do not write a tolerance as a note. A note that looks like a tolerance gets the finding `gps_free_text`.
   A validation pass of a frame is evidence for the declaration only, not for ISO conformity.
 - Call `drawing_verify` with the PDF artifact of the final drawing and its SHA-256. It checks the stored PDF bytes against the bound model.
-  Record its status in the coverage table. A `fail` finding blocks delivery; correct the drawing, render it, and verify it again.
-  `needs_review` findings and the listed untested rules stay open rows. A stale verification (`drawing_read`) is not evidence.
+  Record its status in the coverage table. A `fail` or `not_tested` mandatory finding blocks the acceptance; correct the drawing, render it, and verify it again.
+  A `needs_review` finding blocks until `drawing_review` decides it in `verification_decisions` with a reason. Do not decide a finding that you did not check.
+  A stale verification (`drawing_read`) is not evidence. `drawing_read` returns `acceptance` with the blocking findings.
+- The drawing status is `accepted` only after an accepted review of the current verification report. Otherwise it is `unverified`.
+- `DIM-06` measures each dimension on the bound STEP geometry. A declared value that differs from the model value fails, also when the specification agrees with itself.
+  Dimension features only in orthographic or section views: a dimension in an isometric view fails as not true size.
 - Verify a supplied source drawing with `source_id` only as an inspection aid. Without a binding, the model rules are `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.
@@ -108,9 +112,9 @@ For each printed source dimension, name its drawing dimension or group callout. 
 Use `drawing_validate`, then `drawing_render`. Keep its returned DXF, PDF, and layout-report hashes.
 Inspect the rendered drawing for missing internal features, incorrect visibility, gaps, and misleading overlaps.
 A passed layout check does not prove feature coverage or agreement with the model.
-The adapter does not derive arbitrary projections or sections from the solid.
-Section geometry and its identifying note must be supplied and independently reviewed.
-Automatic drawing-to-solid equivalence, general GD&T validation, and semantic PMI are unsupported.
+Use `drawing_derive_views` for supported model projections and sections. Review section geometry and its identifying note.
+The PDF verifier compares supported model edges and annotations. It does not prove arbitrary drawing-to-solid equivalence or general GD&T conformity.
+Semantic PMI requires separate tests.
 Passing layout checks cannot prove that the source was interpreted correctly or that the selected views are sufficient.
 
 ## Review and consistency
@@ -126,8 +130,10 @@ Passing layout checks cannot prove that the source was interpreted correctly or 
 Record `drawing_review` with the current drawing hash, part revision, construction-source hashes, reviewer, decision, and reason.
 The final accepted review must follow the current model build. Rebuilding the model invalidates an earlier review.
 This is an identified review attestation. Automatic drawing-to-solid equivalence remains `not_tested`.
-Domain STEP release requires the model validation gates, not the drawing. The release records the drawing status and its files, or the reason why no drawing exists.
-The local-path metric does not require drawing tools. Its result does not establish complete-service drawing delivery.
+Complete-service release requires an accepted drawing verified against the released STEP bytes. Use `delivery: "complete_service"`.
+Confirm `pair_current: true` on the final `part_read`. A new drawing, verification, or review makes an earlier pair stale.
+An explicitly requested STEP-only release records the actual drawing status without claiming a verified pair.
+The local-path STEP-only profile does not supply drawing tools. Its result does not establish complete-service drawing delivery.
 
 A drawing can reveal a model error. Do not change the source requirement to conceal that error.
 A changed design requires a new revision and a recorded reason.

@@ -227,7 +227,9 @@ class Application:
                     "step_schema": "AP214IS", "default_export_profile": "ap214",
                     "export_profiles": ["ap214", "ap242"],
                     "editable_source": "versioned_json_part_description",
-                    "metric_acceptance": "Requires three parts with passing MCP validation and fresh STEP re-import, complete source review, and a review list. Independent STEP analysis and a target-CAD opening test are optional, separate claims."},
+                    "delivery_requirements": {"step_only": "Passing model checks, fresh STEP re-import, complete source review, and review records.",
+                                              "complete_service": "Domain profile: STEP-only requirements plus an accepted verified drawing and a current STEP/PDF pair. Request delivery complete_service explicitly.",
+                                              "optional_claims": "AP242, semantic PMI, and target-CAD opening require separate evidence when requested. AP242 builds also require bounded independent analysis."}},
             "measurement_tools": list(MEASUREMENT_SCHEMAS),
             "domain_services": {**{name: {"available": False, "reason": "Verified backend adapter is not implemented."}
                                 for name in ("drawing_authoring", "drawing_rendering", "parametric_build",
@@ -431,6 +433,9 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)  # stderr; stdout is exclusively MCP protocol.
     try:
+        # An image of the shared runtime refuses to start without its system tools (ADR 0035).
+        from .runtime_tools import require_if_configured
+        require_if_configured()
         settings = Settings.load(args.config)
         if args.transport is not None:
             settings.server.transport = args.transport
@@ -448,7 +453,7 @@ def main() -> None:
             from .http import create_http_app
 
             app = create_http_app(Application(settings))
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
     if settings.server.transport == "streamable-http":
         # One process owns the shared CAD service. Forwarded headers require an

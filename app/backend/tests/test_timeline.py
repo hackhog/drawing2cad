@@ -1,4 +1,4 @@
-"""The run timeline condenses the agent trace into steps (ADR 0033). No model is called."""
+"""The run timeline condenses the agent trace into steps (ADR 0038). No model is called."""
 
 import json
 

@@ -4,37 +4,40 @@ Use only `drawing2cad-mcp` for PDF preparation and CAD execution.
 The skill does not depend on FreeCAD, build123d, or another backend's API.
 The server owns backend selection, schemas, workers, artifacts, and capability reports.
 
-## Delivery milestones
+## Delivery scopes
 
-| Milestone | Required outputs | Limits |
+| Scope | Required outputs | Limits |
 |---|---|---|
-| M1 prototype | Validated STEP candidate, editable JSON part description, review list, coverage report, manifest, and trace. | JSON is the construction source. STEP-only editability and PMI remain unproven. |
-| M2 complete service | Uploads, source and artifact IDs, one application for MCP/API/browser clients, and a dimensioned technical drawing. | The drawing and model can be created in either order. Their final revisions must agree. |
-| M3 AP242 | AP242 construction, supported import adapters, driving parameter changes, and semantic and graphical PMI. | Each claim needs its own test from STEP alone where required. |
+| Complete service | Validated STEP, editable JSON description, dimensioned DXF/PDF, accepted drawing review, current verified pair, review list, coverage, manifest, and trace. | Use domain `delivery: "complete_service"`. The final `pair_current` must be true. |
+| STEP-only | Validated STEP, editable JSON description, review list, coverage, manifest, and trace. | This explicitly requested scope does not claim a verified drawing. Domain release uses `delivery: "step_only"`. |
+| Optional AP242 and PMI | Requested construction replay, supported parameter changes, and semantic or graphical PMI. | Each claim needs its own test from STEP alone where required. AP242 builds require the server's additional independent analysis. |
 
-AP242 and semantic PMI are M3 capabilities and are optional for the hackathon metric.
-They do not block delivery of an explicitly limited M1 prototype.
-A passed prototype must not be described as the final AP242 master.
-The initial M3 adapter is documented in [ap242-adapter.md](ap242-adapter.md).
-Its application-specific construction replay does not prove native target-CAD features.
+AP214 can satisfy the STEP requirement for either delivery scope.
+AP242 and semantic PMI are optional unless the requested delivery requires them.
+The [AP242 adapter reference](ap242-adapter.md) describes the supported application-specific construction replay.
+Its results do not prove native target-CAD features.
 
-The M2 domain profile accepts PDF uploads and keeps storage paths internal.
+The domain profile accepts PDF uploads and keeps storage paths internal.
 Clients use source, run, job, and artifact IDs.
 A remote client must not need access to the server filesystem.
-The local-path profile supports development and the metric. It does not deliver technical drawings.
+The local-path profile remains a reduced STEP-only profile for explicit STEP-only requests and development tests.
+It does not deliver technical drawings or a complete-service pair.
 Use uploads, jobs, and downloads only when the client permits those tools.
-Shared services, storage, jobs, notes, and drawing delivery belong to the MCP milestone.
-The web API and React interface are a separate implementation milestone using the same service instance and contracts.
+Storage, jobs, notes, drawing delivery, and release rules belong to the MCP service.
+The web backend and React interface are optional clients of the same service contracts.
+The standalone MCP server requires neither web component.
 MCP currently uses one configured principal. Its bearer token does not create separate client identities.
 
 ## Technical drawing
 
-The maintained format is editable DXF plus a PDF inspection copy rendered from the same entities.
-The adapter validates supplied view geometry, dimensions, evidence, and layout.
-It does not automatically project solids or extract sections. Source accuracy and drawing/model agreement require independent review.
+The maintained format is editable DXF plus a PDF rendered from the same drawing revision.
+Use `drawing_derive_views` for supported model projections and sections.
+The adapter validates geometry, dimensions, evidence, and layout.
+Independent PDF verification and identified review establish the supported drawing acceptance claims.
+A layout pass alone does not establish source accuracy or drawing/model agreement.
 Raw projections or hand-written SVG do not establish a complete technical drawing.
 
-Use [drawing-delivery.md](drawing-delivery.md) for sheet requirements.
+Use [drawing-delivery.md](drawing-delivery.md) for sheet requirements and verification limits.
 
 ## STEP and target formats
 
@@ -49,7 +52,7 @@ Distinguish opening an imported body from reconstructing native editable feature
 
 ## Backend decision
 
-The selected M1 backend is build123d with OCP/OpenCascade.
+The selected CAD backend is build123d with OCP/OpenCascade.
 The maintained server translates the JSON feature description into backend operations.
 Granular calls and full-description builds must use the same feature representation.
 

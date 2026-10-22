@@ -1,4 +1,4 @@
-// Run timeline (ADR 0033): what the skill, the agent loop, the MCP server, and the CAD worker did, step by step,
+// Run timeline (ADR 0038): what the skill, the agent loop, the MCP server, and the CAD worker did, step by step,
 // with the failed calls and the corrections of the loop. It updates while the run is active.
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";

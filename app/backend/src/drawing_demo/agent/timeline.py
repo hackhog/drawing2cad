@@ -1,4 +1,4 @@
-"""Condense the agent trace of a run into the steps of the run timeline (ADR 0033).
+"""Condense the agent trace of a run into the steps of the run timeline (ADR 0038).
 
 The trace of `drive()` holds one JSON file for each event, named `<sequence>-<kind>.json`. This module only presents
 these events; it adds no CAD, drawing, or release rule. Model requests repeat the complete conversation with all

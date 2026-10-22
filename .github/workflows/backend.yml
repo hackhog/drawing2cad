@@ -5,10 +5,12 @@ name: Backend
 
 on:
   pull_request:
-    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', '.github/workflows/backend.yml']
+    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', 'deployment/Dockerfile', '.dockerignore',
+            '.github/workflows/backend.yml']
   push:
     branches: [main]
-    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', '.github/workflows/backend.yml']
+    paths: ['app/backend/**', 'drawing2cad-mcp/**', 'skills/drawing2cad/SKILL.md', 'deployment/Dockerfile', '.dockerignore',
+            '.github/workflows/backend.yml']
 
 permissions:
   contents: read
@@ -28,7 +30,7 @@ jobs:
         with:
           python-version: '3.12'  # Same version as the backend image.
       - name: Install Poetry
-        run: pipx install --python "$(command -v python)" poetry==2.4.1  # Same version as app/backend/Dockerfile.
+        run: pipx install --python "$(command -v python)" poetry==2.4.1  # Same version as deployment/Dockerfile.
       # poetry install stops if pyproject.toml and poetry.lock do not agree.
       - run: poetry install
       - name: Backend lock file agrees with the MCP package
@@ -40,4 +42,7 @@ jobs:
       - run: poetry run pytest
       - name: Build the container image
         working-directory: .
-        run: docker build -f app/backend/Dockerfile -t drawing2cad-backend:ci .
+        run: docker build -f deployment/Dockerfile --target backend -t drawing2cad-backend:ci .
+      - name: The backend image has each system tool of the shared runtime
+        working-directory: .
+        run: docker run --rm --network none drawing2cad-backend:ci python -m drawing2cad_mcp.runtime_tools

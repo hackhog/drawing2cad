@@ -5,7 +5,7 @@ The same interface serves PDF preparation, part construction, STEP validation, a
 No direct PDF or CAD library call is part of the agent workflow.
 
 The domain profile accepts PDF uploads and returns source and artifact IDs.
-Use source IDs and hashes supplied by the host before the minimum path.
+Use source IDs and hashes supplied by the host before the workflow.
 If the client permits uploads, call `upload_begin` with filename, byte count, and SHA-256.
 Then call `upload_chunk` and `upload_complete`. The bounded local-model runner does not permit these upload tools.
 The default limits are 20 MiB per PDF and 512 KiB per decoded chunk.

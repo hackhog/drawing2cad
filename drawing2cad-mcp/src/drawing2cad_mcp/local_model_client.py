@@ -38,7 +38,7 @@ ALLOWED_TOOLS = frozenset({
     # User decisions on review flags. Only a human reviewer records them, through an adapter.
     "source_flags_read",
 })
-# Model changes invalidate a STEP release. Drawing renders and reviews do not; the release records the drawing status.
+# Model changes invalidate a STEP release. Drawing changes retain that record but make a complete-service pair stale.
 MUTATION_TOOLS = frozenset({"part_create", "part_update", "create_base_body", "add_hole", "add_pocket",
                             "add_cut", "add_chamfer", "add_fillet", "build_from_description"})
 QUESTION_TOOL = {"type": "function", "function": {
@@ -389,22 +389,23 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
               + ("The target is a validated STEP model, an editable JSON description, and a complete dimensioned drawing. "
                  "AP242, semantic PMI, independent conformance and target-CAD opening remain untested unless a tool proves them. "
                  if domain else
-                 "The M1 target is a validated STEP geometry artifact and editable JSON description. "
+                 "The local-path STEP-only target is a validated STEP geometry artifact and editable JSON description. "
                  "AP242, drawings, semantic PMI, independent conformance and target-CAD opening remain untested unless a tool proves them. ")
               + "Record reasonable assumptions and continue. Use request_user_input only for a required question with no reasonable assumption. "
               f"Use only the authorized PDF {source}. Use run IDs that start with {plan['run_prefix']}-. "
-              + ("The drawing is a required deliverable, not an optional detail. Make it with drawing_schema, drawing_validate, "
-                 "drawing_render, artifact_preview, and drawing_review, following references/drawing-delivery.md: "
+              + ("Complete-service delivery requires a verified drawing. Use drawing_schema, drawing_derive_views, drawing_validate, "
+                 "drawing_render, drawing_verify, artifact_preview, and drawing_review, following references/drawing-delivery.md: "
                  "its views must show every feature of the current part revision, with thicknesses, depths, and hole positions dimensioned. "
                  "If your drawing_review rejects the drawing, correct the drawing_spec, render it, and review it again. "
-                 "Call export_step only after an accepted drawing review, or when the remaining tool requests cannot fit "
-                 "another drawing attempt plus export_step and part_export_review; then report release.drawing.status with its reason. "
+                 "Call export_step with delivery complete_service only after verification and an accepted drawing review. "
+                 "Confirm release.pair_current on the final part_read. If the drawing cannot pass within the budget, report incomplete delivery. "
+                 "STEP-only is allowed only for an explicit STEP-only request. Do not substitute a STEP-only release when the complete-service budget runs out. Report release.drawing.status and its reason. "
                  "Read source_flags_read before construction and apply the user decisions on review flags. " if domain else "")
               + ("The client supplies the skill references of each step after your first tool request of that step. "
                  "Read other skill files with skill_read. " if references is not None else "")
               + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
     task = ("Reconstruct the authorized PDF as a parameterized part description. Validate the model, "
-            + ("make a complete dimensioned drawing of it, " if domain else "")
+            + ("make and verify a complete dimensioned drawing and release it with delivery complete_service, " if domain else "")
             + "release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits.")
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": task}]
     summary = {"status": "running", "model": plan["model"], "tool_requests": 0, "mcp_calls": 0, "blocked_requests": 0,
@@ -571,7 +572,7 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
         summary.update(status="failed", error={"type": type(error).__name__, "message": str(error)})
     finally:
         summary["duration_seconds"] = time.monotonic() - started
-        summary["scope"] = "One local-model trial. A release result does not prove full metric acceptance, AP242, independent conformance, target-CAD opening, or model ranking."
+        summary["scope"] = "One local-model trial. A release result does not prove complete-service acceptance without a current verified pair. AP242, independent conformance, target-CAD opening, and model ranking require separate evidence."
         trace.write("conversation", {"messages": messages})
         trace.write("summary", summary)
     return summary

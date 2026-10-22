@@ -118,7 +118,7 @@ See [backend/README.md](backend/README.md#configuration-store-and-master-key).
 - `backend/src/drawing_demo/api.py`: web routes on the shared domain service, and STEP display conversion.
 - `backend/src/drawing_demo/service.py`: the one domain service of the backend and its mounted MCP endpoint.
 - `backend/src/drawing_demo/review.py`: review flags derived from drawing data.
-- `backend/Dockerfile`: Python runtime with the MCP package and Poppler.
+- `../deployment/Dockerfile`, target `backend`: the backend image on the shared runtime of the MCP image (ADR 0035).
 - `frontend/`: React and TypeScript UI, nginx configuration, and frontend Dockerfile.
 - `frontend/dist/`: ignored UI build output.
 

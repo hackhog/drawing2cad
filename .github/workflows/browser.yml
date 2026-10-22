@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install Poetry
-        run: pipx install --python "$(command -v python)" poetry==2.4.1  # Same version as app/backend/Dockerfile.
+        run: pipx install --python "$(command -v python)" poetry==2.4.1  # Same version as deployment/Dockerfile.
       - name: Browser tests
         working-directory: app/backend
         run: |

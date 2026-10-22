@@ -52,7 +52,7 @@ def capabilities() -> dict:
 class Ocr:
     """One Tesseract instance. Each call reads one gray image region."""
 
-    def __init__(self):
+    def __init__(self, languages: str = LANGUAGES):
         library = _library()
         data = _tessdata()
         if library is None or data is None:
@@ -72,7 +72,7 @@ class Ocr:
         self.lib.TessVersion.restype = ctypes.c_char_p
         self.version = self.lib.TessVersion().decode("ascii", errors="replace")
         self.handle = self.lib.TessBaseAPICreate()
-        if not self.handle or self.lib.TessBaseAPIInit3(self.handle, str(data).encode(), LANGUAGES.encode()) != 0:
+        if not self.handle or self.lib.TessBaseAPIInit3(self.handle, str(data).encode(), languages.encode()) != 0:
             raise ValueError("Tesseract cannot load its language data.")
         self.calls = 0
 

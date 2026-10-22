@@ -33,7 +33,15 @@ DOMAIN_SCHEMAS["part_create"]["properties"]["sources"]["items"] = _object({
     "source_id": ID, "sha256": HASH, "role": {"enum": ["construction", "verification"]}})
 DOMAIN_DESCRIPTIONS["part_create"] = "Create a part from uploaded source IDs and exact hashes. Evidence must use these source IDs. Verification sources cannot supply construction values."
 DOMAIN_DESCRIPTIONS["part_export_review"] = "Export path-free JSON part, run manifest, drawing review, and recorded run trace as immutable artifacts."
-DOMAIN_DESCRIPTIONS["export_step"] = "Release validated STEP of the current model build. The drawing does not gate the release: release.drawing records its status (accepted, unreviewed, rejected, failed, or missing) with the drawing files or the reason. Call again after a drawing change to record the new status. AP242 and semantic PMI remain separate M3 requirements."
+DOMAIN_SCHEMAS["export_step"]["properties"]["delivery"] = {
+    "enum": ["step_only", "complete_service"],
+    "description": "step_only (default): the validated model gates the release, and release.drawing records the drawing status. "
+                   "complete_service: the release also needs an accepted drawing whose PDF verification is bound to the released STEP bytes."}
+DOMAIN_DESCRIPTIONS["export_step"] = ("Release validated STEP of the current model build. With delivery step_only (default), the drawing does not gate the release: "
+                                      "release.drawing records its status (accepted, unverified, unreviewed, rejected, failed, or missing) with the drawing files or the reason. "
+                                      "With delivery complete_service, the release fails unless the drawing is accepted and verified against the released STEP bytes; "
+                                      "release.pair records the STEP, PDF, and verification report hashes. release.pair_current is false after a change of either file. "
+                                      "Use delivery complete_service for a complete delivery. After a drawing change, repeat acceptance and release the new pair. AP242 and semantic PMI are optional unless requested.")
 
 PROJECTION_VIEW = _object({
     "view_id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},
@@ -125,8 +133,15 @@ _EXTRA = {
     "drawing_read": (_object(RUN), "Read current drawing state, artifact IDs, and review binding."),
     "drawing_review": (_object({**REVISION, "drawing_sha256": HASH, "reviewer": {"type": "string", "minLength": 1, "maxLength": 200},
                                 "reason": TEXT, "source_hashes": {"type": "array", "items": HASH, "minItems": 1, "uniqueItems": True},
-                                "decision": {"enum": ["accepted", "rejected"]}}),
-                       "Record an identified human or agent review of the exact drawing and part revision. Compare manufacturing notes, including draft and fillet requirements, with source evidence and model measurements. This attestation does not convert untested CAD equivalence into an automatic pass."),
+                                "decision": {"enum": ["accepted", "rejected"]},
+                                "verification_decisions": {"type": "array", "maxItems": 200, "items": _object({
+                                    "rule_id": {"type": "string", "pattern": "^[A-Z]+(-[A-Z]+)?-[0-9]{2}$"},
+                                    "feature": {"type": ["string", "null"], "maxLength": 128}, "reason": TEXT})}},
+                               ["run_id", "expected_revision", "drawing_sha256", "reviewer", "reason", "source_hashes", "decision"]),
+                       "Record an identified human or agent review of the exact drawing and part revision. Compare manufacturing notes, including draft and fillet requirements, with source evidence and model measurements. "
+                       "A drawing is accepted only when this review is accepted and the current drawing_verify result passes the acceptance gate. "
+                       "verification_decisions resolve needs_review findings of the current verification, each with a reason; they cannot resolve a fail or not_tested finding. "
+                       "This attestation does not convert untested CAD equivalence into an automatic pass."),
     "job_submit": (_object({"operation": {"enum": ["build_from_description", "build_code", "drawing_render", "export_step"]},
                             "arguments": {"type": "object"}, "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128}}),
                    "Queue a durable CAD or drawing job. Validate ownership and revision at submission and execution. Reuse a key only for an identical request."),

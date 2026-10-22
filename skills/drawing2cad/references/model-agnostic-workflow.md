@@ -60,7 +60,7 @@ Read the stored revision and artifacts before resubmission.
 
 The worker receives complete declarative inputs.
 Do not write ad hoc executable model files.
-Free-code execution is outside the minimum path. It requires explicit client permission and passing tests for its separate sandbox.
+Free-code execution is outside the main workflow. It requires explicit client permission and passing tests for its separate sandbox.
 
 ## Handoff data
 

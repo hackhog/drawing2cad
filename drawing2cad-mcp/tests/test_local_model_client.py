@@ -127,9 +127,12 @@ async def test_uploaded_source_prompt_requires_a_complete_drawing_before_release
     await drive(session, catalog("drawing_review"), config, "Skill", Trace(tmp_path), model_call=model)
     system = requests[0]["messages"][0]["content"]
     assert "src_" + "a" * 32 in system and "/inputs/part.pdf" not in system
-    assert "drawing is a required deliverable" in system and "drawings, semantic PMI" not in system
+    assert "Complete-service delivery requires a verified drawing" in system and "drawings, semantic PMI" not in system
     assert "rejects the drawing, correct the drawing_spec" in system
-    assert "Call export_step only after an accepted drawing review" in system
+    assert "export_step with delivery complete_service" in system
+    assert "drawing_verify" in system and "release.pair_current" in system
+    assert "STEP-only is allowed only for an explicit STEP-only request" in system
+    assert "Do not substitute a STEP-only release" in system
     assert "complete dimensioned drawing" in requests[0]["messages"][1]["content"]
     assert [tool["function"]["name"] for tool in requests[0]["tools"]] == ["drawing_review", "request_user_input"]
 
@@ -194,6 +197,11 @@ def test_the_maintained_skill_assigns_existing_references_to_its_steps():
     assert assigned and assigned <= set(references.files)
     assert "references/drawing-delivery.md" in references.for_tool("drawing_schema")
     assert "references/verification-loop.md" in references.for_tool("build_from_description")
+    for tool in ("drawing_derive_views", "drawing_render", "drawing_verify", "drawing_review"):
+        assert "references/drawing-delivery.md" in references.for_tool(tool)
+    for tool in ("export_step", "part_export_review"):
+        assert "references/validation.md" in references.for_tool(tool)
+        assert "references/delivery-and-backends.md" in references.for_tool(tool)
     assert references.initial()
     # Each reference is assigned to a step or named in the text for a topic.
     text = references.files["SKILL.md"]

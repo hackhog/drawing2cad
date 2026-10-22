@@ -11,7 +11,7 @@ from pypdf import PdfWriter
 from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject, NumberObject
 import pytest
 
-from drawing2cad_mcp.pdf import PdfError, PdfService
+from drawing2cad_mcp.pdf import PdfError, PdfProcessError, PdfService
 
 
 def make_pdf(
@@ -295,6 +295,13 @@ def test_render_error_cleanup(tmp_path, source, monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda path: "pdftoppm")
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, b"", b"bad PDF"))
     service = PdfService((tmp_path,), tmp_path / "out", None)
-    with pytest.raises(PdfError, match="bad PDF"):
+    with pytest.raises(PdfProcessError, match="bad PDF"):
         service.render_page(source)
     assert list((tmp_path / "out").iterdir()) == []
+
+
+def test_vector_worker_output_is_a_process_error(tmp_path, source, monkeypatch):
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, b"", b"worker trace"))
+    service = PdfService((tmp_path,), tmp_path / "out", None)
+    with pytest.raises(PdfProcessError, match="worker trace"):
+        service.extract_drawing(source)

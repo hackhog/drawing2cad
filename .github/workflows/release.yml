@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
       - name: Build the MCP test image
-        run: docker build -f drawing2cad-mcp/Dockerfile --target test -t drawing2cad-mcp:release-test .
+        run: docker build -f deployment/Dockerfile --target mcp-test -t drawing2cad-mcp:release-test .
       - name: MCP test suite in the test image
         # The same check as the MCP workflow: a skipped sandbox or STEPcode test is a failure.
         run: |
@@ -59,8 +59,9 @@ jobs:
           - { arch: amd64, runner: ubuntu-latest }
           - { arch: arm64, runner: ubuntu-24.04-arm }
         include:
-          - { image: mcp, dockerfile: drawing2cad-mcp/Dockerfile, context: ., target: production }
-          - { image: backend, dockerfile: app/backend/Dockerfile, context: ., target: '' }
+          # The MCP image and the backend image start from the shared runtime stage of one Dockerfile (ADR 0035).
+          - { image: mcp, dockerfile: deployment/Dockerfile, context: ., target: mcp }
+          - { image: backend, dockerfile: deployment/Dockerfile, context: ., target: backend }
           - { image: frontend, dockerfile: app/frontend/Dockerfile, context: app/frontend, target: '' }
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 60
