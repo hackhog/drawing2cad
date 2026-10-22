@@ -108,6 +108,55 @@ export interface RunFile {
   url: string;
 }
 
+/** The phase of a tool step: setup and status calls, reading the drawing, building the model, the drawing, or the release. */
+export type StepPhase = "setup" | "analyzing" | "modeling" | "drawing" | "validating";
+
+/** The specific error of a failed tool call: a service error, a build error, or the first validation defect. */
+export interface StepProblem {
+  code: string;
+  target: string | null;
+  message: string;
+}
+
+/** One step of the agent trace (ADR 0038). Texts are shortened; `runStep` supplies the full details. */
+export type RunStep = { sequence: number; at: string | null; turn: number | null } & (
+  | { kind: "skill"; paths: string[]; text: string }
+  | { kind: "model"; seconds: number | null; prompt_tokens: number | null; output_tokens: number | null; text: string; tool_calls: string[] }
+  | { kind: "tool"; tool: string; request_number: number | null; phase: StepPhase; status: "ok" | "failed" | "no_response";
+      seconds: number | null; problem: StepProblem | null; arguments: string; images: number }
+  | { kind: "correction"; tool: string; code: string | null; text: string }
+);
+
+/** The final summary of the agent loop. It is null while the run is active. */
+export interface RunLoopSummary {
+  status: string;
+  released: boolean | null;
+  model_turns: number | null;
+  tool_requests: number | null;
+  mcp_calls: number | null;
+  blocked_requests: number | null;
+  model_seconds: number | null;
+  mcp_seconds: number | null;
+  duration_seconds: number | null;
+}
+
+export interface RunSteps {
+  steps: RunStep[];
+  summary: RunLoopSummary | null;
+}
+
+/** Full details of one step. Images are data URLs of MCP preview images. */
+export interface RunStepDetail {
+  sequence: number;
+  kind: RunStep["kind"];
+  tool?: string;
+  text?: string;
+  arguments: string | null;
+  result: string | null;
+  problem: StepProblem | null;
+  images: string[];
+}
+
 export interface RunFiles {
   files: RunFile[];
   archive_url: string | null;
@@ -200,6 +249,7 @@ export interface Run {
   artifacts: Artifact[];
   review: Review | null;
   error: ServiceError | null;
+  warning?: RunWarning | null;
   simulated: boolean;
   /** Final text of the agent conversation, from its trace. It is also the first text of the run note (ADR 0018). */
   agent_report?: string | null;
@@ -212,6 +262,11 @@ export interface ServiceError {
   message: string;
   field: string | null;
   recovery: string | null;
+}
+
+export interface RunWarning {
+  code: string;
+  message: string;
 }
 
 /** Actual capabilities of the connected service. The UI hides or explains every unavailable one. */

@@ -1,6 +1,6 @@
 // The one interface between the UI and a service. Components and routes use only this interface.
 // `http` uses the web backend (app/backend); `fixture` is a simulated service for UI work without a backend.
-import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Measurement, MeasurementInput, Run, RunFiles, RunNote, Source } from "./contract";
+import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Measurement, MeasurementInput, Run, RunFiles, RunNote, RunStepDetail, RunSteps, Source } from "./contract";
 import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 
 export interface ParameterChange { name: string; value: number }
@@ -33,6 +33,7 @@ export interface WebApi {
   listRuns(sourceId: string): Promise<Run[]>;
   /** Start a run with the given model profile, or with the active profile. The active profile does not change. */
   createRun(sourceId: string, profile?: string | null): Promise<Run>;
+  /** The run includes an optional warning when the release passed but the final report is missing. */
   getRun(runId: string): Promise<Run>;
   /** Change parameters through the shared revision API. A wrong expected revision fails with REVISION_CONFLICT. */
   changeParameters(runId: string, expectedRevision: number, changes: ParameterChange[]): Promise<Run>;
@@ -41,6 +42,10 @@ export interface WebApi {
   saveNote(runId: string, expectedRevision: number, text: string): Promise<RunNote>;
   /** Diagnostic files of a run, for inspection in a browser tab. */
   listRunFiles(runId: string): Promise<RunFiles>;
+  /** The agent trace of a run as timeline steps. A run without agent trace has no steps. */
+  runSteps(runId: string): Promise<RunSteps>;
+  /** Full details of one timeline step. */
+  runStep(runId: string, sequence: number): Promise<RunStepDetail>;
   /** Bounded artifact content by opaque ID. */
   readArtifact(artifactId: string): Promise<Blob>;
   /** Review measurements of all sources, oldest first. Deleting a source deletes its measurements. */

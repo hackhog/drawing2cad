@@ -172,8 +172,19 @@ class AgentRunner:
             self.store_report(part_run, report)
         error = summary.get("error") or {}
         if error:
-            # The conversation did not end, for example after a rate limit. A part built before stays readable,
-            # but the run is not a finished result. Show the actual message, not a generic one.
+            part = None
+            if part_run is not None:
+                try:
+                    part = self.backend.call("part_read", run_id=part_run)["part"]
+                except ServiceError as lookup_error:
+                    if lookup_error.detail["code"] != "NOT_FOUND":
+                        raise
+            if part and part.get("release"):
+                message = f"Final report missing: {error.get('type', 'Error')}: {error.get('message', '')}"[:4000]
+                self.jobs.update(run_id, phase="done", error=None,
+                                 warning={"code": "AGENT_REPORT_MISSING", "message": message},
+                                 job={"status": "succeeded", "progress": 1, "finished_at": now()})
+                return
             self._fail(run_id, "AGENT_FAILED", f"{error.get('type', 'Error')}: {error.get('message', '')}"[:4000],
                        "Check the model endpoint and DRAWING2CAD_AGENT_*, then start the run again.")
             return

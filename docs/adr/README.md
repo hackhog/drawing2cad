@@ -38,5 +38,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0035](0035-shared-runtime-base-for-the-mcp-and-backend-images.md) | Shared runtime base for the MCP and backend images |
 | [0036](0036-dimension-values-against-the-step-geometry.md) | Dimension values against the STEP geometry |
 | [0037](0037-feature-coverage-of-the-drawing.md) | Feature coverage of the drawing |
+| [0038](0038-run-timeline-from-the-agent-trace.md) | Run timeline from the agent trace |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

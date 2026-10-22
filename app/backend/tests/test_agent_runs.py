@@ -404,10 +404,64 @@ def test_a_conversation_error_fails_the_run_even_with_a_built_part(environment):
         run = services.jobs.add(source["source_id"])
         services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
         summary = {"status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}}
-        services.runner.finish(run["run_id"], summary)  # No part_read: the error decides before the part state.
+        services.runner.finish(run["run_id"], summary)  # The domain part does not exist; keep the conversation error.
         result = services.jobs.get(run["run_id"])
         assert result["error"]["code"] == "AGENT_FAILED" and "HTTP 429" in result["error"]["message"]
         assert result["failed_phase"] == "drawing"
+
+
+@pytest.mark.parametrize("note_text", ["", "Previous review note"])
+def test_a_released_part_succeeds_with_a_warning_when_the_final_report_fails(environment, note_text):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        part_run = run["part_prefix"] + "-plate"
+        services.backend.call("part_create", run_id=part_run, description=description(source["source_id"], source["sha256"]),
+                              sources=[{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}])
+        if note_text:
+            services.runner.store_report(part_run, note_text)
+        note_url = f"/api/runs/{run['run_id']}/note"
+        services.jobs.update(run["run_id"], part_run_id=part_run, phase="validating")
+        previous_note = client.get(note_url).json()
+        original = services.backend.call
+        environment.setattr(services.backend, "call", lambda operation, **arguments:
+                            {"part": {"build": {"status": "pass"}, "release": {"sha256": SHA}}}
+                            if operation == "part_read" else original(operation, **arguments))
+        environment.setattr(services.runner, "store_report", lambda *args:
+                            pytest.fail("No final text was supplied; the note must not change."))
+        services.runner.finish(run["run_id"], {
+            "status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}})
+        result = services.jobs.get(run["run_id"])
+        assert result["phase"] == "done" and result["job"]["status"] == "succeeded"
+        assert result["job"]["progress"] == 1 and result["job"]["finished_at"] is not None
+        assert result["error"] is None and result["failed_phase"] is None
+        assert result["warning"] == {
+            "code": "AGENT_REPORT_MISSING",
+            "message": "Final report missing: RuntimeError: Model endpoint returned HTTP 429"}
+        assert client.get(note_url).json() == previous_note
+        assert previous_note["text"] == note_text
+        # The web adapter forwards the warning without a domain result.
+        view = api.run_view(services, {**result, "part_run_id": None})
+        assert view["warning"] == result["warning"] and view["error"] is None
+
+
+def test_a_built_part_without_release_still_fails_after_a_conversation_error(environment):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="drawing")
+        original = services.backend.call
+        environment.setattr(services.backend, "call", lambda operation, **arguments:
+                            {"part": {"build": {"status": "pass"}, "release": None}}
+                            if operation == "part_read" else original(operation, **arguments))
+        services.runner.finish(run["run_id"], {
+            "status": "failed", "error": {"type": "RuntimeError", "message": "Model endpoint returned HTTP 429"}})
+        result = services.jobs.get(run["run_id"])
+        assert result["phase"] == "failed" and result["job"]["status"] == "failed"
+        assert result["error"]["code"] == "AGENT_FAILED" and "HTTP 429" in result["error"]["message"]
+        assert result["failed_phase"] == "drawing" and result["warning"] is None
 
 
 def test_a_repeated_failed_request_fails_the_run_with_its_tool_field_and_count_without_a_part(environment):
@@ -534,6 +588,7 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
                     assert time.monotonic() < deadline, run
                     time.sleep(0.2)
                 files = [f["path"] for f in client.get(f"/api/runs/{run_id}/files").json()["files"]]
+                timeline = client.get(f"/api/runs/{run_id}/steps").json()
         finally:
             server.should_exit = True
             thread.join(10)
@@ -548,6 +603,11 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
                                  "mcp_calls": 2, "blocked_requests": 0}
     assert run["review"]["release_state"] == "draft" and run["artifacts"] == []
     assert "summary.json" in files and "trace/trace.jsonl" in files
+    # The timeline shows the same run: skill references, both model turns, and both tool calls with their results.
+    assert [(s["kind"], s.get("tool")) for s in timeline["steps"] if s["kind"] != "skill"] == [
+        ("model", None), ("tool", "pdf_info"), ("tool", "part_create"), ("model", None)]
+    assert all(s["status"] == "ok" for s in timeline["steps"] if s["kind"] == "tool")
+    assert timeline["summary"]["model_turns"] == 2
 
 
 def test_ui_profiles_are_normalized_keep_their_key_and_persist(environment, tmp_path):
