@@ -31,6 +31,10 @@ def _unit(vector):
     return [vector[0] / length, vector[1] / length]
 
 
+def _dot2(a, b):
+    return a[0] * b[0] + a[1] * b[1]
+
+
 def _dimension_lines(view: dict, text_height: float) -> list[dict]:
     """Sheet segments that the dimension lines, extension lines, and leaders of a native dimension must show."""
     result = []
@@ -68,7 +72,18 @@ def _dimension_lines(view: dict, text_height: float) -> list[dict]:
                     # The extension line starts 0.5 mm from the feature (DIMEXO) and passes the dimension line.
                     segments.append([[point[0] + normal[0] * sign * 0.8, point[1] + normal[1] * sign * 0.8], foot])
             if math.dist(*ends) > 2.0:
-                segments.append(ends)
+                # The value is centered on the dimension line (DIMTAD 0) and interrupts it. A short dimension with a long
+                # value keeps only the line parts beside the value, or at least the arrows.
+                along = _unit([ends[1][0] - ends[0][0], ends[1][1] - ends[0][1]])
+                middle = [(ends[0][i] + ends[1][i]) / 2 for i in (0, 1)]
+                half_text = len(_dimension_text(dimension)) * text_height * 0.475 + 0.5
+                parts = [[ends[0], [middle[0] - along[0] * half_text, middle[1] - along[1] * half_text]],
+                         [[middle[0] + along[0] * half_text, middle[1] + along[1] * half_text], ends[1]]]
+                if all(math.dist(*part) > 1.0 and _dot2(along, [part[1][0] - part[0][0], part[1][1] - part[0][1]]) > 0 for part in parts):
+                    segments += parts
+                else:
+                    segments += [[ends[0], [ends[0][0] + along[0], ends[0][1] + along[1]]],
+                                 [[ends[1][0] - along[0], ends[1][1] - along[1]], ends[1]]]
         if segments:
             result.append({"id": dimension["id"], "segments": segments, "evidence": dimension["evidence_ids"]})
     return result
@@ -265,7 +280,8 @@ def build_request(resolved: dict, expected: dict, pages_rendered: int) -> dict[s
     return {"mode": "bound", "profile": PROFILE, "dpi": DPI, "expected": expected, "sheet": sheet, "pages_rendered": pages_rendered,
             "required": {"isometric": True, "section": True}, "views": views, "texts": texts, "frames": frames,
             "dimension_lines": dimension_lines, "datums": datums, "annotations": _annotations(resolved, texts, dimension_lines),
-            "hatching": _hatch_polygons(resolved), "service_findings": []}
+            "hatching": _hatch_polygons(resolved), "service_findings": [],
+            "markers": [{key: marker[key] for key in ("id", "view_id", "primitive_id")} for marker in resolved.get("uncertainty_markers", [])]}
 
 
 def _hatch_polygons(resolved: dict) -> list[dict]:

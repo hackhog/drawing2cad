@@ -85,6 +85,30 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
 - The drawing status is `accepted` only after an accepted review of the current verification report. Otherwise it is `unverified`.
 - `DIM-06` measures each dimension on the bound STEP geometry. A declared value that differs from the model value fails, also when the specification agrees with itself.
   Dimension features only in orthographic or section views: a dimension in an isometric view fails as not true size.
+- `FEAT-01` to `FEAT-03` check each feature of the bound STEP: round features, chamfers, fillets, plane levels, and free-form surfaces.
+  Each feature must be visible in a true-size view, not only as hidden lines.
+  Each round feature needs a radius or diameter dimension, or a linear dimension from one outline to the other.
+  Each chamfer needs two different sizes. Give an angle (an angular dimension with a leg on the chamfer) and a length, or give two lengths.
+  Two lengths of a chamfer of a straight edge must have different model directions. The same length in a second view with another orientation
+  is the same size. Two diameters at one end of a countersink are one size.
+  A countersink needs a diameter and an angle or a depth. The diameters at its two ends do not give its angle or its depth.
+  An inclined face (a face with a normal that is not a model axis) needs two sizes. It needs no dimension chain along its normal.
+  A chamfer note such as "2 x 45°" does not count.
+  Each fillet needs a radius dimension at its profile arc, in a view across the axis of the fillet.
+  A groove, a bead, or a ring needs the radius of its profile arc and its size across the axis, for example the diameter of the groove bottom.
+  Along each model axis, the plane levels and the hole axes
+  must be connected by linear dimensions. Dimension the thickness of each step and the position of each hole from an axis or a face.
+  Dimension the depth of a blind hole to the end of its cylinder. A dimension to the tip of the drill point does not locate the hole end.
+  Dimension the depth of each blind hole, also when two blind holes share one axis.
+  A partial cylinder (a fillet of a straight edge or the end of a slot) needs its radius, but its adjacent faces locate it.
+  It is not a `FEAT-03` position. A groove needs an axial position dimension to the center of its profile arc.
+  `FEAT-03` is not applicable when the model has only free-form surfaces.
+  Use linear dimensions between hole centers: a pitch circle with an angle does not count as a position.
+  A free-form surface (for example a B-spline surface or a sphere) has no supported size dimension.
+  Show it and mark it with an uncertainty marker at one of its boundary edges. A section curve through the inside of the surface does not count.
+  Its finding is then `needs_review`, and `drawing_review` must decide it.
+  Mark any other feature that you cannot dimension with an uncertainty marker. Its findings are then `needs_review`.
+  `DIM-05` does not test the lines of angular dimensions in the raster. An angular dimension blocks the acceptance until its lines are checked in the raster.
 - Verify a supplied source drawing with `source_id` only as an inspection aid. Without a binding, the model rules are `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.
