@@ -821,13 +821,10 @@ def check_dimension_values(report: Report, views: list[dict], derived: dict[str,
 
 
 def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]) -> None:
-    """Anchors on the model, round values against the model, and round-feature coverage."""
-    dimensioned = set()
+    """Anchors on the model and round values against the model."""
     for view in views:
         model = derived.get(view["id"])
         for dimension in view["dimensions"]:
-            if dimension["type"] in {"radius", "diameter"}:
-                dimensioned.add(round(dimension["radius"] * view["scale"] if view["kind"] == "isometric" else dimension["radius"], 3))
             if model is None or view["kind"] == "isometric":
                 continue
             if dimension["type"] in {"radius", "diameter"}:
@@ -859,6 +856,16 @@ def check_dimensions(report: Report, views: list[dict], derived: dict[str, dict]
                 report.add("DIM-02", "fail", "major", f"Dimension {dimension['id']} has an anchor that is not on an edge of the bound model.",
                            feature=dimension["id"], expected=f"<= {THRESHOLDS['anchor_mm']} mm", observed=[round(d, 4) for d in distances],
                            evidence=dimension["evidence_ids"])
+
+
+def check_round_dimensions(report: Report, views: list[dict], derived: dict[str, dict], sized: set[float]) -> None:
+    """DIM-03: each round edge of an orthographic view has a dimension of its radius. sized holds the radii of the round features
+    that FEAT-02 sized, also with a linear dimension across their outlines."""
+    dimensioned = set(sized)
+    for view in views:
+        for dimension in view["dimensions"]:
+            if dimension["type"] in {"radius", "diameter"}:
+                dimensioned.add(round(dimension["radius"] * view["scale"] if view["kind"] == "isometric" else dimension["radius"], 3))
     round_views = model_views = 0
     for view in views:
         model = derived.get(view["id"])
@@ -1021,6 +1028,8 @@ def verify(directory: Path, request: dict) -> dict:
                       if ("DIM-06", "pass") in found and ("DIM-02", "pass") in found and not any(status != "pass" for _, status in found)}
             coverage = feature_coverage.check(report, views, derived, feature_coverage.inventory(directory / "input.step"), passed,
                                               request.get("markers", []))
+            check_round_dimensions(report, views, derived, {round(item["radius"], 3) for item in coverage
+                                                            if item["kind"] != "plane_level" and item["size_dimensions"]})
         else:
             for rule in ("FEAT-01", "FEAT-02", "FEAT-03"):
                 report.add(rule, "not_tested", "info", "No model projection of the bound STEP exists, so the feature coverage is not tested.")

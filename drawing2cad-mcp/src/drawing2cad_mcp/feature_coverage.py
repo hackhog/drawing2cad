@@ -19,7 +19,9 @@ POSITION_MM = 0.05     # A projected feature position and a drawn edge or a dime
 RADIUS_MM = 0.01       # A drawn radius and a model radius agree within this difference.
 PARALLEL = 1e-6        # Two unit directions are parallel or perpendicular within this value.
 MODEL_AXES = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0])
-EDGE_SAMPLES = 16     # Points on each boundary edge of a face. They give the extent of the face, also with curved and inclined edges.
+# Points on a curved boundary edge. For a circle, the largest gap to an extreme point is r * (1 - cos 0.5 degrees):
+# less than 0.05 mm up to a radius of 1300 mm.
+CURVE_SAMPLES = 360
 
 
 def _dot(a, b) -> float:
@@ -48,11 +50,14 @@ def _key(values, digits) -> tuple:
 
 
 def _boundary(face) -> list[list[float]]:
-    """Points on the boundary edges of a face."""
+    """Points on the boundary edges of a face: the ends of a straight edge, and points along a curved edge."""
+    from build123d import GeomType
+
     points = []
     for edge in face.edges():
-        for index in range(EDGE_SAMPLES + 1):
-            point = edge.position_at(index / EDGE_SAMPLES)
+        count = 1 if edge.geom_type == GeomType.LINE else CURVE_SAMPLES
+        for index in range(count + 1):
+            point = edge.position_at(index / count)
             points.append([round(point.X, 6), round(point.Y, 6), round(point.Z, 6)])
     return points
 
@@ -113,16 +118,10 @@ def inventory(step_path: Path) -> dict[str, Any]:
             name = str(kind).split(".")[-1].removeprefix("GeomAbs_").lower()
             other[name] = other.get(name, 0) + 1
     features = []
-    # Two round features on one axis with one radius, for example a bore below a boss, have the same circle in a view along the axis.
-    circles: dict[tuple, int] = {}
-    for entry in rounds.values():
-        circle = _key(entry["axis"], 6) + _key(entry["foot"], 4) + _key([entry["radius"]], 4)
-        circles[circle] = circles.get(circle, 0) + 1
     for number, entry in enumerate(sorted(rounds.values(), key=lambda e: (-e["radius"], _key(e["axis"], 6), _key(e["foot"], 4), e["low"])), 1):
-        circle = _key(entry["axis"], 6) + _key(entry["foot"], 4) + _key([entry["radius"]], 4)
         features.append({"id": f"round_{number}", "kind": "hole" if entry["concave"] else "boss", "axis": _key(entry["axis"], 9),
                          "foot": _key(entry["foot"], 6), "radius": round(entry["radius"], 6),
-                         "extent": [round(entry["low"], 6), round(entry["high"], 6)], "shared_circle": circles[circle] > 1})
+                         "extent": [round(entry["low"], 6), round(entry["high"], 6)]})
     for number, entry in enumerate(sorted(planes.values(), key=lambda e: (_key(e["normal"], 6), round(e["offset"], 4))), 1):
         features.append({"id": f"plane_{number}", "kind": "plane_level", "normal": _key(entry["normal"], 9),
                          "offset": round(entry["offset"], 6), "faces": entry["faces"]})
@@ -189,8 +188,7 @@ def _shows(feature: dict, view: _View, item: dict) -> bool:
     along = abs(_dot(feature["axis"], view.direction))
     center = view.point(feature["foot"])
     if along >= 1 - PARALLEL:
-        # A circle that two round features share does not show which of them is visible.
-        return (not feature["shared_circle"] and item["type"] in {"circle", "arc"} and math.dist(item["center"], center) <= POSITION_MM
+        return (item["type"] in {"circle", "arc"} and math.dist(item["center"], center) <= POSITION_MM
                 and abs(item["radius"] - feature["radius"]) <= RADIUS_MM)
     if along > PARALLEL or item["type"] != "line":
         return False
@@ -231,7 +229,7 @@ def _sizes(feature: dict, view: _View, passed: set[str]) -> list[str]:
         if dimension["id"] not in passed:
             continue
         if dimension["type"] in {"radius", "diameter"}:
-            if (along >= 1 - PARALLEL and not feature["shared_circle"] and math.dist(dimension["center"], center) <= POSITION_MM
+            if (along >= 1 - PARALLEL and math.dist(dimension["center"], center) <= POSITION_MM
                     and abs(dimension["radius"] - feature["radius"]) <= RADIUS_MM):
                 found.append(dimension["id"])
         elif dimension["type"] == "linear" and along <= PARALLEL:
@@ -361,18 +359,32 @@ def check(report, views: list[dict], derived: dict[str, dict], found: dict[str, 
         report.add(rule, "fail", "major", failed_text, feature=feature["id"], observed=observed)
         return "fail"
 
+    # An edge or a size dimension that fits more than one round feature in a view, for example the common circle of a bore below a boss
+    # or the coinciding outlines of two holes behind each other, does not show which feature it belongs to. It counts for none of them.
+    rounds = [feature for feature in features if feature["kind"] != "plane_level"]
+
+    def own(feature: dict, view: _View, item: dict) -> bool:
+        if not _shows(feature, view, item):
+            return False
+        return feature["kind"] == "plane_level" or [other["id"] for other in rounds if _shows(other, view, item)] == [feature["id"]]
+
+    claims: dict[tuple[str, str], list[str]] = {}
+    for feature in rounds:
+        for view in usable:
+            for identifier in _sizes(feature, view, passed):
+                claims.setdefault((view.id, identifier), []).append(feature["id"])
     for feature in features:
         name = (f"{feature['kind']} {feature['id']} (radius {feature['radius']:g} mm, axis {_label(feature['axis'])})"
                 if feature["kind"] != "plane_level" else f"plane level {feature['id']} (normal {_label(feature['normal'])}, offset {feature['offset']:g} mm)")
-        visible = [view.id for view in usable if any(item["style"] in {"visible", "section"} and _shows(feature, view, item) for item in view.model)]
-        hidden = [view.id for view in usable if any(item["style"] == "hidden" and _shows(feature, view, item) for item in view.model)]
+        visible = [view.id for view in usable if any(item["style"] in {"visible", "section"} and own(feature, view, item) for item in view.model)]
+        hidden = [view.id for view in usable if any(item["style"] == "hidden" and own(feature, view, item) for item in view.model)]
         statuses = [add("FEAT-01", feature, bool(visible), f"The {name} is visible in {', '.join(visible) if visible else ''}.",
                         f"No true-size view shows the {name} with visible edges."
                         + (" Only hidden lines show it. Add a section or a view." if hidden else " Add a view or a section that shows it."),
                         {"visible_in": visible, "hidden_in": hidden})]
         sizes = None
         if feature["kind"] != "plane_level":
-            sizes = [identifier for view in usable for identifier in _sizes(feature, view, passed)]
+            sizes = [identifier for (_, identifier), owners in claims.items() if owners == [feature["id"]]]
             statuses.append(add("FEAT-02", feature, bool(sizes), f"The {name} has the size dimension {', '.join(sizes)}.",
                                 f"The {name} has no diameter or radius dimension that agrees with the bound model.", {"dimensions": sizes}))
         located = positions[feature["id"]]
@@ -383,7 +395,8 @@ def check(report, views: list[dict], derived: dict[str, dict], found: dict[str, 
                             f"The position of the {name} has no dimension chain to the other features along {', '.join(open_directions)}.",
                             {"directions": located}))
         status = "fail" if "fail" in statuses else "needs_review" if "needs_review" in statuses else "pass"
-        coverage.append({**feature, "visible_in": visible, "size_dimensions": sizes, "positions": located,
+        coverage.append({**{key: value for key, value in feature.items() if key != "faces"}, "visible_in": visible, "size_dimensions": sizes,
+                         "positions": located,
                          "markers": marked[feature["id"]], "status": status})
     if found["other_surfaces"]:
         listed = ", ".join(f"{count} {kind}" for kind, count in found["other_surfaces"].items())

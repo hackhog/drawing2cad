@@ -33,8 +33,7 @@ def level(identifier, normal, offset, low, high):
 
 
 PLATE = {"features": [
-    {"id": "round_1", "kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "extent": [0.0, 10.0],
-     "shared_circle": False},
+    {"id": "round_1", "kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "extent": [0.0, 10.0]},
     level("plane_1", (1.0, 0.0, 0.0), 0.0, [0, 0, 0], [0, 20, 10]), level("plane_2", (1.0, 0.0, 0.0), 40.0, [40, 0, 0], [40, 20, 10]),
     level("plane_3", (0.0, 1.0, 0.0), 0.0, [0, 0, 0], [40, 0, 10]), level("plane_4", (0.0, 1.0, 0.0), 20.0, [0, 20, 0], [40, 20, 10]),
     level("plane_5", (0.0, 0.0, 1.0), 0.0, [0, 0, 0], [40, 20, 0]), level("plane_6", (0.0, 0.0, 1.0), 10.0, [0, 0, 10], [40, 20, 10])],
@@ -132,13 +131,22 @@ def test_a_section_off_the_axis_shows_the_hole():
     assert result["round_1"]["visible_in"] == []
 
 
-def test_a_circle_that_two_round_features_share_shows_neither():
-    # A bore below a boss on one axis with one radius: the top view circle does not show which one is visible.
-    features = {**PLATE, "features": [{**PLATE["features"][0], "shared_circle": True}] + PLATE["features"][1:]}
-    result, findings = coverage(COMPLETE, features=features)
+def test_an_edge_that_fits_two_round_features_shows_neither():
+    # A boss above the bore on one axis with one radius: the top view circle does not show which one is visible,
+    # and the diameter at it does not show which one it sizes.
+    boss = {"id": "round_2", "kind": "boss", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "extent": [10.0, 20.0]}
+    result, findings = coverage(COMPLETE, features={**PLATE, "features": PLATE["features"] + [boss]})
     assert result["round_1"]["visible_in"] == [] and findings[("FEAT-02", "round_1")]["status"] == "fail"
-    # The position from its center stays valid: both features have this axis.
+    assert findings[("FEAT-02", "round_2")]["status"] == "fail"
+    # The position from the common center stays valid: both features have this axis.
     assert result["round_1"]["positions"] == {"[1, 0, 0]": True, "[0, 1, 0]": True}
+    # A second hole behind the first one in the front view: their outlines coincide there. The top view still shows each hole.
+    behind = {**PLATE["features"][0], "id": "round_3", "foot": (10.0, 30.0, 0.0)}
+    front = [item if not item["id"].startswith("h") else {**item, "style": "visible"} for item in FRONT_MODEL]
+    top = TOP_MODEL + [circle("hole_2", [10, 30], 3)]
+    result, _ = coverage(COMPLETE, features={**PLATE, "features": PLATE["features"] + [behind]},
+                         derived={"top": {"geometry": top}, "front": {"geometry": front}})
+    assert result["round_1"]["visible_in"] == ["top"] and result["round_3"]["visible_in"] == ["top"]
 
 
 def test_an_empty_inventory_is_not_applicable():

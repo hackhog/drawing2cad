@@ -173,10 +173,21 @@ def test_a_new_report_makes_the_recorded_release_drawing_outdated(domain):
 
 
 def test_dim_03_is_not_applicable_without_round_features():
-    from drawing2cad_mcp.pdf_verifier import Report, check_dimensions
+    from drawing2cad_mcp.pdf_verifier import Report, check_round_dimensions
 
     report = Report()
     view = {"id": "front", "kind": "orthographic", "dimensions": [], "scale": 1.0}
     model = {"geometry": [{"type": "line", "style": "visible", "start": [0, 0], "end": [10, 0], "id": "l"}]}
-    check_dimensions(report, [view], {"front": model})
+    check_round_dimensions(report, [view], {"front": model}, set())
     assert [(item["rule_id"], item["status"]) for item in report.findings] == [("DIM-03", "not_applicable")]
+
+
+def test_dim_03_accepts_a_round_feature_that_feat_02_sized():
+    from drawing2cad_mcp.pdf_verifier import Report, check_round_dimensions
+
+    view = {"id": "top", "kind": "orthographic", "dimensions": [], "scale": 1.0, "frame": [0, 0, 20, 20]}
+    model = {"geometry": [{"type": "circle", "style": "visible", "center": [0, 0], "radius": 3.0, "id": "c"}]}
+    for sized, status in ((set(), "fail"), ({3.0}, "pass")):
+        report = Report()
+        check_round_dimensions(report, [view], {"top": model}, sized)
+        assert [item["status"] for item in report.findings if item["rule_id"] == "DIM-03"] == [status]
