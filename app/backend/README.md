@@ -73,6 +73,7 @@ Commit the changed `poetry.lock`. The backend CI job stops if the lock is out of
 | `GET` | `/api/runs/{id}` | Phase, job, part, review, artifacts, and the agent report |
 | `GET`/`PUT` | `/api/runs/{id}/note` | Read / replace the run note; `PUT` takes `expected_revision` and `text` (409 on a stale revision or an active run) |
 | `GET` | `/api/runs/{id}/files`, `/api/runs/{id}/archive` | Run record and agent trace, as single files or a ZIP archive |
+| `GET` | `/api/runs/{id}/steps`, `/api/runs/{id}/steps/{sequence}` | Agent trace as timeline steps with the loop summary; full details and images of one step ([ADR 0038](../../docs/adr/0038-run-timeline-from-the-agent-trace.md)) |
 | `GET` | `/api/artifacts/{id}/content` | Artifact content by opaque ID, verified against its SHA-256 |
 | `POST` | `/api/model` | GLB for a STEP file that the user supplies (display only) |
 

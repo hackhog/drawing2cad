@@ -33,6 +33,7 @@ from .agent.projection import not_tested, projection_result
 from .agent.model import check_connection
 from .agent.profiles import ProfileStore, Provider
 from .agent.runner import AgentRunner
+from .agent import timeline
 from .jobs import JobStore
 from .measurements import MeasurementInput, MeasurementStore
 from .service import DomainBackend, ServiceError, checked_id, not_found, settings_from_env
@@ -477,6 +478,22 @@ def save_note(run_id: str, change: NoteChange, s: Services = Depends(services)) 
     note = s.backend.call("notes_update", run_id=_note_run(s, run_id), expected_revision=change.expected_revision,
                           text=change.text)
     return {"revision": note["revision"], "text": note["text"]}
+
+
+@router.get("/runs/{run_id}/steps")
+def run_steps(run_id: str, s: Services = Depends(services)) -> dict[str, Any]:
+    """The agent trace of a run as timeline steps, and the final loop summary when the run has ended (ADR 0038)."""
+    trace = s.jobs.directory(run_id) / "trace"
+    return {"steps": timeline.steps(trace), "summary": timeline.summary(trace)}
+
+
+@router.get("/runs/{run_id}/steps/{sequence}")
+def run_step(run_id: str, sequence: int, s: Services = Depends(services)) -> dict[str, Any]:
+    """Full details of one timeline step, with its preview images."""
+    detail = timeline.step_detail(s.jobs.directory(run_id) / "trace", sequence)
+    if detail is None:
+        raise not_found(str(sequence))
+    return detail
 
 
 @router.get("/runs/{run_id}/files")

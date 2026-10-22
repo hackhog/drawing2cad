@@ -1,4 +1,4 @@
-// Run page: job state, parameters and operations, review data, deliverables, and notes of one CAD run.
+// Run page: job state, the step timeline of the agent, parameters and operations, review data, deliverables, and notes of one CAD run.
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -8,6 +8,7 @@ import { JobCard } from "@/components/run/JobCard";
 import { NotesPanel } from "@/components/run/NotesPanel";
 import { ParametersPanel } from "@/components/run/ParametersPanel";
 import { ReviewPanel } from "@/components/run/ReviewPanel";
+import { TimelinePanel } from "@/components/run/TimelinePanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,16 +17,16 @@ import { useApi } from "@/lib/apiContext";
 import { partName, time } from "@/lib/format";
 import { runQuery, sourceQuery } from "@/lib/queries";
 
-export const RUN_TABS = ["parameter", "review", "results", "notes"] as const;
+export const RUN_TABS = ["timeline", "parameter", "review", "results", "notes"] as const;
 export type RunTab = (typeof RUN_TABS)[number];
-const LABEL: Record<RunTab, string> = { parameter: "Parameter", review: "Review", results: "Results", notes: "Notes" };
+const LABEL: Record<RunTab, string> = { timeline: "Timeline", parameter: "Parameter", review: "Review", results: "Results", notes: "Notes" };
 
 const route = getRouteApi("/runs/$runId");
 
 export function RunPage() {
   const api = useApi();
   const { runId } = route.useParams();
-  const { tab = "parameter" } = route.useSearch();
+  const { tab = "timeline" } = route.useSearch();
   const navigate = route.useNavigate();
   const { data: run } = useSuspenseQuery(runQuery(api, runId));
   const { data: source } = useQuery(sourceQuery(api, run.source_id));
@@ -48,6 +49,7 @@ export function RunPage() {
             <TabsList className="mb-3">
               {RUN_TABS.map((t) => <TabsTrigger key={t} value={t}>{LABEL[t]}</TabsTrigger>)}
             </TabsList>
+            <TabsContent value="timeline"><TimelinePanel run={run} /></TabsContent>
             <TabsContent value="parameter"><ParametersPanel run={run} /></TabsContent>
             <TabsContent value="review"><ReviewPanel run={run} /></TabsContent>
             <TabsContent value="results"><ArtifactsPanel run={run} /></TabsContent>

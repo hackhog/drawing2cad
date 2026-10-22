@@ -1,6 +1,6 @@
 // Adapter for the web backend (app/backend, ADR 0018): stored sources, their analysis, agent runs, and artifacts.
 // Parameter edits are not available yet; the capabilities report this, and the UI explains it.
-import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Measurement, MeasurementInput, Run, RunFiles, RunNote, Source } from "./contract";
+import type { AgentProfileInput, AgentProfiles, Capabilities, ConnectionCheck, Measurement, MeasurementInput, Run, RunFiles, RunNote, RunStepDetail, RunSteps, Source } from "./contract";
 import type { ExtractResult, FlagChange, FlagsPage } from "./drawing";
 import { unavailable } from "./errors";
 import { request, requestBlob, uploadFile } from "./http";
@@ -59,6 +59,8 @@ export class HttpApi implements WebApi {
     });
   }
   listRunFiles(runId: string): Promise<RunFiles> { return request(`/api/runs/${id(runId)}/files`); }
+  runSteps(runId: string): Promise<RunSteps> { return request(`/api/runs/${id(runId)}/steps`); }
+  runStep(runId: string, sequence: number): Promise<RunStepDetail> { return request(`/api/runs/${id(runId)}/steps/${sequence}`); }
   readArtifact(artifactId: string): Promise<Blob> { return requestBlob(`/api/artifacts/${id(artifactId)}/content`); }
   listMeasurements(): Promise<Measurement[]> { return request("/api/measurements"); }
   addMeasurement(sourceId: string, measurement: MeasurementInput): Promise<Measurement> {
