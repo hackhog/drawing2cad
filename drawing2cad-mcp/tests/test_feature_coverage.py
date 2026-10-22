@@ -312,9 +312,11 @@ def test_a_repeated_size_of_a_chamfer_counts_once():
     assert status([d1, d2], []) == "fail"
     assert status([d1], [across]) == "fail"
     assert status([d1], [angle]) == "pass"
-    # The diameters at the two ends, or a diameter and the depth along the axis, give two sizes.
-    assert status([d1, {"id": "d3", "type": "diameter", "center": [10, 10], "radius": 3}], []) == "pass"
+    # The diameters at the two ends are two sizes, but they do not give the angle or the depth of the countersink.
+    assert status([d1, {"id": "d3", "type": "diameter", "center": [10, 10], "radius": 3}], []) == "fail"
+    # A diameter and the depth along the axis, or a diameter and an angle, give the countersink.
     assert status([d1], [linear("depth", [14, 10], [13, 9], "vertical")]) == "pass"
+    assert status([{"id": "d3", "type": "diameter", "center": [10, 10], "radius": 3}], [angle]) == "pass"
 
 
 def test_a_repeated_length_of_a_chamfer_of_a_straight_edge_counts_once():
@@ -475,3 +477,78 @@ def test_a_chamfer_length_in_two_rotated_views_counts_once():
     assert feat_02(linear("cw2", [10, 38], [8, 40], "vertical")) == "fail"
     # The horizontal length in the rotated view is along model Z: a second size.
     assert feat_02(linear("ch2", [10, 38], [8, 40], "horizontal")) == "pass"
+
+
+def test_two_blind_holes_on_one_axis_are_two_features(tmp_path):
+    pytest.importorskip("build123d")
+    from build123d import Box, Cylinder, Pos, export_step
+
+    # A block 30 x 20 x 30 (centered) with a blind hole of 6 mm from the top and one from the bottom on one axis: a web of 10 mm.
+    part = Box(30, 20, 30) - Pos(0, 0, 10) * Cylinder(3, 10) - Pos(0, 0, -10) * Cylinder(3, 10)
+    path = tmp_path / "opposed.step"
+    export_step(part, str(path))
+    holes = [item for item in inventory(path)["features"] if item["kind"] == "hole"]
+    assert [(item["id"], item["extent"]) for item in holes] == [("round_1", pytest.approx([-15.0, -5.0], abs=1e-4)),
+                                                                ("round_2", pytest.approx([5.0, 15.0], abs=1e-4))]
+    assert all(item["full"] for item in holes)
+
+
+def test_each_of_two_blind_holes_on_one_axis_needs_its_depth():
+    # A plate with the faces z = 0 and z = 30. A hole of 6 mm from the top face to z = 20 with a drill point to z = 18,
+    # and a hole of 6 mm from the bottom face to z = 10 with a drill point to z = 12.
+    plate = [level("plane_1", (0.0, 0.0, 1.0), 0.0, [0, 0, 0], [40, 20, 0]), level("plane_2", (0.0, 0.0, 1.0), 30.0, [0, 0, 30], [40, 20, 30])]
+    hole = {"kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "full": True}
+    point = {"kind": "cone", "side": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "half_angle": 56.31}
+    features = plate + [{**hole, "id": "round_1", "extent": [20.0, 30.0]}, {**point, "id": "cone_1", "extent": [18.0, 20.0], "radii": [0.0, 3.0]},
+                        {**hole, "id": "round_2", "extent": [0.0, 10.0]}, {**point, "id": "cone_2", "extent": [10.0, 12.0], "radii": [3.0, 0.0]}]
+    thickness = linear("t", [30, 0], [30, 30], "vertical")
+    top_depth, bottom_depth = linear("dt", [30, 30], [13, 20], "vertical"), linear("db", [30, 0], [13, 10], "vertical")
+
+    def feat_03(dimensions):
+        _, findings = several(features, [view("front", FRONT, dimensions, [])])
+        return [findings[("FEAT-03", identifier)]["status"] for identifier in ("round_1", "round_2")]
+
+    assert feat_03([thickness]) == ["fail", "fail"]
+    assert feat_03([thickness, top_depth]) == ["pass", "fail"]
+    assert feat_03([thickness, top_depth, bottom_depth]) == ["pass", "pass"]
+
+
+def test_two_parallel_chamfers_of_straight_edges_need_two_sizes_each_and_no_chain():
+    # The plate 40 x 20 x 10 with a 2 x 2 mm chamfer at the top right edge and one at the bottom left edge, edge-on in the front view.
+    # The two chamfers have the same normal.
+    s = 0.5 ** 0.5
+    faces = [level("plane_1", (1.0, 0.0, 0.0), 0.0, [0, 0, 2], [0, 20, 10]), level("plane_2", (1.0, 0.0, 0.0), 40.0, [40, 0, 0], [40, 20, 8]),
+             level("plane_3", (0.0, 0.0, 1.0), 0.0, [2, 0, 0], [40, 20, 0]), level("plane_4", (0.0, 0.0, 1.0), 10.0, [0, 0, 10], [38, 20, 10])]
+    top = {"id": "plane_5", "kind": "plane_level", "normal": (s, 0.0, s), "offset": 48 * s, "inclined": True,
+           "faces": [[[38, 0, 10], [40, 0, 8], [40, 20, 8], [38, 20, 10]]]}
+    bottom = {**top, "id": "plane_6", "offset": 2 * s, "faces": [[[0, 0, 2], [2, 0, 0], [2, 20, 0], [0, 20, 2]]]}
+    model = [line("l", [0, 2], [0, 10]), line("r", [40, 0], [40, 8]), line("b", [2, 0], [40, 0]), line("t", [0, 10], [38, 10]),
+             line("ct", [38, 10], [40, 8]), line("cb", [0, 2], [2, 0])]
+    dimensions = [linear("w", [0, 5], [40, 4], "horizontal"), linear("th", [20, 0], [20, 10], "vertical"),
+                  linear("ctw", [38, 10], [40, 8], "horizontal"), linear("cth", [40, 8], [38, 10], "vertical"),
+                  linear("cbw", [0, 2], [2, 0], "horizontal"), linear("cbh", [2, 0], [0, 2], "vertical")]
+    result, findings = several(faces + [top, bottom], [view("front", FRONT, dimensions, model)])
+    assert all(item["status"] == "pass" for item in result.values()), [(key, item["message"]) for key, item in findings.items()
+                                                                     if item["status"] != "pass"]
+    assert result["plane_5"]["size_dimensions"] == ["cth", "ctw"] and result["plane_6"]["size_dimensions"] == ["cbh", "cbw"]
+    assert result["plane_5"]["positions"] == {} and "two sizes" in findings[("FEAT-03", "plane_6")]["message"]
+    # Each chamfer still needs two sizes.
+    _, findings = several(faces + [top, bottom], [view("front", FRONT, dimensions[:-1], model)])
+    assert findings[("FEAT-02", "plane_5")]["status"] == "pass" and findings[("FEAT-02", "plane_6")]["status"] == "fail"
+
+
+def test_parallel_chamfers_in_the_inventory_are_inclined(tmp_path):
+    pytest.importorskip("build123d")
+    from build123d import Axis, Box, chamfer, export_step
+
+    # A plate 40 x 20 x 10 with a chamfer of 1 mm at the top right and at the bottom left edge along Y: parallel inclined faces.
+    plate = Box(40, 20, 10)
+    edges = plate.edges().filter_by(Axis.Y)
+    part = chamfer([edges.group_by(Axis.Z)[-1].sort_by(Axis.X)[-1], edges.group_by(Axis.Z)[0].sort_by(Axis.X)[0]], 1)
+    path = tmp_path / "chamfers.step"
+    export_step(part, str(path))
+    found = inventory(path)["features"]
+    inclined = [item for item in found if item["kind"] == "plane_level" and item["inclined"]]
+    assert len(inclined) == 2 and inclined[0]["normal"] == inclined[1]["normal"]
+    result = check(Report(), [], {}, {"features": found}, set(), [])
+    assert all(item["positions"] == {} for item in result if item["id"] in {feature["id"] for feature in inclined})

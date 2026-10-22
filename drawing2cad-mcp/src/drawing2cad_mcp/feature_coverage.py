@@ -2,19 +2,22 @@
 
 The verifier derives a feature inventory from the bound STEP. It does not use the part description or the feature references
 of the drawing specification. Each face of the model belongs to one feature:
-- a round feature is a set of cylindrical faces with one axis, one radius, and one material side (a hole, a bore, or a boss).
+- a round feature is a set of cylindrical faces with one axis, one radius, one material side, and one connected axial interval
+  (a hole, a bore, or a boss). Two blind holes from opposite faces on one axis are two features.
   It is partial when its faces do not go around the axis, for example a fillet of a straight edge or the end of a slot,
-- a conical feature is a set of conical faces with one axis, one apex, and one angle (a chamfer of a round edge or a countersink),
+- a conical feature is a set of conical faces with one axis, one apex, one angle, and one connected axial interval
+  (a chamfer of a round edge or a countersink),
 - a torus feature is a set of toroidal faces with one axis, one center, and two radii. With a profile arc of more than 91 degrees,
   it is a groove or a bead. Otherwise, it is a fillet of a round edge,
 - a plane level is a set of planar faces with one normal and one offset (a face of a step, a pocket floor, or an end face).
-  An inclined plane level is the only plane level along a normal that is not a model axis, for example a chamfer of a straight edge,
+  An inclined plane level has a normal that is not a model axis, for example a chamfer of a straight edge,
 - a free-form surface is one face of another type, for example a B-spline or a sphere.
 Each feature must be visible in a true-size view (FEAT-01). Each round, conical, and torus feature, each inclined plane level,
 and each free-form surface must have its size (FEAT-02). A free-form surface has no supported size dimension: it needs an
-uncertainty marker and a review decision. A chamfer needs two different sizes. A groove needs its profile radius and its size
-across the axis. Along each model axis and each plane normal, the plane levels and the axes of the full round, conical, and torus
-features must be connected by linear dimensions (FEAT-03). Along its axis, a groove also needs a position: the center of its
+uncertainty marker and a review decision. A chamfer needs two different sizes. A countersink needs a size that is not a diameter.
+A groove needs its profile radius and its size across the axis. Along each model axis, the plane levels along that axis and the
+axes of the full round, conical, and torus features must be connected by linear dimensions (FEAT-03). The two sizes of an inclined
+plane level give its position: it is not a FEAT-03 position. Along its axis, a groove also needs a position: the center of its
 profile arc. An end of a full cylinder is also a position along its axis, unless a plane level or a cone or a torus to a plane
 level locates it, for example the bottom of a blind hole. The adjacent faces locate a partial round feature and a fillet along its axis.
 """
@@ -134,6 +137,20 @@ def _largest_gap(angles) -> float:
     return max([b - a for a, b in zip(ordered, ordered[1:])] + [ordered[0] + 360 - ordered[-1]])
 
 
+def _intervals(faces: list[tuple[float, float, Any]]) -> list[list]:
+    """The connected axial intervals of the faces of one group, each as [low, high, data of its faces].
+
+    Each face is (low station, high station, data). Faces that overlap or touch within POSITION_MM are in one interval."""
+    merged: list[list] = []
+    for low, high, data in sorted(faces, key=lambda face: (face[0], face[1])):
+        if merged and low <= merged[-1][1] + POSITION_MM:
+            merged[-1][1] = max(merged[-1][1], high)
+            merged[-1][2].append(data)
+        else:
+            merged.append([low, high, [data]])
+    return merged
+
+
 def inventory(step_path: Path) -> dict[str, Any]:
     """The features of the bound STEP. Each face belongs to one feature."""
     from build123d import import_step
@@ -157,10 +174,8 @@ def inventory(step_path: Path) -> dict[str, Any]:
             # The extent along the axis, from points on the boundary edges. Inclined or curved ends can pass the vertices.
             stations = [station for station, _ in _stations(points, direction, foot)]
             entry = rounds.setdefault(_key(direction, 6) + _key(foot, 4) + _key([cylinder.Radius()], 4) + (outside,),
-                                      {"axis": direction, "foot": foot, "radius": cylinder.Radius(), "outside": outside, "stations": [],
-                                       "angles": []})
-            entry["stations"] += stations
-            entry["angles"] += _around(points, direction, foot)
+                                      {"axis": direction, "foot": foot, "radius": cylinder.Radius(), "outside": outside, "faces": []})
+            entry["faces"].append((min(stations), max(stations), (stations, _around(points, direction, foot))))
         elif kind == GeomAbs_Cone and points:
             cone = surface.Cone()
             direction, foot = _frame(cone.Axis())
@@ -168,8 +183,9 @@ def inventory(step_path: Path) -> dict[str, Any]:
             outside = _material_outside(surface, face, direction, foot)
             entry = cones.setdefault(_key(direction, 6) + _key(foot, 4) + _key(apex, 4) + _key([abs(cone.SemiAngle())], 6) + (outside,),
                                      {"axis": direction, "foot": foot, "outside": outside, "half_angle": math.degrees(abs(cone.SemiAngle())),
-                                      "stations": []})
-            entry["stations"] += _stations(points, direction, foot)
+                                      "faces": []})
+            stations = _stations(points, direction, foot)
+            entry["faces"].append((min(s for s, _ in stations), max(s for s, _ in stations), stations))
         elif kind == GeomAbs_Torus and points:
             torus = surface.Torus()
             direction, foot = _frame(torus.Axis())
@@ -192,15 +208,21 @@ def inventory(step_path: Path) -> dict[str, Any]:
         else:
             name = str(kind).split(".")[-1].removeprefix("GeomAbs_").lower()
             surfaces.append({"surface_type": name, "edges": edges})
+    # Each connected axial interval of a group is one feature, for example each of two blind holes from opposite faces on one axis.
+    round_entries = [{**entry, "stations": [s for stations, _ in data for s in stations], "angles": [a for _, angles in data for a in angles]}
+                     for entry in rounds.values() for _, _, data in _intervals(entry["faces"])]
+    cone_entries = [{**entry, "stations": [s for stations in data for s in stations]}
+                    for entry in cones.values() for _, _, data in _intervals(entry["faces"])]
     features = []
-    for number, entry in enumerate(sorted(rounds.values(), key=lambda e: (-e["radius"], _key(e["axis"], 6), _key(e["foot"], 4),
-                                                                            min(e["stations"]))), 1):
+    for number, entry in enumerate(sorted(round_entries, key=lambda e: (-e["radius"], _key(e["axis"], 6), _key(e["foot"], 4),
+                                                                        min(e["stations"]))), 1):
         features.append({"id": f"round_{number}", "kind": "hole" if entry["outside"] else "boss", "axis": _key(entry["axis"], 9),
                          "foot": _key(entry["foot"], 6), "radius": round(entry["radius"], 6),
                          "extent": [round(min(entry["stations"]), 6), round(max(entry["stations"]), 6)],
                          # A partial cylinder, for example a fillet of a straight edge or the end of a slot, does not go around its axis.
                          "full": _largest_gap(entry["angles"]) <= FULL_GAP_DEG})
-    for number, entry in enumerate(sorted(cones.values(), key=lambda e: (_key(e["axis"], 6), _key(e["foot"], 4), min(e["stations"]))), 1):
+    for number, entry in enumerate(sorted(cone_entries, key=lambda e: (_key(e["axis"], 6), _key(e["foot"], 4),
+                                                                       min(s for s, _ in e["stations"]))), 1):
         low, high = min(s for s, _ in entry["stations"]), max(s for s, _ in entry["stations"])
         # The radius at each end of the extent, from the boundary points at that end.
         radii = [max(r for s, r in entry["stations"] if abs(s - end) <= 1e-4) for end in (low, high)]
@@ -212,12 +234,9 @@ def inventory(step_path: Path) -> dict[str, Any]:
                          "station": round(entry["station"], 6), "major": round(entry["major"], 6), "minor": round(entry["minor"], 6),
                          "extent": [round(min(entry["stations"]), 6), round(max(entry["stations"]), 6)],
                          "profile_span": round(360.0 - _largest_gap(entry["angles"]), 3)})
-    normals: dict[tuple, int] = {}
-    for entry in planes.values():
-        normals[_key(entry["normal"], 6)] = normals.get(_key(entry["normal"], 6), 0) + 1
     for number, entry in enumerate(sorted(planes.values(), key=lambda e: (_key(e["normal"], 6), round(e["offset"], 4))), 1):
-        # An inclined plane level: its normal is not a model axis, and no other plane level is parallel to it.
-        inclined = max(abs(c) for c in entry["normal"]) < 1 - PARALLEL and normals[_key(entry["normal"], 6)] == 1
+        # An inclined plane level: its normal is not a model axis. The model axes are the reference frame.
+        inclined = max(abs(c) for c in entry["normal"]) < 1 - PARALLEL
         features.append({"id": f"plane_{number}", "kind": "plane_level", "normal": _key(entry["normal"], 9),
                          "offset": round(entry["offset"], 6), "inclined": inclined, "faces": entry["faces"]})
     for number, entry in enumerate(surfaces, 1):
@@ -439,7 +458,8 @@ def _sizes(feature: dict, view: _View, passed: set[str]) -> list[tuple[str, str]
 
     Two dimensions with the same tag give the same size. A chamfer needs two different tags: "angle", "axial" (a length along the
     axis of a cone), "diameter@<radius>" (the size of a cone at one radius), or "length@<direction>" (a length in one model
-    direction). A torus has the tag "radius" (its minor radius). A groove also has the tag "major" (its size across the axis)."""
+    direction). One tag of a cone must not be a diameter tag. A torus has the tag "radius" (its minor radius).
+    A groove also has the tag "major" (its size across the axis)."""
     found = []
     kind = feature["kind"]
     dimensions = [dimension for dimension in view.dimensions if dimension["id"] in passed]
@@ -511,7 +531,11 @@ def _sized(feature: dict, tags: list[tuple[str, str]]) -> bool:
         return bool(tags)
     # A chamfer needs two different sizes. A repeated measurement of one size, for example two diameters at one end of a cone
     # or one length under two identifiers, counts once.
-    return len({tag for _, tag in tags}) >= 2
+    distinct = {tag for _, tag in tags}
+    if feature["kind"] == "cone":
+        # The diameters at the two ends of a cone do not give its angle or its depth.
+        return len(distinct) >= 2 and any(not tag.startswith("diameter@") for tag in distinct)
+    return len(distinct) >= 2
 
 
 def sized_radii(coverage: list[dict]) -> set[float]:
@@ -538,7 +562,8 @@ def sized_radii(coverage: list[dict]) -> set[float]:
 def _directions(features: list[dict]) -> list[list[float]]:
     directions = {_key(axis, 6): list(axis) for axis in MODEL_AXES}
     for feature in features:
-        if feature["kind"] == "plane_level":
+        # The two sizes of an inclined plane level give its position. Its normal is not a FEAT-03 direction.
+        if feature["kind"] == "plane_level" and not feature["inclined"]:
             directions.setdefault(_key(feature["normal"], 6), list(feature["normal"]))
     return [directions[key] for key in sorted(directions)]
 
@@ -615,7 +640,7 @@ def _positions(features: list[dict], views: list[_View], passed: set[str]) -> di
         coordinates: list[tuple[float, str]] = []
         for feature in features:
             if feature["kind"] == "plane_level":
-                if abs(_dot(feature["normal"], direction)) >= 1 - PARALLEL:
+                if not feature["inclined"] and abs(_dot(feature["normal"], direction)) >= 1 - PARALLEL:
                     coordinates.append((feature["offset"] * (1 if _dot(feature["normal"], direction) > 0 else -1), feature["id"]))
             elif feature["kind"] in AXIAL and feature.get("full", True) and abs(_dot(feature["axis"], direction)) <= PARALLEL:
                 coordinates.append((_dot(feature["foot"], direction), feature["id"]))
@@ -696,8 +721,8 @@ def _name(feature: dict) -> str:
 SIZE_FAILURES = {
     "hole": "has no diameter or radius dimension that agrees with the bound model",
     "boss": "has no diameter or radius dimension that agrees with the bound model",
-    "cone": ("needs two different sizes that agree with the bound model: an angle and a length or diameter, or a length along the axis "
-             "and a diameter, or the diameters at its two ends"),
+    "cone": ("needs two different sizes that agree with the bound model: an angle and a length or diameter, or a length "
+             "and a diameter. The diameters at its two ends do not give its angle or its depth"),
     "torus": "has no radius dimension at its profile arc that agrees with the bound model",
     "groove": ("needs two sizes that agree with the bound model: a radius dimension at its profile arc, and a diameter or radius "
                "across its axis, for example the diameter of the groove bottom"),
@@ -793,6 +818,7 @@ def check(report, views: list[dict], derived: dict[str, dict], found: dict[str, 
             statuses.append(add("FEAT-03", feature, not open_directions,
                                 f"The position of the {name} is connected to the other features by dimensions." if located else
                                 f"The position of the {name} follows from its adjacent faces." if not feature.get("full", True) else
+                                f"The position of the {name} follows from its two sizes." if feature.get("inclined") else
                                 f"The {name} is the only position along each checked direction.",
                                 f"The position of the {name} has no dimension chain to the other features along {', '.join(open_directions)}.",
                                 {"directions": located}))
