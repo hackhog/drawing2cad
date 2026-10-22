@@ -12,10 +12,11 @@ of the drawing specification. Each face of the model belongs to one feature:
 - a free-form surface is one face of another type, for example a B-spline or a sphere.
 Each feature must be visible in a true-size view (FEAT-01). Each round, conical, and torus feature, each inclined plane level,
 and each free-form surface must have its size (FEAT-02). A free-form surface has no supported size dimension: it needs an
-uncertainty marker and a review decision. A chamfer needs two different sizes. Along each model axis and each plane normal,
-the plane levels and the axes of the full round, conical, and torus features must be connected by linear dimensions (FEAT-03).
-Along its axis, a groove also needs a position: the center of its profile arc. The adjacent faces locate a partial round feature
-and a fillet along its axis.
+uncertainty marker and a review decision. A chamfer needs two different sizes. A groove needs its profile radius and its size
+across the axis. Along each model axis and each plane normal, the plane levels and the axes of the full round, conical, and torus
+features must be connected by linear dimensions (FEAT-03). Along its axis, a groove also needs a position: the center of its
+profile arc. An end of a full cylinder is also a position along its axis, unless a plane level or a cone or a torus to a plane
+level locates it, for example the bottom of a blind hole. The adjacent faces locate a partial round feature and a fillet along its axis.
 """
 
 from __future__ import annotations
@@ -176,10 +177,11 @@ def inventory(step_path: Path) -> dict[str, Any]:
             station = _dot([center[i] - foot[i] for i in range(3)], direction)
             entry = tori.setdefault(_key(direction, 6) + _key(foot, 4) + _key([station, torus.MajorRadius(), torus.MinorRadius()], 4),
                                     {"axis": direction, "foot": foot, "station": station, "major": torus.MajorRadius(),
-                                     "minor": torus.MinorRadius(), "angles": []})
+                                     "minor": torus.MinorRadius(), "angles": [], "stations": []})
             # The angle of each boundary point around the center of the profile circle.
             entry["angles"] += [math.degrees(math.atan2(distance - entry["major"], along - station))
                                 for along, distance in _stations(points, direction, foot)]
+            entry["stations"] += [along for along, _ in _stations(points, direction, foot)]
         elif kind == GeomAbs_Plane and points:
             plane = surface.Plane()
             normal = _canonical([plane.Axis().Direction().X(), plane.Axis().Direction().Y(), plane.Axis().Direction().Z()])
@@ -208,6 +210,7 @@ def inventory(step_path: Path) -> dict[str, Any]:
     for number, entry in enumerate(sorted(tori.values(), key=lambda e: (_key(e["axis"], 6), _key(e["foot"], 4), e["station"])), 1):
         features.append({"id": f"torus_{number}", "kind": "torus", "axis": _key(entry["axis"], 9), "foot": _key(entry["foot"], 6),
                          "station": round(entry["station"], 6), "major": round(entry["major"], 6), "minor": round(entry["minor"], 6),
+                         "extent": [round(min(entry["stations"]), 6), round(max(entry["stations"]), 6)],
                          "profile_span": round(360.0 - _largest_gap(entry["angles"]), 3)})
     normals: dict[tuple, int] = {}
     for entry in planes.values():
@@ -406,9 +409,11 @@ def _legs(dimension: dict) -> list[tuple]:
     return [(dimension["center"], dimension["p1"]), (dimension["center"], dimension["p2"])]
 
 
-def _direction_tag(measure) -> str:
-    """The angle of a measurement direction in the view, in degrees modulo 180, as a constraint tag of a length."""
-    return f"length@{round(math.degrees(math.atan2(measure[1], measure[0])) % 180, 1) % 180:.1f}"
+def _direction_tag(view: _View, measure) -> str:
+    """The model direction of a measurement direction, or its opposite, as a constraint tag of a length.
+
+    The same length in two views with different orientations gets the same tag."""
+    return f"length@{_label(_key(_canonical(view.model_direction(measure)), 4))}"
 
 
 def _cone_tag(feature: dict, view: _View, dimension: dict, anchor) -> str | None:
@@ -421,7 +426,7 @@ def _cone_tag(feature: dict, view: _View, dimension: dict, anchor) -> str | None
     if along >= 1 - PARALLEL:
         return "axial"
     if along > PARALLEL:
-        return _direction_tag(measure)
+        return _direction_tag(view, measure)
     # Across the axis, the dimension measures the cone radius at the station of its anchor. Near an end, this is the end radius.
     station, _ = _axial(feature, view, anchor)
     radius = next((r for end, r in zip(feature["extent"], feature["radii"]) if abs(station - end) <= POSITION_MM),
@@ -433,8 +438,8 @@ def _sizes(feature: dict, view: _View, passed: set[str]) -> list[tuple[str, str]
     """The passed dimensions of this view that give a size of the feature, each with its constraint tag.
 
     Two dimensions with the same tag give the same size. A chamfer needs two different tags: "angle", "axial" (a length along the
-    axis of a cone), "diameter@<radius>" (the size of a cone at one radius), or "length@<direction>" (a length in one direction
-    of the view)."""
+    axis of a cone), "diameter@<radius>" (the size of a cone at one radius), or "length@<direction>" (a length in one model
+    direction). A torus has the tag "radius" (its minor radius). A groove also has the tag "major" (its size across the axis)."""
     found = []
     kind = feature["kind"]
     dimensions = [dimension for dimension in view.dimensions if dimension["id"] in passed]
@@ -444,19 +449,23 @@ def _sizes(feature: dict, view: _View, passed: set[str]) -> list[tuple[str, str]
             if dimension["type"] == "linear" and any(_on_trace(feature, view, (point,)) for point in (dimension["p1"], dimension["p2"])):
                 measure = _measure_direction(dimension)
                 if measure is not None:
-                    found.append((dimension["id"], _direction_tag(measure)))
+                    found.append((dimension["id"], _direction_tag(view, measure)))
             elif dimension["type"] == "angular" and any(_on_trace(feature, view, leg) for leg in _legs(dimension)):
                 found.append((dimension["id"], "angle"))
         return found
     along = abs(_dot(feature["axis"], view.direction))
     center = view.point(feature["foot"])
+    # The size of a groove across its axis: the radius of its bottom, of its profile center, or of its outer edge.
+    major = ([radius for radius in (feature["major"] - feature["minor"], feature["major"], feature["major"] + feature["minor"])
+              if radius > RADIUS_MM] if _groove(feature) else [])
     for dimension in dimensions:
         if dimension["type"] in {"radius", "diameter"}:
             if along >= 1 - PARALLEL and math.dist(dimension["center"], center) <= POSITION_MM:
-                radii = [feature["radius"]] if kind in {"hole", "boss"} else feature["radii"] if kind == "cone" else []
+                radii = [feature["radius"]] if kind in {"hole", "boss"} else feature["radii"] if kind == "cone" else major
                 radius = next((radius for radius in radii if abs(dimension["radius"] - radius) <= RADIUS_MM), None)
                 if radius is not None:
-                    found.append((dimension["id"], f"diameter@{radius:.3f}" if kind == "cone" else "diameter"))
+                    found.append((dimension["id"], f"diameter@{radius:.3f}" if kind == "cone" else "major" if kind == "torus"
+                                  else "diameter"))
             elif kind == "torus" and along <= PARALLEL and abs(dimension["radius"] - feature["minor"]) <= RADIUS_MM:
                 station, side = _axial(feature, view, dimension["center"])
                 if abs(station - feature["station"]) <= POSITION_MM and abs(abs(side) - feature["major"]) <= POSITION_MM:
@@ -480,10 +489,24 @@ def _sizes(feature: dict, view: _View, passed: set[str]) -> list[tuple[str, str]
             if (all(abs(abs(side) - feature["radius"]) <= POSITION_MM and low - POSITION_MM <= station <= high + POSITION_MM
                     for station, side in ends) and ends[0][1] * ends[1][1] < 0):
                 found.append((dimension["id"], "diameter"))
+        elif along <= PARALLEL and major and dimension["type"] == "linear":
+            # A linear dimension across the axis of a groove, between two points on opposite sides at one of its radii,
+            # within the profile of the groove along the axis.
+            axis = _unit(view.point(feature["axis"]))
+            measure = _measure_direction(dimension)
+            if measure is None or abs(_dot(axis[:2], measure)) > PARALLEL:
+                continue
+            ends = [_axial(feature, view, point) for point in (dimension["p1"], dimension["p2"])]
+            if (ends[0][1] * ends[1][1] < 0 and all(abs(station - feature["station"]) <= feature["minor"] + POSITION_MM for station, _ in ends)
+                    and any(all(abs(abs(side) - radius) <= POSITION_MM for _, side in ends) for radius in major)):
+                found.append((dimension["id"], "major"))
     return found
 
 
 def _sized(feature: dict, tags: list[tuple[str, str]]) -> bool:
+    if _groove(feature):
+        # A groove needs its profile radius and its size across the axis.
+        return {"radius", "major"} <= {tag for _, tag in tags}
     if feature["kind"] in {"hole", "boss", "torus"}:
         return bool(tags)
     # A chamfer needs two different sizes. A repeated measurement of one size, for example two diameters at one end of a cone
@@ -493,7 +516,8 @@ def _sized(feature: dict, tags: list[tuple[str, str]]) -> bool:
 
 def sized_radii(coverage: list[dict]) -> set[float]:
     """The radii of the round model edges of the features that FEAT-02 sized, for DIM-03: the cylinder radius,
-    the end radii of a cone that are not zero, and the outer and inner radius of a torus."""
+    the end radii of a cone that are not zero, and the outer and inner radius of a torus.
+    A groove gives these radii only when its size across the axis is dimensioned."""
     radii: set[float] = set()
     for item in coverage:
         if item["kind"] in {"plane_level", "surface"} or not item["size_dimensions"]:
@@ -502,6 +526,8 @@ def sized_radii(coverage: list[dict]) -> set[float]:
             values = [item["radius"]]
         elif item["kind"] == "cone":
             values = [radius for radius in item["radii"] if radius > RADIUS_MM]
+        elif _groove(item) and not item.get("major_sized"):
+            continue
         else:
             inner = item["major"] - item["minor"]
             values = [item["major"] + item["minor"]] + ([inner] if inner > RADIUS_MM else [])
@@ -534,8 +560,49 @@ def _at(feature: dict, view: _View, point, direction) -> bool:
             return False
         station, side = _axial(feature, view, point)
         return abs(station - feature["station"]) <= POSITION_MM and abs(abs(side) - feature["major"]) <= POSITION_MM
+    if feature["kind"] in {"hole", "boss"} and abs(_dot(feature["axis"], direction)) >= 1 - PARALLEL:
+        # The axial position of a cylinder is an end of its extent, in a view with the axis in the view plane.
+        # The anchor is on the end, at most the radius from the axis: the end of an outline or the bottom line of a hole.
+        if abs(_dot(feature["axis"], view.direction)) > PARALLEL:
+            return False
+        station, side = _axial(feature, view, point)
+        return abs(side) <= feature["radius"] + POSITION_MM and any(abs(station - end) <= POSITION_MM for end in feature["extent"])
     return (abs(_dot(feature["axis"], view.direction)) >= 1 - PARALLEL
             and math.dist(point, view.point(feature["foot"])) <= POSITION_MM)
+
+
+def _coordinate(feature: dict, station: float, direction) -> float:
+    """The coordinate along the direction of the point at the station on the axis of the feature."""
+    return _dot(feature["foot"], direction) + station * _dot(feature["axis"], direction)
+
+
+def _open_ends(feature: dict, features: list[dict], direction) -> list[float]:
+    """The coordinates along the direction of the ends of a full cylinder with its axis along the direction,
+    without the ends that are anchored.
+
+    An end is anchored at the coordinate of a plane level, or at an end of a cone or a torus on the same axis whose
+    other end is anchored, for example at the chamfer of a hole to a face. The tip of a drill point does not anchor an end."""
+    anchored = [level["offset"] * (1 if _dot(level["normal"], direction) > 0 else -1) for level in features
+                if level["kind"] == "plane_level" and abs(_dot(level["normal"], direction)) >= 1 - PARALLEL]
+    links = []
+    for other in features:
+        if (other["kind"] in {"cone", "torus"} and abs(_dot(other["axis"], feature["axis"])) >= 1 - PARALLEL
+                and math.dist(other["foot"], feature["foot"]) <= POSITION_MM):
+            ends = other.get("extent") or [other["station"] - other["minor"], other["station"] + other["minor"]]
+            links.append([_coordinate(other, end, direction) for end in ends])
+
+    def known(value) -> bool:
+        return any(abs(value - item) <= POSITION_MM for item in anchored)
+
+    changed = True
+    while changed:
+        changed = False
+        for first, second in links:
+            for end, other_end in ((first, second), (second, first)):
+                if known(other_end) and not known(end):
+                    anchored.append(end)
+                    changed = True
+    return [value for value in (_coordinate(feature, end, direction) for end in feature["extent"]) if not known(value)]
 
 
 def _positions(features: list[dict], views: list[_View], passed: set[str]) -> dict[str, dict[str, bool]]:
@@ -554,8 +621,11 @@ def _positions(features: list[dict], views: list[_View], passed: set[str]) -> di
                 coordinates.append((_dot(feature["foot"], direction), feature["id"]))
             elif _groove(feature) and abs(_dot(feature["axis"], direction)) >= 1 - PARALLEL:
                 # A groove also has a node along its axis: the center of its profile arc. A fillet follows from tangency.
-                center = [feature["foot"][i] + feature["station"] * feature["axis"][i] for i in range(3)]
-                coordinates.append((_dot(center, direction), feature["id"]))
+                coordinates.append((_coordinate(feature, feature["station"], direction), feature["id"]))
+            elif (feature["kind"] in {"hole", "boss"} and feature.get("full", True)
+                  and abs(_dot(feature["axis"], direction)) >= 1 - PARALLEL):
+                # An end of a full cylinder that no plane level locates is a node, for example the bottom of a blind hole.
+                coordinates += [(value, feature["id"]) for value in _open_ends(feature, features, direction)]
         nodes: list[list] = []
         for value, identifier in sorted(coordinates):
             if nodes and value - nodes[-1][0] <= POSITION_MM:
@@ -601,7 +671,8 @@ def _positions(features: list[dict], views: list[_View], passed: set[str]) -> di
         reference = max(groups.values(), key=lambda members: (sum(len(nodes[index][1]) for index in members), -min(members)))
         for index, (_, identifiers) in enumerate(nodes):
             for identifier in identifiers:
-                result[identifier][_label(direction)] = index in reference
+                # A cylinder with two open ends has two nodes along its axis. Both must be connected.
+                result[identifier][_label(direction)] = result[identifier].get(_label(direction), True) and index in reference
     return result
 
 
@@ -628,6 +699,8 @@ SIZE_FAILURES = {
     "cone": ("needs two different sizes that agree with the bound model: an angle and a length or diameter, or a length along the axis "
              "and a diameter, or the diameters at its two ends"),
     "torus": "has no radius dimension at its profile arc that agrees with the bound model",
+    "groove": ("needs two sizes that agree with the bound model: a radius dimension at its profile arc, and a diameter or radius "
+               "across its axis, for example the diameter of the groove bottom"),
     "plane_level": ("needs two different sizes that agree with the bound model: an angle and a length, "
                     "or two lengths in different directions to its trace"),
     "surface": "has no supported size dimension. Mark it with an uncertainty marker and decide it in the drawing review",
@@ -656,6 +729,8 @@ def check(report, views: list[dict], derived: dict[str, dict], found: dict[str, 
             report.add(rule, "not_applicable", "info", "The bound model has no face.")
     elif not sized_kinds:
         report.add("FEAT-02", "not_applicable", "info", "The bound model has only plane levels along model axes. FEAT-03 checks their distances.")
+    elif all(feature["kind"] == "surface" for feature in features):
+        report.add("FEAT-03", "not_applicable", "info", "The bound model has only free-form surfaces. They have no position rule.")
 
     def add(rule: str, feature: dict, ok: bool, passed_text: str, failed_text: str, observed) -> str:
         if ok:
@@ -701,14 +776,17 @@ def check(report, views: list[dict], derived: dict[str, dict], found: dict[str, 
                         + (" Only hidden lines show it. Add a section or a view." if hidden else " Add a view or a section that shows it."),
                         {"visible_in": visible, "hidden_in": hidden})]
         sizes = None
+        extra = {}
         if feature in sized_kinds:
             unique = [(identifier, role) for identifier, role in roles[feature["id"]]
                       if feature["kind"] not in AXIAL or any(owners == [feature["id"]] for (kind, _, other), owners in claims.items()
                                                              if kind == group(feature) and other == identifier)]
             sizes = sorted({identifier for identifier, _ in unique})
+            if _groove(feature):
+                extra["major_sized"] = any(role == "major" for _, role in unique)
             statuses.append(add("FEAT-02", feature, feature["kind"] != "surface" and _sized(feature, unique),
                                 f"The {name} has the size dimensions {', '.join(sizes)}.",
-                                f"The {name} {SIZE_FAILURES[feature['kind']]}.", {"dimensions": sizes}))
+                                f"The {name} {SIZE_FAILURES['groove' if _groove(feature) else feature['kind']]}.", {"dimensions": sizes}))
         located = positions[feature["id"]]
         if feature["kind"] != "surface":
             open_directions = [direction for direction, ok in located.items() if not ok]
@@ -720,5 +798,5 @@ def check(report, views: list[dict], derived: dict[str, dict], found: dict[str, 
                                 {"directions": located}))
         status = "fail" if "fail" in statuses else "needs_review" if "needs_review" in statuses else "pass"
         coverage.append({**{key: value for key, value in feature.items() if key not in {"faces", "edges"}}, "visible_in": visible,
-                         "size_dimensions": sizes, "positions": located, "markers": marked[feature["id"]], "status": status})
+                         "size_dimensions": sizes, **extra, "positions": located, "markers": marked[feature["id"]], "status": status})
     return coverage
