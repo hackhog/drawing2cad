@@ -34,6 +34,8 @@ A test with ezdxf 1.4.5 and the overrides of the renderer (`DIMTAD` 0, `DIMGAP` 
   `DIM-05` samples each segment and checks it on its own against the coverage threshold 0.8.
 - The complete arc and the extension lines up to 1 mm past the arc are expected ink for `MODEL-05`.
 - An angular dimension with missing or moved lines fails `DIM-05`. `DIM-05` no longer reports `not_tested` for angular dimensions.
+- An angular dimension whose arc has a sheet radius of 1 mm or less cannot be read. `DIM-05` fails for this dimension and gives the radius in its message.
+  The dimension is not omitted from the rule.
 
 ## Consequences
 
@@ -41,3 +43,4 @@ A test with ezdxf 1.4.5 and the overrides of the renderer (`DIMTAD` 0, `DIMGAP` 
 - The estimate of the value length is conservative. A part of the arc near the value is not checked.
 - The arrow tails outside a short arc are not expected ink. They are shorter than the `MODEL-05` extent limit.
 - The rule depends on the dimension rendering of ezdxf. A change of the ezdxf version or of the dimension overrides must keep the tests of the arc and extension lines.
+- A test covers an angular dimension with a value 0.9 mm from the vertex: `DIM-05` fails for it.

@@ -41,6 +41,7 @@ def _dimension_lines(view: dict, text_height: float) -> list[dict]:
     for dimension in view["dimensions"]:
         label = _sheet(view, dimension["label_position"])
         segments = []
+        failed = None
         if dimension["type"] in {"radius", "diameter"}:
             center = _sheet(view, dimension["center"])
             direction = _unit([label[0] - center[0], label[1] - center[1]])
@@ -55,6 +56,11 @@ def _dimension_lines(view: dict, text_height: float) -> list[dict]:
                 segments.append([edge, [edge[0] + direction[0] * 1.0, edge[1] + direction[1] * 1.0]])
         elif dimension["type"] == "angular":
             segments = _angular_lines(view, dimension, label, text_height)
+            arc_radius = math.dist(_sheet(view, dimension["center"]), label)
+            if arc_radius <= 1.0:
+                # An arc of 1 mm or less cannot be read on the sheet. The dimension fails instead of leaving the rule.
+                failed = (f"Dimension {dimension['id']} has an arc radius of {arc_radius:.2f} mm on the sheet. "
+                          "The arc radius is too small to read (1 mm or less).")
         elif dimension["type"] == "linear":
             angle = math.radians(float(dimension.get("angle", 0.0)))
             direction = [math.cos(angle), math.sin(angle)]
@@ -82,7 +88,9 @@ def _dimension_lines(view: dict, text_height: float) -> list[dict]:
                 else:
                     segments += [[ends[0], [ends[0][0] + along[0], ends[0][1] + along[1]]],
                                  [[ends[1][0] - along[0], ends[1][1] - along[1]], ends[1]]]
-        if segments:
+        if failed:
+            result.append({"id": dimension["id"], "segments": segments, "evidence": dimension["evidence_ids"], "failed": failed})
+        elif segments:
             result.append({"id": dimension["id"], "segments": segments, "evidence": dimension["evidence_ids"]})
     return result
 

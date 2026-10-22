@@ -626,3 +626,20 @@ def test_short_and_outside_angular_values_keep_the_checked_arc_parts():
     first, second = _dimension_lines(view([4, 3], 30, (17.320508, 10)), 2.5)[0]["segments"]
     assert math.radians(first["end_angle"] - first["start_angle"]) * 5 == pytest.approx(1.0)
     assert second["end_angle"] == pytest.approx(30.0) and first["start_angle"] == 0.0
+
+
+def test_angular_value_at_the_vertex_fails_dim_05_for_an_unreadable_arc():
+    from drawing2cad_mcp.drawing_verification import _dimension_lines
+    from drawing2cad_mcp.pdf_verifier import Report, check_dimension_lines
+
+    view = {"origin": [100, 100], "scale": 1.0, "dimensions": [
+        {"id": "a", "type": "angular", "center": [0, 0], "p1": [20, 0], "p2": [0, 20], "expected": 90,
+         "label_position": [0.9, 0], "evidence_ids": ["drawing"]}]}
+    [item] = _dimension_lines(view, 2.5)
+    assert item["id"] == "a" and "too small to read" in item["failed"] and "0.90 mm" in item["failed"]
+    report = Report()
+    # A dimension that fails by its geometry needs no raster.
+    check_dimension_lines(report, None, [item])
+    [finding] = report.findings
+    assert (finding["rule_id"], finding["status"], finding["severity"], finding["feature"]) == ("DIM-05", "fail", "major", "a")
+    assert finding["evidence"] == ["drawing"]

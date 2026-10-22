@@ -540,6 +540,11 @@ def _distance_to(point, item) -> float:
 def check_dimension_lines(report: Report, raster: Raster, dimension_lines: list[dict]) -> None:
     """The rendered dimension, extension, and leader lines must be where the bound drawing puts them."""
     for item in dimension_lines:
+        if item.get("failed"):
+            points = [p for segment in item["segments"] for p in _segment_points(segment, 0.3)]
+            report.add("DIM-05", "fail", "major", item["failed"], region=_bounds(points) if points else None, feature=item["id"],
+                       evidence=item["evidence"])
+            continue
         # Each segment on its own: a missing extension line cannot hide in a long dimension line.
         points = [_segment_points(segment, 0.3) for segment in item["segments"]]
         fraction = min(sum(covered) / len(covered) for covered in (raster.covered(part) for part in points))
