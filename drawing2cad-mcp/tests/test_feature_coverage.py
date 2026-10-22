@@ -1,4 +1,6 @@
-"""Feature coverage of a drawing: the feature inventory of the bound STEP and the rules FEAT-01 to FEAT-04."""
+"""Feature coverage of a drawing: the feature inventory of the bound STEP and the rules FEAT-01 to FEAT-03."""
+
+import math
 
 import pytest
 
@@ -29,15 +31,14 @@ def view(identifier, projection, dimensions, geometry=()):
 def level(identifier, normal, offset, low, high):
     # One rectangular face: its corners are its boundary points.
     corners = [[x, y, z] for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
-    return {"id": identifier, "kind": "plane_level", "normal": normal, "offset": offset, "faces": [corners]}
+    return {"id": identifier, "kind": "plane_level", "normal": normal, "offset": offset, "inclined": False, "faces": [corners]}
 
 
 PLATE = {"features": [
     {"id": "round_1", "kind": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "radius": 3.0, "extent": [0.0, 10.0]},
     level("plane_1", (1.0, 0.0, 0.0), 0.0, [0, 0, 0], [0, 20, 10]), level("plane_2", (1.0, 0.0, 0.0), 40.0, [40, 0, 0], [40, 20, 10]),
     level("plane_3", (0.0, 1.0, 0.0), 0.0, [0, 0, 0], [40, 0, 10]), level("plane_4", (0.0, 1.0, 0.0), 20.0, [0, 20, 0], [40, 20, 10]),
-    level("plane_5", (0.0, 0.0, 1.0), 0.0, [0, 0, 0], [40, 20, 0]), level("plane_6", (0.0, 0.0, 1.0), 10.0, [0, 0, 10], [40, 20, 10])],
-    "other_surfaces": {}}
+    level("plane_5", (0.0, 0.0, 1.0), 0.0, [0, 0, 0], [40, 20, 0]), level("plane_6", (0.0, 0.0, 1.0), 10.0, [0, 0, 10], [40, 20, 10])]}
 TOP_MODEL = [line("t1", [0, 0], [40, 0]), line("t2", [40, 0], [40, 20]), line("t3", [40, 20], [0, 20]), line("t4", [0, 20], [0, 0]),
              circle("hole", [10, 10], 3)]
 # The front view: the plate outline and the hole as hidden lines at x = 7 and x = 13.
@@ -151,18 +152,77 @@ def test_an_edge_that_fits_two_round_features_shows_neither():
 
 def test_an_empty_inventory_is_not_applicable():
     report = Report()
-    check(report, [view("top", TOP, [], TOP_MODEL)], {"top": {"geometry": TOP_MODEL}}, {"features": [], "other_surfaces": {"sphere": 1}}, set(), [])
+    check(report, [view("top", TOP, [], TOP_MODEL)], {"top": {"geometry": TOP_MODEL}}, {"features": []}, set(), [])
     statuses = {item["rule_id"]: item["status"] for item in report.findings}
-    assert statuses == {"FEAT-01": "not_applicable", "FEAT-02": "not_applicable", "FEAT-03": "not_applicable", "FEAT-04": "not_tested"}
+    assert statuses == {"FEAT-01": "not_applicable", "FEAT-02": "not_applicable", "FEAT-03": "not_applicable"}
     report = Report()
     check(report, [view("top", TOP, [], TOP_MODEL)], {"top": {"geometry": TOP_MODEL}}, {**PLATE, "features": PLATE["features"][1:]}, set(), [])
     assert [item["status"] for item in report.findings if item["rule_id"] == "FEAT-02"] == ["not_applicable"]
 
 
-def test_other_surfaces_are_listed_as_not_tested():
-    features = {**PLATE, "other_surfaces": {"cone": 2, "torus": 4}}
-    _, findings = coverage(COMPLETE, features=features)
-    assert findings[("FEAT-04", None)]["status"] == "not_tested" and "2 cone, 4 torus" in findings[("FEAT-04", None)]["message"]
+def single(feature, front_model, dimensions, markers=()):
+    """FEAT findings of one feature in the front view (local x = model x, local y = model z)."""
+    report = Report()
+    result = check(report, [view("front", FRONT, dimensions, front_model)], {"front": {"geometry": front_model}}, {"features": [feature]},
+                   {item["id"] for item in dimensions}, list(markers))
+    return result[0], {item["rule_id"]: item for item in report.findings}
+
+
+def angular(identifier, center, p1, p2):
+    return {"id": identifier, "type": "angular", "center": center, "p1": p1, "p2": p2}
+
+
+def test_a_chamfer_of_a_straight_edge_needs_two_sizes():
+    # A 2 x 2 mm chamfer between the top face (z = 10) and the right face (x = 40) of the plate, edge-on in the front view.
+    s = 0.5 ** 0.5
+    chamfer = {"id": "plane_1", "kind": "plane_level", "normal": (s, 0.0, s), "offset": 48 * s, "inclined": True,
+               "faces": [[[38, 0, 10], [40, 0, 8], [40, 20, 8], [38, 20, 10]]]}
+    model = [line("ch", [38, 10], [40, 8])]
+    width, height = linear("cw", [38, 10], [40, 8], "horizontal"), linear("chh", [40, 8], [38, 10], "vertical")
+    angle = angular("ca", [40, 8], [40, 0], [38, 10])
+    result, findings = single(chamfer, model, [width, height])
+    assert result["visible_in"] == ["front"] and findings["FEAT-02"]["status"] == "pass"
+    assert single(chamfer, model, [width, angle])[1]["FEAT-02"]["status"] == "pass"
+    assert single(chamfer, model, [width])[1]["FEAT-02"]["status"] == "fail"
+
+
+def test_a_chamfer_of_a_hole_needs_two_sizes():
+    # A 45 degree chamfer from radius 3 to radius 4 at the top of the hole (z = 9..10). The front view shows its outlines.
+    cone = {"id": "cone_1", "kind": "cone", "side": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "extent": [9.0, 10.0],
+            "radii": [3.0, 4.0], "half_angle": 45.0}
+    model = [line("o1", [7, 9], [6, 10]), line("o2", [13, 9], [14, 10])]
+    across = linear("cd", [6, 10], [14, 10], "horizontal")
+    angle = angular("ca", [6, 10], [7, 9], [0, 10])
+    result, findings = single(cone, model, [across, angle])
+    assert result["visible_in"] == ["front"] and findings["FEAT-02"]["status"] == "pass"
+    assert single(cone, model, [angle])[1]["FEAT-02"]["status"] == "fail"
+    # A line beside the cone does not show it.
+    assert single(cone, [line("other", [7, 0], [7, 9])], [across, angle])[0]["visible_in"] == []
+
+
+def test_a_fillet_of_a_round_edge_needs_its_radius():
+    # A fillet of radius 1 around the axis (10, 10): the profile circles are at 5 mm from the axis, at z = 5.
+    torus = {"id": "torus_1", "kind": "torus", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "station": 5.0, "major": 5.0, "minor": 1.0}
+    profile = {"id": "p", "type": "arc", "style": "visible", "center": [15, 5], "radius": 1, "start_angle": 90, "end_angle": 180}
+    radius = {"id": "fr", "type": "radius", "center": [15, 5], "radius": 1}
+    result, findings = single(torus, [profile], [radius])
+    assert result["visible_in"] == ["front"] and findings["FEAT-02"]["status"] == "pass"
+    # The derivation can give the profile as a polyline.
+    points = [[15 + math.cos(math.radians(a)), 5 + math.sin(math.radians(a))] for a in (90, 135, 180)]
+    polyline = [line("q1", points[0], points[1]), line("q2", points[1], points[2])]
+    assert single(torus, polyline, [radius])[0]["visible_in"] == ["front"]
+    assert single(torus, [profile], [])[1]["FEAT-02"]["status"] == "fail"
+
+
+def test_a_free_form_surface_needs_a_marker_and_a_review():
+    surface = {"id": "surface_1", "kind": "surface", "surface_type": "bspline",
+               "edges": [[[0, 0, 0], [10, 0, 0]], [[10, 0, 0], [12, 0, 5], [10, 0, 10]]]}
+    model = [line("s1", [0, 0], [10, 0]), line("s2", [10, 0], [12, 5])]
+    result, findings = single(surface, model, [])
+    assert result["visible_in"] == ["front"] and findings["FEAT-02"]["status"] == "fail" and "FEAT-03" not in findings
+    result, findings = single(surface, model, [], markers=[{"id": "m1", "view_id": "front", "primitive_id": "s1"}])
+    assert findings["FEAT-02"]["status"] == "needs_review" and result["status"] == "needs_review"
+    assert "edges" not in result
 
 
 def test_isometric_views_do_not_count():
@@ -181,6 +241,34 @@ def test_the_flange_inventory_has_its_round_features_and_plane_levels(tmp_path):
     rounds = [(item["kind"], item["radius"]) for item in found["features"] if item["kind"] != "plane_level"]
     assert rounds == [("boss", 50.0), ("boss", 25.0), ("hole", 15.0)] + [("hole", 5.0)] * 4
     levels = [item["offset"] for item in found["features"] if item["kind"] == "plane_level"]
-    assert levels == [0.0, 12.0, 32.0] and found["other_surfaces"] == {}
+    assert levels == [0.0, 12.0, 32.0] and not [item for item in found["features"] if item["kind"] in {"cone", "torus", "surface"}]
     bore = next(item for item in found["features"] if item["kind"] == "hole" and item["radius"] == 15.0)
     assert bore["extent"] == [0.0, 32.0]
+
+
+def test_the_inventory_has_chamfers_fillets_and_free_form_surfaces(tmp_path):
+    build123d = pytest.importorskip("build123d")
+    from build123d import Axis, Box, Cylinder, GeomType, Pos, Sphere, chamfer, export_step, fillet
+
+    # A plate 40 x 20 x 10 (centered) with a chamfer of a straight edge, a hole with a chamfer, a boss with a fillet at its base,
+    # and a spherical dome.
+    part = Box(40, 20, 10)
+    part = chamfer(part.edges().filter_by(Axis.Y).group_by(Axis.Z)[-1].sort_by(Axis.X)[-1], 1)
+    part -= Pos(-10, 0, 0) * Cylinder(3, 10)
+    part = chamfer(part.edges().filter_by(GeomType.CIRCLE).group_by(Axis.Z)[-1].sort_by(Axis.X)[0], 0.5)
+    part += Pos(5, 0, 7.5) * Cylinder(3, 5)
+    base = [edge for edge in part.edges().filter_by(GeomType.CIRCLE)
+            if abs(edge.arc_center.Z - 5) < 1e-6 and abs(edge.arc_center.X - 5) < 1e-6 and abs(edge.radius - 3) < 1e-6]
+    part = fillet(base, 1)
+    part += Pos(12, 0, 5) * Sphere(2)
+    path = tmp_path / "part.step"
+    export_step(part, str(path))
+    found = inventory(path)["features"]
+    kinds = {item["kind"] for item in found}
+    assert {"hole", "boss", "cone", "torus", "surface", "plane_level"} <= kinds, kinds
+    cone = next(item for item in found if item["kind"] == "cone")
+    assert cone["side"] == "hole" and sorted(cone["radii"]) == pytest.approx([3.0, 3.5], abs=1e-4)
+    torus = next(item for item in found if item["kind"] == "torus")
+    assert torus["minor"] == pytest.approx(1.0, abs=1e-4) and torus["major"] == pytest.approx(4.0, abs=1e-4)
+    assert [item for item in found if item["kind"] == "plane_level" and item["inclined"]], "the chamfer of the straight edge"
+    assert {item["surface_type"] for item in found if item["kind"] == "surface"} == {"sphere"}
