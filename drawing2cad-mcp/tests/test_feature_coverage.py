@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from drawing2cad_mcp.feature_coverage import check, inventory
+from drawing2cad_mcp.feature_coverage import check, inventory, sized_radii
 from drawing2cad_mcp.pdf_verifier import Report
 
 TOP = {"scale_convention": "true_size", "matrix": [[1, 0, 0], [0, 1, 0]]}
@@ -270,5 +270,123 @@ def test_the_inventory_has_chamfers_fillets_and_free_form_surfaces(tmp_path):
     assert cone["side"] == "hole" and sorted(cone["radii"]) == pytest.approx([3.0, 3.5], abs=1e-4)
     torus = next(item for item in found if item["kind"] == "torus")
     assert torus["minor"] == pytest.approx(1.0, abs=1e-4) and torus["major"] == pytest.approx(4.0, abs=1e-4)
+    # The fillet has a profile arc of 90 degrees: it is not a groove.
+    assert torus["profile_span"] == pytest.approx(90.0, abs=0.5)
+    assert all(item["full"] for item in found if item["kind"] in {"hole", "boss"})
     assert [item for item in found if item["kind"] == "plane_level" and item["inclined"]], "the chamfer of the straight edge"
     assert {item["surface_type"] for item in found if item["kind"] == "surface"} == {"sphere"}
+
+
+def several(features, views):
+    """FEAT findings of the features in the views. Each dimension passed DIM-02 and DIM-06."""
+    report = Report()
+    derived = {item["id"]: {"geometry": item["geometry"]} for item in views}
+    passed = {dimension["id"] for item in views for dimension in item["dimensions"]}
+    result = check(report, views, derived, {"features": features}, passed, [])
+    return {item["id"]: item for item in result}, {(item["rule_id"], item["feature"]): item for item in report.findings}
+
+
+def test_a_repeated_size_of_a_chamfer_counts_once():
+    # The chamfer of the hole from radius 3 to radius 4 (z = 9..10). The top view shows its end circles.
+    cone = {"id": "cone_1", "kind": "cone", "side": "hole", "axis": (0.0, 0.0, 1.0), "foot": (10.0, 10.0, 0.0), "extent": [9.0, 10.0],
+            "radii": [3.0, 4.0], "half_angle": 45.0}
+    top_model = [circle("c3", [10, 10], 3), circle("c4", [10, 10], 4)]
+    front_model = [line("o1", [7, 9], [6, 10]), line("o2", [13, 9], [14, 10])]
+    d1 = {"id": "d1", "type": "diameter", "center": [10, 10], "radius": 4}
+    d2 = {**d1, "id": "d2"}
+    across = linear("cd", [6, 10], [14, 10], "horizontal")
+    angle = angular("ca", [6, 10], [7, 9], [0, 10])
+
+    def status(top, front):
+        _, findings = several([cone], [view("top", TOP, top, top_model), view("front", FRONT, front, front_model)])
+        return findings[("FEAT-02", "cone_1")]["status"]
+
+    # Two diameters at one end of the cone, also a diameter and a linear dimension across that end, give one size.
+    assert status([d1, d2], []) == "fail"
+    assert status([d1], [across]) == "fail"
+    assert status([d1], [angle]) == "pass"
+    # The diameters at the two ends, or a diameter and the depth along the axis, give two sizes.
+    assert status([d1, {"id": "d3", "type": "diameter", "center": [10, 10], "radius": 3}], []) == "pass"
+    assert status([d1], [linear("depth", [14, 10], [13, 9], "vertical")]) == "pass"
+
+
+def test_a_repeated_length_of_a_chamfer_of_a_straight_edge_counts_once():
+    s = 0.5 ** 0.5
+    chamfer = {"id": "plane_1", "kind": "plane_level", "normal": (s, 0.0, s), "offset": 48 * s, "inclined": True,
+               "faces": [[[38, 0, 10], [40, 0, 8], [40, 20, 8], [38, 20, 10]]]}
+    model = [line("ch", [38, 10], [40, 8])]
+    width, again = linear("cw", [38, 10], [40, 8], "horizontal"), linear("cw2", [40, 8], [38, 10], "horizontal")
+    height = linear("chh", [40, 8], [38, 10], "vertical")
+    assert single(chamfer, model, [width, again])[1]["FEAT-02"]["status"] == "fail"
+    result, findings = single(chamfer, model, [width, height])
+    assert findings["FEAT-02"]["status"] == "pass" and result["size_dimensions"] == ["chh", "cw"]
+
+
+def test_dim_03_gets_the_radii_of_each_sized_round_feature():
+    coverage = [
+        {"kind": "hole", "radius": 3.0, "size_dimensions": ["hd"]},
+        {"kind": "hole", "radius": 9.0, "size_dimensions": []},
+        {"kind": "cone", "radii": [0.0, 4.0], "size_dimensions": ["ca", "cd"]},
+        {"kind": "torus", "major": 6.0, "minor": 1.0, "size_dimensions": ["fr"]},
+        {"kind": "torus", "major": 1.0, "minor": 1.0, "size_dimensions": ["fr2"]},
+        {"kind": "surface", "size_dimensions": []},
+        {"kind": "plane_level", "size_dimensions": None},
+    ]
+    assert sized_radii(coverage) == {3.0, 4.0, 7.0, 5.0, 2.0}
+
+
+def test_a_partial_cylinder_is_located_by_its_adjacent_faces():
+    # A fillet of radius 1 at the vertical edge x = 40, y = 20 of the plate. It is sized, but it is not a position.
+    fillet = {"id": "round_2", "kind": "boss", "axis": (0.0, 0.0, 1.0), "foot": (39.0, 19.0, 0.0), "radius": 1.0, "extent": [0.0, 10.0],
+              "full": False}
+    top = TOP_MODEL + [{"id": "arc", "type": "arc", "style": "visible", "center": [39, 19], "radius": 1, "start_angle": 0, "end_angle": 90}]
+    dimensions = {"top": COMPLETE["top"] + [{"id": "fr", "type": "radius", "center": [39, 19], "radius": 1}], "front": COMPLETE["front"]}
+    derived = {"top": {"geometry": top}, "front": {"geometry": FRONT_MODEL}}
+    result, findings = coverage(dimensions, derived=derived, features={"features": PLATE["features"] + [fillet]})
+    assert all(item["status"] == "pass" for item in result.values()), [(key, item["message"]) for key, item in findings.items()
+                                                                     if item["status"] != "pass"]
+    assert result["round_2"]["positions"] == {} and "adjacent faces" in findings[("FEAT-03", "round_2")]["message"]
+    assert result["round_2"]["size_dimensions"] == ["fr"]
+    # As a full cylinder, the same feature would need a position along X and Y.
+    _, findings = coverage(dimensions, derived=derived, features={"features": PLATE["features"] + [{**fillet, "full": True}]})
+    assert findings[("FEAT-03", "round_2")]["status"] == "fail"
+
+
+def test_the_inventory_has_partial_cylinders_and_grooves(tmp_path):
+    pytest.importorskip("build123d")
+    from build123d import Axis, Box, Cylinder, Torus, export_step, fillet
+
+    # A rounded rectangle 40 x 20 x 10 with fillets of 1 mm at the four vertical edges and a hole of 6 mm.
+    part = fillet(Box(40, 20, 10).edges().filter_by(Axis.Z), 1) - Cylinder(3, 10)
+    path = tmp_path / "rounded.step"
+    export_step(part, str(path))
+    found = inventory(path)
+    rounds = sorted((item["kind"], item["radius"], item["full"]) for item in found["features"] if item["kind"] in {"hole", "boss"})
+    assert rounds == [("boss", 1.0, False)] * 4 + [("hole", 3.0, True)]
+    result = check(Report(), [], {}, found, set(), [])
+    assert all(item["positions"] == {} for item in result if item["kind"] == "boss")
+    # A groove of radius 2 in a shaft of radius 10: its profile arc is a half circle.
+    path = tmp_path / "groove.step"
+    export_step(Cylinder(10, 30) - Torus(10, 2), str(path))
+    tori = [item for item in inventory(path)["features"] if item["kind"] == "torus"]
+    assert len(tori) == 1 and tori[0]["profile_span"] == pytest.approx(180.0, abs=0.5)
+
+
+def test_a_groove_needs_an_axial_position_and_a_fillet_does_not():
+    # A shaft with the end faces z = 0 and z = 10, and a groove of radius 1 at z = 5 on the radius 5 (front view: local y = model z).
+    ends = [level("plane_1", (0.0, 0.0, 1.0), 0.0, [-6, -6, 0], [6, 6, 0]), level("plane_2", (0.0, 0.0, 1.0), 10.0, [-6, -6, 10], [6, 6, 10])]
+    groove = {"id": "torus_1", "kind": "torus", "axis": (0.0, 0.0, 1.0), "foot": (0.0, 0.0, 0.0), "station": 5.0, "major": 5.0,
+              "minor": 1.0, "profile_span": 180.0}
+    length = linear("len", [-6, 0], [-6, 10], "vertical")
+    to_center = linear("g", [6, 0], [5, 5], "vertical")
+
+    def feat_03(torus, dimensions):
+        result, findings = several(ends + [torus], [view("front", FRONT, dimensions, [])])
+        return result["torus_1"], findings[("FEAT-03", "torus_1")]["status"]
+
+    assert feat_03(groove, [length])[1] == "fail"
+    result, status = feat_03(groove, [length, to_center])
+    assert status == "pass" and result["positions"] == {"[0, 0, 1]": True}
+    # A fillet follows from tangency. It needs no axial position.
+    result, status = feat_03({**groove, "profile_span": 90.0}, [length])
+    assert status == "pass" and result["positions"] == {}

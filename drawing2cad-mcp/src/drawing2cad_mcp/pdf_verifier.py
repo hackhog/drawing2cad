@@ -1028,8 +1028,7 @@ def verify(directory: Path, request: dict) -> dict:
                       if ("DIM-06", "pass") in found and ("DIM-02", "pass") in found and not any(status != "pass" for _, status in found)}
             coverage = feature_coverage.check(report, views, derived, feature_coverage.inventory(directory / "input.step"), passed,
                                               request.get("markers", []))
-            check_round_dimensions(report, views, derived, {round(item["radius"], 3) for item in coverage
-                                                            if item["kind"] != "plane_level" and item["size_dimensions"]})
+            check_round_dimensions(report, views, derived, feature_coverage.sized_radii(coverage))
         else:
             for rule in ("FEAT-01", "FEAT-02", "FEAT-03"):
                 report.add(rule, "not_tested", "info", "No model projection of the bound STEP exists, so the feature coverage is not tested.")
