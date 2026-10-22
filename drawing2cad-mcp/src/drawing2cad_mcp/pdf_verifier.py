@@ -514,6 +514,13 @@ def check_model(report: Report, raster: Raster, directory: Path, views: list[dic
     return derived
 
 
+def _segment_points(segment, step: float) -> list[list[float]]:
+    """Sheet points along an expected line: a straight segment [start, end] or an arc primitive."""
+    if isinstance(segment, dict):
+        return sample(segment, step)
+    return sample({"type": "line", "start": segment[0], "end": segment[1]}, step)
+
+
 def _bounds(points):
     return [min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points)]
 
@@ -533,13 +540,10 @@ def _distance_to(point, item) -> float:
 def check_dimension_lines(report: Report, raster: Raster, dimension_lines: list[dict]) -> None:
     """The rendered dimension, extension, and leader lines must be where the bound drawing puts them."""
     for item in dimension_lines:
-        if item.get("not_tested"):
-            report.add("DIM-05", "not_tested", "info", f"Dimension {item['id']}: {item['not_tested']}", feature=item["id"], evidence=item["evidence"])
-            continue
         # Each segment on its own: a missing extension line cannot hide in a long dimension line.
-        fraction = min(sum(covered) / len(covered) for covered in
-                       (raster.covered(sample({"type": "line", "start": a, "end": b}, 0.3)) for a, b in item["segments"]))
-        region = _bounds([p for segment in item["segments"] for p in segment])
+        points = [_segment_points(segment, 0.3) for segment in item["segments"]]
+        fraction = min(sum(covered) / len(covered) for covered in (raster.covered(part) for part in points))
+        region = _bounds([p for part in points for p in part])
         if fraction >= 0.8:
             report.add("DIM-05", "pass", "info", f"Dimension {item['id']} shows its dimension and extension lines.", region=region,
                        feature=item["id"], observed=round(fraction, 3), evidence=item["evidence"])
@@ -566,8 +570,8 @@ def check_extra_ink(report: Report, raster: Raster, views: list[dict], derived: 
         for item in view["geometry"] + (derived.get(view["id"]) or {}).get("geometry", []):
             polyline([_sheet(view, p) for p in sample(item, 0.3)])
     annotations = request.get("annotations") or {}
-    for a, b in annotations.get("lines", []):
-        polyline([a, b])
+    for segment in annotations.get("lines", []):
+        polyline(_segment_points(segment, 0.3))
     for polygon in annotations.get("polygons", []):
         if len(polygon) >= 3:
             draw.polygon([raster.pixel(p) for p in polygon], fill=1, outline=1)

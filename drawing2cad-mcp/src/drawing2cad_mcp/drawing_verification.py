@@ -54,9 +54,7 @@ def _dimension_lines(view: dict, text_height: float) -> list[dict]:
                 # A value close to the circle: at least the arrow at the circle.
                 segments.append([edge, [edge[0] + direction[0] * 1.0, edge[1] + direction[1] * 1.0]])
         elif dimension["type"] == "angular":
-            result.append({"id": dimension["id"], "segments": [], "evidence": dimension["evidence_ids"],
-                           "not_tested": "The lines of angular dimensions are not tested in the raster."})
-            continue
+            segments = _angular_lines(view, dimension, label, text_height)
         elif dimension["type"] == "linear":
             angle = math.radians(float(dimension.get("angle", 0.0)))
             direction = [math.cos(angle), math.sin(angle)]
@@ -89,6 +87,52 @@ def _dimension_lines(view: dict, text_height: float) -> list[dict]:
     return result
 
 
+def _arc(center, radius, start, end) -> dict:
+    return {"type": "arc", "center": center, "radius": radius, "start_angle": start, "end_angle": end}
+
+
+def _angular_geometry(view: dict, dimension: dict, label) -> tuple[list[float], float, float, float, list[tuple[list[float], float]]]:
+    """The vertex, the arc radius, the start angle, and the sweep of an angular dimension, and the direction and sheet length of each leg.
+
+    The renderer draws the arc through the label point around the vertex, counterclockwise from the first leg to the second leg.
+    """
+    center = _sheet(view, dimension["center"])
+    radius = math.dist(center, label)
+    legs = []
+    for key in ("p1", "p2"):
+        point = _sheet(view, dimension[key])
+        legs.append((_unit([point[0] - center[0], point[1] - center[1]]), math.dist(center, point)))
+    start = math.degrees(math.atan2(legs[0][0][1], legs[0][0][0]))
+    sweep = (math.degrees(math.atan2(legs[1][0][1], legs[1][0][0])) - start) % 360
+    return center, radius, start, sweep, legs
+
+
+def _angular_lines(view: dict, dimension: dict, label, text_height: float) -> list:
+    """The extension lines and the arc parts of an angular dimension that the raster must show."""
+    center, radius, start, sweep, legs = _angular_geometry(view, dimension, label)
+    segments = []
+    for direction, length in legs:
+        if radius - length > 2.0:
+            # The arc is outside the drawn leg: the extension line starts 0.5 mm after the leg end (DIMEXO) and passes the arc.
+            segments.append([[center[0] + direction[0] * (length + 0.8), center[1] + direction[1] * (length + 0.8)],
+                             [center[0] + direction[0] * radius, center[1] + direction[1] * radius]])
+    if radius <= 1.0:
+        return segments
+    # The value is centered on the arc at the label point (DIMTAD 0) and interrupts it. Angles are relative to the first leg.
+    gap = math.degrees((len(_dimension_text(dimension)) * text_height * 0.475 + 0.5) / radius)
+    middle = (math.degrees(math.atan2(label[1] - center[1], label[0] - center[0])) - start) % 360
+    if middle > sweep and 360 - middle < middle - sweep:
+        middle -= 360
+    parts = [part for part in ((0.0, min(sweep, middle - gap)), (max(0.0, middle + gap), sweep))
+             if math.radians(part[1] - part[0]) * radius > 1.0]
+    if not parts:
+        # A short arc with a long value keeps at least the arrow ends.
+        end = math.degrees(1.0 / radius)
+        parts = [(0.0, min(end, sweep)), (max(0.0, sweep - end), sweep)]
+    segments += [_arc(center, radius, start + a, start + b) for a, b in parts]
+    return segments
+
+
 def _box_polygon(center, width, height, angle):
     a = math.radians(angle)
     u, v = [math.cos(a), math.sin(a)], [-math.sin(a), math.cos(a)]
@@ -117,6 +161,14 @@ def _annotations(resolved: dict, texts: list[dict], dimension_lines: list[dict])
             label = _sheet(view, dimension["label_position"])
             if dimension["type"] in {"radius", "diameter"}:
                 lines.append([_sheet(view, dimension["center"]), label])
+            elif dimension["type"] == "angular":
+                # The complete arc below the value, and the extension lines up to their ends past the arc (DIMEXE).
+                center, radius, start, sweep, legs = _angular_geometry(view, dimension, label)
+                lines.append(_arc(center, radius, start, start + sweep))
+                for direction, length in legs:
+                    if radius > length:
+                        lines.append([[center[0] + direction[0] * length, center[1] + direction[1] * length],
+                                      [center[0] + direction[0] * (radius + 1.0), center[1] + direction[1] * (radius + 1.0)]])
     layout = resolved.get("layout") or {}
     for frame in layout.get("frames", []):
         x0, y0, x1, y1 = frame["layout"]["rect"]

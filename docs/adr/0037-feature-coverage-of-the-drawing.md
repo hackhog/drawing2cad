@@ -144,8 +144,7 @@ The feature references of the drawing specification cannot identify the features
 - A free-form surface always needs an uncertainty marker and a review decision, because `FEAT-02` has no supported size for it.
   A sphere counts as a free-form surface.
 - The verifier recognizes the size of a chamfer only from angular and linear dimensions. It does not read a chamfer note such as "2 x 45°".
-- `DIM-05` does not test the lines of angular dimensions in the raster and reports `not_tested`. The acceptance gate therefore blocks
-  a drawing with an angular dimension until the lines of this dimension are checked in the raster.
+- `DIM-05` tests the arc and the extension lines of angular dimensions in the raster ([ADR 0039](0039-lines-of-angular-dimensions-in-the-raster.md)).
 - A pattern of equal holes needs a size dimension for each hole. A note such as "4x" is not read.
 
 ## Tests

@@ -526,3 +526,103 @@ def test_dimension_values_with_midpoints_ellipses_and_leg_directions():
     assert results["half"]["status"] == "pass" and results["half"]["observed"]["model"] == 20
     assert results["top"]["status"] == "pass" and results["top"]["observed"]["model"] == 20
     assert results["skew"]["status"] == "fail" and results["skew"]["observed"]["model"] == 90
+
+
+@pytest.fixture(scope="module")
+def angles(tmp_path_factory):
+    """A synthetic plate drawing with two angular dimensions: the arc of one is outside its legs, the arc of the other inside."""
+    from test_drafting import drawing_fixture
+
+    description, spec = drawing_fixture()
+    top = spec["views"][0]
+
+    def leg(identifier, start, end):
+        return {"id": identifier, "type": "line", "start": start, "end": end, "evidence_ids": ["drawing"], "feature_ids": ["base"]}
+
+    top["geometry"] += [leg("out_first", [0, 40], [20, 40]), leg("out_second", [0, 40], [0, 60]),
+                        leg("in_first", [55, 40], [75, 40]), leg("in_second", [55, 40], [40, 55])]
+    top["dimensions"] += [{"id": "angle_out", "type": "angular", "first_line": "out_first", "second_line": "out_second", "expected": 90,
+                           "label_position": [17, 57], "evidence_ids": ["drawing"]},
+                          {"id": "angle_in", "type": "angular", "first_line": "in_first", "second_line": "in_second", "expected": 135,
+                           "label_position": [60.36, 52.93], "evidence_ids": ["drawing"]}]
+    out = tmp_path_factory.mktemp("angles")
+    result = render_drawing(spec, description, 1, out)
+    assert result["status"] == "pass", result["defects"][:4]
+    return {"description": description, "spec": spec, "pdf": out / "drawing.pdf", "dxf_sha256": result["dxf_sha256"]}
+
+
+def angular_lines(angles):
+    from drawing2cad_mcp.drawing_verification import _dimension_lines
+
+    resolved = drawing_validate(angles["spec"], angles["description"], 1)["resolved"]
+    return {item["id"]: item for item in _dimension_lines(resolved["views"][0], resolved["sheet"]["text_height"])}
+
+
+def test_the_lines_of_angular_dimensions_pass_and_do_not_block_the_gate(angles, tmp_path):
+    from drawing2cad_mcp.drawing_verification import gate, record
+
+    lines = angular_lines(angles)
+    # The arc outside the legs needs extension lines. The value interrupts both arcs.
+    assert [isinstance(segment, dict) for segment in lines["angle_out"]["segments"]] == [False, False, True, True]
+    assert [isinstance(segment, dict) for segment in lines["angle_in"]["segments"]] == [True, True]
+    data = angles["pdf"].read_bytes()
+    report = run(tmp_path, data, spec=angles["spec"], description=angles["description"], expected=expected_for(angles, data))
+    results = {item["feature"]: item for item in by_rule(report, "DIM-05")}
+    assert {key: results[key]["status"] for key in ("angle_out", "angle_in")} == {"angle_out": "pass", "angle_in": "pass"}, results
+    assert not by_rule(report, "DIM-05", "not_tested")
+    blocking = gate({**record(report, {}, []), "validity": "current"}, [])["blocking"]
+    assert "DIM-05" not in {item["rule_id"] for item in blocking}
+
+
+def test_the_arcs_of_angular_dimensions_are_expected_ink(angles, tmp_path):
+    from drawing2cad_mcp.drawing_verification import build_request
+    from drawing2cad_mcp.pdf_verifier import Raster, Report, check_extra_ink
+
+    data = angles["pdf"].read_bytes()
+    run(tmp_path, data, spec=angles["spec"], description=angles["description"], expected=expected_for(angles, data))
+    resolved = drawing_validate(angles["spec"], angles["description"], 1)["resolved"]
+    request = build_request(resolved, expected_for(angles, data), 1)
+    raster = Raster(tmp_path / "work" / "input.png", resolved["sheet"]["width"], resolved["sheet"]["height"], request["dpi"])
+    # The declared geometry of the view stands in for its model projection.
+    derived = {"top": {"geometry": []}}
+    report = Report()
+    check_extra_ink(report, raster, request["views"], derived, request)
+    assert [item["status"] for item in report.findings if item["feature"] == "top"] == ["pass"], report.findings
+    without = {**request, "annotations": {**request["annotations"],
+                                          "lines": [item for item in request["annotations"]["lines"] if not isinstance(item, dict)]}}
+    report = Report()
+    check_extra_ink(report, raster, request["views"], derived, without)
+    assert [item["status"] for item in report.findings if item["feature"] == "top"] == ["fail"]
+
+
+def test_a_removed_part_of_an_angular_arc_fails(angles, tmp_path):
+    arc = next(segment for segment in angular_lines(angles)["angle_out"]["segments"] if isinstance(segment, dict))
+    middle = math.radians((arc["start_angle"] + arc["end_angle"]) / 2)
+    x = arc["center"][0] + arc["radius"] * math.cos(middle)
+    y = arc["center"][1] + arc["radius"] * math.sin(middle)
+
+    with pymupdf.open(angles["pdf"]) as document:
+        # The synthetic sheet is A4 landscape (297 mm x 210 mm).
+        page, k = document[0], document[0].rect.width / 297
+        page.draw_rect(pymupdf.Rect((x - 3) * k, (210 - y - 3) * k, (x + 3) * k, (210 - y + 3) * k), color=None, fill=(1, 1, 1), overlay=True)
+        data = document.tobytes()
+    report = run(tmp_path, data, spec=angles["spec"], description=angles["description"], expected=expected_for(angles, data))
+    results = {item["feature"]: item["status"] for item in by_rule(report, "DIM-05")}
+    assert results["angle_out"] == "fail" and results["angle_in"] == "pass"
+
+
+def test_short_and_outside_angular_values_keep_the_checked_arc_parts():
+    from drawing2cad_mcp.drawing_verification import _dimension_lines
+
+    def view(label, expected=90, p2=(0, 20)):
+        return {"origin": [100, 100], "scale": 1.0, "dimensions": [
+            {"id": "a", "type": "angular", "center": [0, 0], "p1": [20, 0], "p2": list(p2), "expected": expected,
+             "label_position": label, "evidence_ids": ["drawing"]}]}
+
+    # A value beside the second leg, outside the angle: the complete arc is checked.
+    [arc] = _dimension_lines(view([15, -5]), 2.5)[0]["segments"]
+    assert arc["radius"] == pytest.approx(math.hypot(15, 5)) and (arc["start_angle"], arc["end_angle"]) == (0.0, 90.0)
+    # A value longer than the arc: only the arrow ends of 1 mm are checked.
+    first, second = _dimension_lines(view([4, 3], 30, (17.320508, 10)), 2.5)[0]["segments"]
+    assert math.radians(first["end_angle"] - first["start_angle"]) * 5 == pytest.approx(1.0)
+    assert second["end_angle"] == pytest.approx(30.0) and first["start_angle"] == 0.0
