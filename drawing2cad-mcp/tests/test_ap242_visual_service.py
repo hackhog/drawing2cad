@@ -122,16 +122,20 @@ def test_artifact_inspection_requires_exact_hash(domain):
                                       ("path_bad", "INVALID_WORKER_ARTIFACT")])
 def test_worker_cannot_publish_unbound_or_changed_inspection(domain, flag, code):
     service, cad, runner = prepare(domain)
+    before = service.store.artifact_list(CTX, run_id="plate")["items"]
+    assert len(before) == 1 and before[0]["role"] == "step_candidate"
     setattr(runner, flag, True)
     with pytest.raises(DomainError) as failure:
         service.call(CTX, "part_render_pmi", {"run_id": "plate", "expected_revision": 1})
     assert failure.value.code == code
-    assert service.store.artifact_list(CTX, run_id="plate")["items"] == []
+    assert service.store.artifact_list(CTX, run_id="plate")["items"] == before
 
 
 def test_failed_inspection_is_not_published(domain):
     service, cad, runner = prepare(domain)
+    before = service.store.artifact_list(CTX, run_id="plate")["items"]
+    assert len(before) == 1 and before[0]["role"] == "step_candidate"
     runner.fail_operation = "ap242_visual"
     result = service.call(CTX, "part_render_pmi", {"run_id": "plate", "expected_revision": 1})
     assert result["status"] == "fail" and "artifacts" not in result
-    assert service.store.artifact_list(CTX, run_id="plate")["items"] == []
+    assert service.store.artifact_list(CTX, run_id="plate")["items"] == before

@@ -146,3 +146,28 @@ def test_drawing_read_gives_the_release_state_of_the_drawing(domain):
     assert read["release"]["delivery"] == "complete_service" and read["release"]["pair_current"] is True
     corrupt(service, pdf["artifact_id"])
     assert service.call(CTX, "drawing_read", {"run_id": "plate"})["release"]["pair_current"] is False
+
+
+
+def test_release_membership_is_domain_owned_and_pair_current(domain):
+    service, source, _, _, pdf = accepted(domain)
+    released = release(service, source)
+    result = service.call(CTX, "part_read", {"run_id": "plate"})
+    step_id = released["artifact"]["artifact_id"]
+    candidate_id = result["last_results"]["step"]["artifact"]["artifact_id"]
+    expected = {step_id, *(item["artifact_id"] for item in released["drawing"]["artifacts"])}
+    assert set(result["part"]["release"]["released_artifact_ids"]) == expected
+    assert candidate_id not in expected
+    drawing_read = service.call(CTX, "drawing_read", {"run_id": "plate"})
+    assert set(drawing_read["release"]["released_artifact_ids"]) == expected
+    corrupt(service, pdf["artifact_id"])
+    stale = service.call(CTX, "drawing_read", {"run_id": "plate"})["release"]
+    assert stale["pair_current"] is False and stale["released_artifact_ids"] == [step_id]
+
+
+def test_step_only_release_membership_excludes_accepted_drawing(domain):
+    service, source, _, _, _ = accepted(domain)
+    released = release(service, source, "step_only")
+    result = service.call(CTX, "drawing_read", {"run_id": "plate"})["release"]
+    assert result["drawing"]["status"] == "accepted"
+    assert result["released_artifact_ids"] == [released["artifact"]["artifact_id"]]

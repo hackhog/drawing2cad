@@ -46,7 +46,7 @@ export interface Part {
   capabilities: { parameter_edit: boolean };
 }
 
-export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "part_description" | "manifest" | "trace" | "events" | "report"
+export type ArtifactRole = "drawing_pdf" | "drawing_diagnostic" | "drawing_dxf" | "step" | "step_candidate" | "part_description" | "manifest" | "trace" | "events" | "report"
   | "verification_report" | "verification_preview" | "projection_overlay" | "projection_report";
 
 export type ProjectionStatus = "matches" | "deviates" | "not_tested";
@@ -99,6 +99,8 @@ export interface Artifact {
   model_revision: number;
   /** The current release names this file. Absent in the fixture service. */
   released?: boolean;
+  release_status?: "not_released";
+  reason?: string;
 }
 
 /** A diagnostic file of a run: trace, run record, or MCP part state. The service supplies root-relative URLs. */
@@ -233,6 +235,17 @@ export interface Job {
   finished_at: string | null;
 }
 
+/** The last outputs selected by the service for a run without a release. */
+export interface LastResults {
+  released: false;
+  failed_phase: RunPhase | null;
+  reason: string;
+  blocking: BlockingFinding[];
+  artifact_ids: string[];
+  model: { artifact_id: string; model_revision: number; validation: ValidationResult[] } | null;
+  no_model_reason: string | null;
+}
+
 export interface Run {
   run_id: string;
   source_id: string;
@@ -250,6 +263,7 @@ export interface Run {
   review: Review | null;
   error: ServiceError | null;
   warning?: RunWarning | null;
+  last_results?: LastResults | null;
   simulated: boolean;
   /** Final text of the agent conversation, from its trace. It is also the first text of the run note (ADR 0018). */
   agent_report?: string | null;

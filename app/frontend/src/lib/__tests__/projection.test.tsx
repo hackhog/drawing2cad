@@ -12,7 +12,8 @@ vi.mock("@/lib/artifacts", () => ({ useArtifactUrl: () => ({ url: "blob:syntheti
 
 function run(status: ProjectionStatus): Run {
   return {
-    run_id: "run_synthetic", source_id: "src_synthetic", phase: "done", simulated: false, error: null, artifacts: [],
+    run_id: "run_synthetic", source_id: "src_synthetic", phase: "done", simulated: false, error: null, artifacts: [{ artifact_id: "art_released", role: "step", filename: "model.step", media_type: "model/step",
+      sha256: "0".repeat(64), source_sha256: "1".repeat(64), byte_count: 1, model_revision: 1, released: true }],
     job: { job_id: "job", status: "succeeded", progress: 1, started_at: "2026-10-21T12:00:00Z", finished_at: null },
     part: { revision: 1, parameters: [], operations: [], capabilities: { parameter_edit: false } },
     review: { release_state: "released", assumptions: [], uncertainties: [], validation: [] },
@@ -96,17 +97,34 @@ describe("source projection review", () => {
       message: "Final report missing: RuntimeError: Model endpoint returned HTTP 429",
     };
     const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={value} /></QueryClientProvider>);
-    expect(html).toContain("Hinweis: Abschlussbericht fehlt");
-    expect(html).toContain("Freigabe erfolgt; nur der Abschlussbericht fehlt.");
-    expect(html).toContain("Die Dateien sind freigegeben. Der Lauf ist erfolgreich abgeschlossen.");
+    expect(html).toContain("Warning: final report missing");
+    expect(html).toContain("Release complete; only the final report is missing.");
+    expect(html).toContain("Files are released. The run completed successfully.");
     expect(html).toContain("HTTP 429");
     expect(html).toContain("released");
     expect(html).not.toContain("text-destructive");
   });
 
+  it("keeps a missing-report warning visible without presenting a candidate as released", () => {
+    const value = run("matches");
+    value.phase = "failed";
+    value.job.status = "failed";
+    value.review!.release_state = "blocked";
+    value.artifacts = value.artifacts.map((artifact) => ({ ...artifact, role: "step_candidate", released: false }));
+    value.warning = { code: "AGENT_REPORT_MISSING", message: "The report endpoint timed out." };
+    const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={value} /></QueryClientProvider>);
+    expect(html).toContain("Warning: final report missing");
+    expect(html).toContain("Files are not released. The final report is missing.");
+    expect(html).toContain("AGENT_REPORT_MISSING");
+    expect(html).toContain("The report endpoint timed out.");
+    expect(html).not.toContain("Files are released.");
+    expect(html).not.toContain("Release complete;");
+    expect(html).not.toContain(">released<");
+  });
+
   it("shows no report warning for an older run without the warning field", () => {
     const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={run("matches")} /></QueryClientProvider>);
-    expect(html).not.toContain("Abschlussbericht fehlt");
+    expect(html).not.toContain("Warning: final report missing");
     expect(html).toContain("released");
   });
 });

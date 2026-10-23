@@ -1,6 +1,7 @@
 import { StatusBadge } from "@/components/Status";
 import { useApi } from "@/lib/apiContext";
 import { useArtifactUrl } from "@/lib/artifacts";
+import { delivery } from "@/lib/release";
 import type { ProjectionCheck, ProjectionStatus, ProjectionView, Run } from "@/lib/contract";
 import type { Tone } from "@/lib/status";
 
@@ -28,7 +29,7 @@ export function ProjectionSection({ run }: { run: Run }) {
       {status === "not_tested" && (
         <div className="rounded-md border border-warn-line bg-warn-bg p-2 text-xs">
           <p>{check?.reason ?? "No projection check is available for the current revision."}</p>
-          {run.review?.release_state === "released" && <p className="mt-1 font-semibold">The release does not prove agreement with the source drawing.</p>}
+          {delivery(run).released && <p className="mt-1 font-semibold">The release does not prove agreement with the source drawing.</p>}
         </div>
       )}
       {check && check.views.length > 0 && (

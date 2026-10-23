@@ -179,6 +179,17 @@ A permitted domain host uses `artifact_get` and `artifact_read` to download outp
 The bounded local-model runner returns artifact IDs and hashes to that host; it cannot call these download tools.
 Local-path tools return server output paths.
 Artifacts are immutable snapshots. A later run revision does not replace an earlier artifact ID.
+
+In the domain profile, read `last_results` from `part_read` or `drawing_read` after a failure.
+A successful validated build supplies an immutable `step_candidate` artifact with its build revision, description hash, and validation result.
+The result also retains the last completed drawing PDF/DXF and its available verification report and preview.
+A failed rebuild, failed render, part change, or service restart does not remove these references.
+Compare the retained build and drawing revisions. They can differ from each other and from the current part revision.
+If no validated build exists, `step` is null and `no_step_reason` explains the missing STEP.
+Read `reason` and the verification blockers. The web run page adds its failed phase and terminal error code.
+Each diagnostic artifact projection has `released: false` and `release_status: "not_released"`.
+Report these files as not released. Do not use them as complete-service acceptance evidence.
+Use the current release record and its verified pair to report complete-service delivery.
 Keep unexecuted target-CAD opening, independent conformance, model comparison, and PMI tests as `not_tested`.
 A successful server operation does not establish delivery acceptance when required checks are missing.
 

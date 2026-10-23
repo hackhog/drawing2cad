@@ -122,6 +122,36 @@ Preview metadata give the actual display size; the full artifact remains in serv
 6. Download results through `artifact_read`, using its byte offset and bounded length. Verify the complete download against `artifact_get.sha256`.
 
 Artifacts are immutable snapshots. A later build does not replace an earlier artifact ID.
+
+In the domain profile, `part_read` and `drawing_read` return `last_results` for diagnostic inspection.
+A successful validated build creates an immutable `step_candidate` artifact before release.
+Its result record includes `build_revision`, `description_sha256`, `candidate_sha256`, and the validation result.
+The drawing record retains the latest completed technical PDF/DXF render and its verification report and preview, when available.
+A failed rebuild, failed render, description change, or service restart does not remove these result references.
+The retained model and drawing can belong to different revisions. Inspect their revisions before comparison.
+`step.current_revision` compares the retained build revision and description hash with the current part.
+These reads do not create artifacts. Active-operation reads also include the stored diagnostic results.
+
+`last_results` and its artifact projections have `released: false`.
+Each projected artifact has `release_status: "not_released"` and a `reason`.
+The reason identifies missing drawing data, verification blockers, or incomplete review.
+`drawing.verification` includes its `status`, `validity`, report and preview artifacts, and blocking findings.
+Without a validated build, `step` is null and `no_step_reason` explains why no STEP is available.
+`last_results.failed_phase` records `drawing` after a failed render or verification, including retained historical failures.
+The web API gives its recorded failed phase priority and adds the terminal error code, such as a time limit.
+The domain service does not know that web run state.
+If retained metadata or files are invalid, `last_results.error.code` is `RESULTS_UNAVAILABLE`.
+The response omits diagnostic files and states that the retained results are unavailable. Current release inspection remains available.
+Auxiliary publication failures do not change a completed build, drawing verification, or review result.
+The service records an unavailable diagnostic marker when possible. It does not present an older snapshot as the latest result.
+The completed operation event also records publication failure. This record prevents an older snapshot from reappearing after a restart.
+
+Diagnostic results do not authorize release. Only `export_step` creates the release record after its existing gates pass.
+`release.released_artifact_ids` identifies the current released STEP and, for a current accepted complete-service pair, its drawing files.
+`drawing_read.release` includes this list. A STEP-only release includes only its released STEP ID.
+A complete-service release still requires an accepted drawing verified against the same STEP bytes and a current pair.
+An explicitly requested STEP-only release retains its separate scope.
+
 Failed drawing layouts can return diagnostic PDF and JSON artifacts through `drawing_render`.
 Use `artifact_preview` to inspect the marked PDF. Read the report for label identifiers and rendered bounds in sheet millimeters.
 Diagnostic artifacts retain the drawing hash, description hash, and part revision. They are not accepted technical drawings.

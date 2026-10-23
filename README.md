@@ -60,6 +60,8 @@ Open `http://localhost:8000`.
 Upload drawing PDFs, review the analysis, and start a run.
 A run lets an agent build the model only through the `drawing2cad-mcp` endpoint of the backend; step 4 shows the released STEP in 3D
 ([ADR 0018](docs/adr/0018-agent-runner-in-the-web-backend.md)).
+If a run ends without release, the page shows its last available model and drawing as not released.
+The files retain their build or drawing revision. The page shows the failed phase, reason, and blocking findings.
 Runs need an OpenAI-compatible model endpoint.
 Copy `.env.example` to `.env` and set the required values.
 Run `docker compose --env-file .env -f deployment/compose.yaml up -d`.

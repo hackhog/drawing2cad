@@ -23,7 +23,7 @@ import { dropTarget } from "@/lib/drop";
 import { recoveryFor } from "@/lib/errors";
 import { explainedShare, fmt, partName, pct, shortHash, time } from "@/lib/format";
 import { agentProfilesQuery, analysisQuery, capabilitiesQuery, flagsQuery, keys, runsQuery, sourceQuery } from "@/lib/queries";
-import { delivery, isActive } from "@/lib/release";
+import { delivery, isActive, isReleased, lastResultModel, latestShown } from "@/lib/release";
 import { RunStartDialog } from "@/components/run/RunStartDialog";
 import { runStartState, startEntry } from "@/lib/runStart";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
@@ -152,7 +152,7 @@ function StepModel({ sourceId }: { sourceId: string }) {
       </div>
     );
   }
-  const preview = latest?.artifacts.find((a) => a.role === "step" && a.model_revision === latest.part?.revision);
+  const preview = latest ? (latest.last_results ? lastResultModel(latest) : latestShown(latest, "step")) : undefined;
   if (latest && preview) return <RunModel run={latest} artifact={preview} />;
   if (caps?.step_preview_upload) return upload;
   return (
@@ -165,12 +165,12 @@ function StepModel({ sourceId }: { sourceId: string }) {
 /** The model of a finished run, marked as released or diagnostic. */
 function RunModel({ run, artifact }: { run: Run; artifact: Artifact }) {
   const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id, "glb");
-  const released = delivery(run).released;
+  const released = isReleased(delivery(run), run, artifact);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {error || !url
         ? <div className={cn(VIEWER_FRAME, "grid place-items-center p-6 text-center text-muted-foreground")}>{error ?? "Loading 3D model …"}</div>
-        : <ModelFrame url={url} name={`${artifact.filename} · Rev. ${artifact.model_revision}`} />}
+        : <ModelFrame url={url} name={`${artifact.filename} · Rev. ${artifact.model_revision} · ${released ? "released" : "not released"}`} />}
       <div className="flex items-center gap-2 text-xs">
         <StatusBadge tone={released ? "done" : "flag"}>{released ? "released" : "diagnostic, not released"}</StatusBadge>
         <span className="text-muted-foreground">Built by the agent through the MCP.</span>

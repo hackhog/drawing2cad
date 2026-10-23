@@ -3,6 +3,7 @@
 import io
 import json
 import os
+from pathlib import Path
 import re
 import socket
 import threading
@@ -774,3 +775,218 @@ def test_run_view_reads_the_release_freshness_for_each_request(tmp_path):
     assert run_view(services, record)["review"]["drawing"]["current"] is True
     stale = run_view(services, record)["review"]["drawing"]
     assert stale["current"] is False and stale["pair_current"] is False and "PDF" in stale["reason"]
+
+
+def last_result_fixture():
+    """Domain-selected files of an older valid build and a failed drawing verification."""
+    def artifact(number, role, media, filename):
+        return {"artifact_id": "art_" + str(number) * 32, "role": role, "media_type": media,
+                "filename": filename, "sha256": SHA, "size_bytes": 7, "revision": 1}
+    step = artifact(1, "step_candidate", "model/step", "candidate.step")
+    pdf = artifact(2, "technical_drawing", "application/pdf", "drawing.pdf")
+    dxf = artifact(3, "technical_drawing", "image/vnd.dxf", "drawing.dxf")
+    report = artifact(4, "drawing_verification_report", "application/json", "verification.json")
+    preview = artifact(5, "drawing_verification_preview", "image/png", "preview.png")
+    return {"released": False, "reason": "The drawing verification blocks release (DIM-06, FEAT-02).",
+            "no_step_reason": None,
+            "step": {"artifact": step, "build_revision": 1, "description_sha256": SHA, "candidate_sha256": SHA,
+                     "current_revision": False, "validation": {"status": "pass", "checks": [
+                         {"check": "step_reimport", "status": "pass"}, {"check": "target_cad_open", "status": "not_tested"}]}},
+            "drawing": {"part_revision": 1, "drawing_sha256": SHA, "artifacts": [pdf, dxf],
+                        "verification": {"status": "fail", "validity": "stale", "artifacts": [report, preview], "blocking": [
+                            {"rule_id": "DIM-06", "status": "fail", "feature": "hole", "message": "Dimension missing."},
+                            {"rule_id": "FEAT-02", "status": "not_tested", "feature": None, "message": "Not tested."}]}}}
+
+
+def test_last_results_present_selected_files_and_safe_failure_context():
+    from drawing_demo.agent.mapping import last_results_view
+
+    record = {"failed_phase": "drawing", "error": {"code": "AGENT_TIME_BUDGET", "message": "worker C:/private/customer.pdf"}}
+    result, artifacts = last_results_view(last_result_fixture(), record, SHA)
+    assert result["failed_phase"] == "drawing"
+    assert "AGENT_TIME_BUDGET" in result["reason"] and "private" not in str(result)
+    assert result["model"]["model_revision"] == 1 and result["no_model_reason"] is None
+    assert [v["status"] for v in result["model"]["validation"]] == ["pass", "not_tested"]
+    assert [v["rule_id"] for v in result["blocking"]] == ["DIM-06", "FEAT-02"]
+    assert [a["role"] for a in artifacts] == ["step_candidate", "drawing_pdf", "drawing_dxf", "verification_report", "verification_preview"]
+    assert result["artifact_ids"] == [a["artifact_id"] for a in artifacts]
+    assert all(a["released"] is False and a["release_status"] == "not_released" and a["reason"] == result["reason"] for a in artifacts)
+
+
+def test_a_candidate_is_never_released_even_if_named_by_a_release():
+    candidate = last_result_fixture()["step"]["artifact"]
+    assert artifact_view(candidate, SHA, frozenset({candidate["artifact_id"]}))["released"] is False
+
+
+def test_unavailable_diagnostics_do_not_claim_that_no_model_was_built():
+    from drawing_demo.agent.mapping import last_results_view
+
+    last = {"reason": "Diagnostic results are unavailable.", "no_step_reason": "The candidate diagnostic file is unavailable.",
+            "step": None, "drawing": None}
+    view, artifacts = last_results_view(last, {}, SHA)
+    assert view["model"] is None and artifacts == []
+    assert view["no_model_reason"] == "The candidate diagnostic file is unavailable."
+    assert "No validated model was built" not in str(view)
+
+
+@pytest.mark.parametrize("ids", [[], ["step"], ["step", "drawing"]])
+def test_only_domain_release_membership_is_presented(ids):
+    from drawing_demo.agent.mapping import released_artifact_ids
+
+    release = {"artifact": {"artifact_id": "unlisted_step"}, "drawing": {"status": "accepted",
+               "artifacts": [{"artifact_id": "unlisted_drawing"}]}, "released_artifact_ids": ids}
+    assert released_artifact_ids(release) == frozenset(ids)
+    assert released_artifact_ids(None) == frozenset()
+
+
+def test_terminal_run_without_a_part_has_explicit_no_model(environment):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        run = services.jobs.add(upload(client)["source_id"])
+        services.jobs.update(run["run_id"], phase="failed", failed_phase="analyzing", job={"status": "failed"},
+                             error={"code": "RUN_INTERRUPTED", "message": "Private worker details", "field": None, "recovery": None})
+        value = client.get(f"/api/runs/{run['run_id']}").json()
+        assert value["artifacts"] == [] and value["last_results"]["artifact_ids"] == []
+        assert value["last_results"]["model"] is None
+        assert value["last_results"]["no_model_reason"] == "No validated model was built."
+        assert value["last_results"]["failed_phase"] == "analyzing"
+
+
+def test_same_revision_last_results_refresh_without_a_part_read(tmp_path):
+    from types import SimpleNamespace
+
+    last = last_result_fixture()
+    states = iter([None, last])
+
+    class Backend:
+        def call(self, operation, **arguments):
+            if operation == "source_get":
+                return {"source_id": "src", "sha256": SHA}
+            if operation == "artifact_list":
+                return {"items": [], "next_cursor": None}
+            assert operation == "drawing_read"
+            return {"revision": 2, "acceptance": None, "release": None, "last_results": next(states)}
+
+    cached = {"part": {"revision": 2}, "review": {"release_state": "released"}, "artifacts": []}
+    services = SimpleNamespace(backend=Backend(), result=lambda record, revision=None: cached,
+                               analysis=lambda source: {"drawing": {"sheet_size_mm": [420, 297]}},
+                               jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
+    record = {"run_id": "run", "source_id": "src", "phase": "failed", "failed_phase": "drawing",
+              "job": {"status": "failed"}, "error": {"code": "AGENT_FAILED"}, "part_run_id": "part"}
+    first = api.run_view(services, record)
+    assert first["last_results"]["model"] is None and first["review"]["release_state"] == "draft"
+    value = api.run_view(services, record)
+    assert value["last_results"]["model"]["model_revision"] == 1
+    assert value["review"]["release_state"] == "blocked"
+    assert len(value["artifacts"]) == 5 and all(not a["released"] for a in value["artifacts"])
+    assert "domain_last_results" not in value and cached["artifacts"] == []
+
+
+def test_same_revision_release_uses_current_ids_and_never_releases_a_candidate(tmp_path):
+    from types import SimpleNamespace
+
+    candidate = {**last_result_fixture()["step"]["artifact"], "created": 1}
+    step = {**candidate, "artifact_id": "art_" + "6" * 32, "role": "released_step", "created": 2}
+    pdf = {**last_result_fixture()["drawing"]["artifacts"][0], "created": 3}
+    current = {"artifact": step, "delivery": "step_only", "drawing_current": True, "released_artifact_ids": [step["artifact_id"]],
+               "drawing": {"status": "unverified", "artifacts": [pdf, candidate]}}
+
+    class Backend:
+        def call(self, operation, **arguments):
+            if operation == "source_get":
+                return {"source_id": "src", "sha256": SHA}
+            if operation == "artifact_list":
+                return {"items": [candidate, step, pdf], "next_cursor": None}
+            assert operation == "drawing_read"
+            return {"revision": 1, "acceptance": None, "release": current}
+
+    cached = {"part": {"revision": 1}, "review": {"release_state": "blocked"},
+              "artifacts": [{**candidate, "released": True}]}
+    services = SimpleNamespace(backend=Backend(), result=lambda record, revision=None: cached,
+                               analysis=lambda source: {"drawing": {"sheet_size_mm": [420, 297]}},
+                               jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
+    record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"},
+              "error": None, "part_run_id": "part"}
+    value = api.run_view(services, record)
+    assert value["last_results"] is None and value["review"]["release_state"] == "released"
+    assert {a["role"]: a["released"] for a in value["artifacts"]} == {"step_candidate": False, "step": True, "drawing_pdf": False}
+    current["artifact"] = candidate
+    current["released_artifact_ids"] = [candidate["artifact_id"]]
+    assert all(not a["released"] for a in api.run_view(services, record)["artifacts"])
+
+
+def seed_failed_verification(services, monkeypatch, *, fail_job=True, preview_step=None):
+    """Create domain artifacts with fake CAD and verification; this is not CAD acceptance evidence."""
+    with monkeypatch.context() as imports:
+        imports.syspath_prepend(str(Path(__file__).resolve().parents[3] / "drawing2cad-mcp" / "tests"))
+        from test_drafting import drawing_fixture
+        from test_drawing_verification_service import VerifyingRunner
+    from drawing2cad_mcp import drawing_verification
+    from drawing2cad_mcp.drawing_contract import description_digest
+
+    source = services.backend.upload("Synthetic_dwg.pdf", pdf_bytes())
+    record = services.jobs.add(source["source_id"])
+    part_run = record["part_prefix"] + "-plate"
+    description, spec = drawing_fixture()
+    description["evidence"][0]["source"].update(source_id=source["source_id"], source_sha256=source["sha256"])
+    spec["description_sha256"] = description_digest(description)
+    backend = services.backend
+    domain = backend.application.domain
+    cad = domain._backend(backend.context)[0]
+    class PreviewRunner(VerifyingRunner):
+        """Use permitted sample STEP bytes only for the browser preview, with synthetic CAD checks."""
+
+        def run(self, operation, **arguments):
+            result = super().run(operation, **arguments)
+            if operation == "build" and preview_step is not None and result.get("status") == "pass":
+                Path(result["candidate_step"]).write_bytes(preview_step)
+            return result
+
+    cad.runner = PreviewRunner(cad.runner.storage)
+    cad.runner.findings = [{"rule_id": rule, "status": "fail" if rule in {"DIM-06", "FEAT-02"} else "pass",
+                           "severity": "major", "feature": None, "message": "Synthetic verification finding."}
+                          for rule in drawing_verification.MANDATORY_RULES]
+    backend.call("part_create", run_id=part_run, description=description,
+                 sources=[{"source_id": source["source_id"], "sha256": source["sha256"], "role": "construction"}])
+    assert backend.call("build_from_description", run_id=part_run, expected_revision=1)["status"] == "pass"
+    rendered = backend.call("drawing_render", run_id=part_run, expected_revision=1, drawing_spec=spec)
+    assert rendered["status"] == "pass"
+    pdf = next(a for a in rendered["drawing"]["artifacts"] if a["media_type"] == "application/pdf")
+    verified = backend.call("drawing_verify", run_id=part_run, expected_revision=1,
+                            artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])
+    assert verified["status"] == "fail"
+    services.jobs.update(record["run_id"], part_run_id=part_run, phase="drawing", job={"status": "running"})
+    if fail_job:
+        services.runner._fail(record["run_id"], "AGENT_TIME_BUDGET", "Synthetic agent deadline.", "Start again.")
+    else:
+        services.runner.finish(record["run_id"], {"status": "completed"})
+    return record["run_id"]
+
+
+def test_failed_verification_domain_files_reach_web_downloads(environment):
+    with TestClient(api.create_app()) as client:
+        run_id = seed_failed_verification(client.app.state.services, environment)
+        value = client.get(f"/api/runs/{run_id}").json()
+        last = value["last_results"]
+        assert value["phase"] == "failed" and last["failed_phase"] == "drawing"
+        assert last["model"]["model_revision"] == 1
+        assert {b["rule_id"] for b in last["blocking"]} == {"DIM-06", "FEAT-02"}
+        selected = [a for a in value["artifacts"] if a["artifact_id"] in last["artifact_ids"]]
+        assert {a["role"] for a in selected} == {"step_candidate", "drawing_pdf", "drawing_dxf", "verification_report", "verification_preview"}
+        for artifact in selected:
+            assert artifact["released"] is False and artifact["release_status"] == "not_released"
+            response = client.get(f"/api/artifacts/{artifact['artifact_id']}/content")
+            assert response.status_code == 200 and response.content
+
+
+def test_completed_built_run_uses_domain_failed_verification_phase(environment):
+    with TestClient(api.create_app()) as client:
+        run_id = seed_failed_verification(client.app.state.services, environment, fail_job=False)
+        value = client.get(f"/api/runs/{run_id}").json()
+        assert value["job"]["status"] == "succeeded" and value["phase"] == "done"
+        assert value["failed_phase"] is None and value["error"] is None
+        last = value["last_results"]
+        assert last["failed_phase"] == "drawing" and last["released"] is False
+        assert {b["rule_id"] for b in last["blocking"]} == {"DIM-06", "FEAT-02"}
+        assert "DIM-06" in last["reason"] and "FEAT-02" in last["reason"]
+        assert last["model"]["model_revision"] == 1
