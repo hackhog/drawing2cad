@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { RunFiles } from "@/components/run/RunFiles";
 import { ProjectionBadge } from "./ProjectionSection";
 import type { Run, RunPhase } from "@/lib/contract";
+import { delivery } from "@/lib/release";
 import { time } from "@/lib/format";
 import { PHASE_LABEL, runStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ const SEQUENCE: RunPhase[] = ["queued", "analyzing", "modeling", "drawing", "val
 
 export function JobCard({ run }: { run: Run }) {
   const [tone, label] = runStatus(run);
+  const released = delivery(run).released;
   // A failed run marks the phase in which it stopped. Older records have no such phase.
   const current = SEQUENCE.indexOf(run.phase === "failed" ? (run.failed_phase ?? "validating") : run.phase);
   return (
@@ -40,7 +42,7 @@ export function JobCard({ run }: { run: Run }) {
                 </span>
                 <span>
                   {PHASE_LABEL[phase]}
-                  {phase === "done" && run.warning?.code === "AGENT_REPORT_MISSING" && (
+                  {phase === "done" && released && run.warning?.code === "AGENT_REPORT_MISSING" && (
                     <span className="block text-muted-foreground">Freigabe erfolgt; nur der Abschlussbericht fehlt.</span>
                   )}
                 </span>
@@ -76,7 +78,7 @@ export function JobCard({ run }: { run: Run }) {
             </>
           )}
         </dl>
-        {run.warning && (
+        {run.warning && released && (
           <Alert className="[overflow-wrap:anywhere]">
             <AlertTitle>Hinweis: Abschlussbericht fehlt</AlertTitle>
             <AlertDescription>

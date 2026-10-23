@@ -12,7 +12,8 @@ vi.mock("@/lib/artifacts", () => ({ useArtifactUrl: () => ({ url: "blob:syntheti
 
 function run(status: ProjectionStatus): Run {
   return {
-    run_id: "run_synthetic", source_id: "src_synthetic", phase: "done", simulated: false, error: null, artifacts: [],
+    run_id: "run_synthetic", source_id: "src_synthetic", phase: "done", simulated: false, error: null, artifacts: [{ artifact_id: "art_released", role: "step", filename: "model.step", media_type: "model/step",
+      sha256: "0".repeat(64), source_sha256: "1".repeat(64), byte_count: 1, model_revision: 1, released: true }],
     job: { job_id: "job", status: "succeeded", progress: 1, started_at: "2026-10-21T12:00:00Z", finished_at: null },
     part: { revision: 1, parameters: [], operations: [], capabilities: { parameter_edit: false } },
     review: { release_state: "released", assumptions: [], uncertainties: [], validation: [] },

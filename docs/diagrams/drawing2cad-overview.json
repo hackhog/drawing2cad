@@ -6,7 +6,7 @@
     "output": "docs/diagrams/drawing2cad-overview.html",
     "quality_profile": "showcase",
     "locale": "en",
-    "subtitle": "Headless delivery, drawing diagnostics, and AP242 inspection"
+    "subtitle": "Headless delivery, retained diagnostic results, and AP242 inspection"
   },
   "components": [
     {
@@ -191,7 +191,7 @@
       "id": "webdomain",
       "from": "demoapi",
       "to": "demotools",
-      "label": "same service instance"
+      "label": "shared service, last_results"
     },
     {
       "id": "queuerun",
@@ -247,7 +247,7 @@
       "id": "store",
       "from": "demotools",
       "to": "artifacts",
-      "label": "ownership, revisions, jobs"
+      "label": "revisions, jobs, retained results"
     },
     {
       "id": "artifacts",
@@ -283,6 +283,8 @@
       "title": "Web delivery and acceptance follow-up",
       "items": [
         "Web routes and agent runs share one service instance",
+        "Failed runs retain candidate STEP and drawing artifacts",
+        "Last results show revision, blockers, and not released",
         "Derived views, sections, title block, and GPS frames render",
         "Drawing review follows the current model build",
         "Resource acceptance remains deferred until milestones finish"

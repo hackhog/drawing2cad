@@ -21,7 +21,7 @@ PHASE_BY_TOOL = {
     "export_step": "validating",
 }
 # Domain artifact roles that the web UI delivers. Previews of sources and artifacts are inspection aids only.
-ROLE_BY_MEDIA_TYPE = {("released_step", "model/step"): "step", ("technical_drawing", "application/pdf"): "drawing_pdf",
+ROLE_BY_MEDIA_TYPE = {("released_step", "model/step"): "step", ("step_candidate", "model/step"): "step_candidate", ("technical_drawing", "application/pdf"): "drawing_pdf",
                       ("drawing_diagnostic_preview", "application/pdf"): "drawing_diagnostic",
                       ("technical_drawing", "image/vnd.dxf"): "drawing_dxf",
                       ("part_description", "application/json"): "part_description",
@@ -158,4 +158,48 @@ def artifact_view(artifact: dict[str, Any], source_sha256: str, released_ids: fr
         return None
     return {"artifact_id": artifact["artifact_id"], "role": role, "media_type": media_type, "filename": artifact["filename"],
             "sha256": artifact["sha256"], "byte_count": artifact["size_bytes"], "source_sha256": source_sha256,
-            "model_revision": artifact["revision"], "released": artifact["artifact_id"] in released_ids}
+            "model_revision": artifact["revision"],
+            "released": role != "step_candidate" and artifact["artifact_id"] in released_ids}
+
+
+def released_artifact_ids(release: dict[str, Any] | None) -> frozenset[str]:
+    """Present only the files of the current release, with its recorded drawing status."""
+    release = release or {}
+    ids = {(release.get("artifact") or {}).get("artifact_id")}
+    drawing = release.get("drawing") or {}
+    current = release.get("drawing_current", True) and release.get("pair_current") is not False
+    accepted = drawing.get("status") == "accepted"
+    verified_pair = release.get("delivery") == "complete_service" and release.get("pair_current") is True
+    if current and accepted and verified_pair:
+        ids.update(item["artifact_id"] for item in drawing.get("artifacts", []))
+    return frozenset(ids - {None})
+
+
+def last_results_view(last: dict[str, Any] | None, record: dict[str, Any], source_sha256: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Present the domain-selected results and the terminal job context without private error details."""
+    last = last or {}
+    reason = last.get("reason") or "The run ended without a release."
+    code = (record.get("error") or {}).get("code")
+    # Job errors can contain worker paths. Only a bounded code is suitable for this summary.
+    if isinstance(code, str) and code and all(c.isupper() or c.isdigit() or c == "_" for c in code) and len(code) <= 80:
+        reason += f" The run stopped: {code}."
+    step = last.get("step")
+    drawing = last.get("drawing") or {}
+    verification = drawing.get("verification") or {}
+    files = ([step["artifact"]] if step else []) + drawing.get("artifacts", []) + verification.get("artifacts", [])
+    artifacts = []
+    for item in files:
+        mapped = artifact_view(item, source_sha256)
+        if mapped is not None:
+            artifacts.append({**mapped, "released": False, "release_status": "not_released", "reason": reason})
+    model = None
+    if step:
+        checks = (step.get("validation") or {}).get("checks", [])
+        model = {"artifact_id": step["artifact"]["artifact_id"], "model_revision": step["build_revision"],
+                 "validation": [{"check": c["check"], "status": CHECK_STATUS.get(c.get("status"), "not_tested"),
+                                 "detail": str(c.get("detail") or c.get("message") or c.get("observed") or "")} for c in checks]}
+    blocking = [{"rule_id": item["rule_id"], "status": item["status"], "feature": item.get("feature"),
+                 "message": item.get("message") or ""} for item in verification.get("blocking", [])]
+    return {"released": False, "failed_phase": record.get("failed_phase") or last.get("failed_phase"), "reason": reason, "blocking": blocking,
+            "artifact_ids": list(dict.fromkeys(a["artifact_id"] for a in artifacts)), "model": model,
+            "no_model_reason": None if model else last.get("no_step_reason") or "No validated model was built."}, artifacts

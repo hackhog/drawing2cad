@@ -1,15 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1770 1209" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1770 1277" role="img" aria-labelledby="title desc">
 <title id="title">Drawing2CAD: shared headless service and delivery milestones</title><desc id="desc">Generated from the versioned architecture JSON. Dashed connections identify optional or legacy paths.</desc>
-<rect width="1770" height="1209" fill="#f6f8fb"/><g font-family="Arial, Helvetica, sans-serif">
+<rect width="1770" height="1277" fill="#f6f8fb"/><g font-family="Arial, Helvetica, sans-serif">
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#61758b"/></marker></defs>
 <text x="40" y="45" font-size="24" fill="#17263d" font-weight="700" text-anchor="start">Drawing2CAD: shared headless service and delivery milestones</text>
-<text x="40" y="70" font-size="14" fill="#526477" font-weight="400" text-anchor="start">Headless delivery, drawing diagnostics, and AP242 inspection</text>
+<text x="40" y="70" font-size="14" fill="#526477" font-weight="400" text-anchor="start">Headless delivery, retained diagnostic results, and AP242 inspection</text>
 <path d="M210,172 H265 V172 H320" fill="none" stroke="#61758b" stroke-width="2.4"  marker-end="url(#arrow)"/>
 <text x="265" y="162" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">upload / download</text>
 <path d="M540,172 H600 V172 H660" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="600" y="162" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">HTTP /api</text>
 <path d="M770,204 V342 H775 V480" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
-<text x="772.5" y="332" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">same service instance</text>
+<text x="772.5" y="332" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">shared service,</text>
+<text x="772.5" y="347" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">last_results</text>
 <path d="M770,204 V267 H595 V330" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="682.5" y="257" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">queue run</text>
 <path d="M495,362 H437.5 V362 H380" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
@@ -31,8 +32,8 @@
 <path d="M890,512 H965 V812 H1040" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="965" y="652" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">candidate bytes + hash</text>
 <path d="M890,512 H1170 V512 H1450" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
-<text x="1170" y="502" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">ownership, revisions,</text>
-<text x="1170" y="517" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">jobs</text>
+<text x="1170" y="502" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">revisions, jobs,</text>
+<text x="1170" y="517" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">retained results</text>
 <path d="M1270,632 H1360 V512 H1450" fill="none" stroke="#61758b" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="1360" y="562" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">immutable output</text>
 <text x="1360" y="577" text-anchor="middle" font-size="12" fill="#526477" stroke="#f6f8fb" stroke-width="4" paint-order="stroke">snapshots</text>
@@ -99,7 +100,7 @@
 <text x="1580" y="504" font-size="15" fill="#17263d" font-weight="700" text-anchor="middle">Persistent domain store</text>
 <text x="1580" y="523" font-size="11.5" fill="#526477" font-weight="400" text-anchor="middle">Sources, jobs, JSON, DXF, PDF, STEP</text>
 </g>
-<rect x="40" y="924" width="404.5" height="235" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<rect x="40" y="924" width="404.5" height="303" rx="10" fill="#ffffff" stroke="#c5d1df"/>
 <text x="56" y="952" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M2 MCP: shared services</text>
 <text x="56" y="978" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">PDF bytes arrive through bounded resumable uploads</text>
 <text x="56" y="995" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
@@ -109,7 +110,7 @@
 <text x="56" y="1063" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
 <text x="56" y="1080" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">MCP and web routes share one Python service</text>
 <text x="56" y="1097" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<rect x="468.5" y="924" width="404.5" height="235" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<rect x="468.5" y="924" width="404.5" height="303" rx="10" fill="#ffffff" stroke="#c5d1df"/>
 <text x="484.5" y="952" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">Headless worker boundary</text>
 <text x="484.5" y="978" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Landlock, seccomp, finite resources, and timeouts</text>
 <text x="484.5" y="995" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
@@ -121,19 +122,23 @@
 <text x="484.5" y="1097" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
 <text x="484.5" y="1114" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Poppler and Tesseract verify the final PDF bytes</text>
 <text x="484.5" y="1131" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<rect x="897" y="924" width="404.5" height="235" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<rect x="897" y="924" width="404.5" height="303" rx="10" fill="#ffffff" stroke="#c5d1df"/>
 <text x="913" y="952" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">Web delivery and acceptance follow-up</text>
 <text x="913" y="978" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Web routes and agent runs share one service instance</text>
 <text x="913" y="995" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="913" y="1012" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Derived views, sections, title block, and GPS frames</text>
-<text x="913" y="1029" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">render</text>
-<text x="913" y="1046" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="913" y="1063" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Drawing review follows the current model build</text>
-<text x="913" y="1080" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="913" y="1097" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Resource acceptance remains deferred until milestones</text>
-<text x="913" y="1114" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">finish</text>
-<text x="913" y="1131" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<rect x="1325.5" y="924" width="404.5" height="235" rx="10" fill="#ffffff" stroke="#c5d1df"/>
+<text x="913" y="1012" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Failed runs retain candidate STEP and drawing artifacts</text>
+<text x="913" y="1029" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="913" y="1046" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Last results show revision, blockers, and not released</text>
+<text x="913" y="1063" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="913" y="1080" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Derived views, sections, title block, and GPS frames</text>
+<text x="913" y="1097" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">render</text>
+<text x="913" y="1114" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="913" y="1131" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Drawing review follows the current model build</text>
+<text x="913" y="1148" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<text x="913" y="1165" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">Resource acceptance remains deferred until milestones</text>
+<text x="913" y="1182" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">finish</text>
+<text x="913" y="1199" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
+<rect x="1325.5" y="924" width="404.5" height="303" rx="10" fill="#ffffff" stroke="#c5d1df"/>
 <text x="1341.5" y="952" font-size="15" fill="#17263d" font-weight="700" text-anchor="start">M3: bounded adapter, open</text>
 <text x="1341.5" y="978" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">AP242 with application construction and nominal PMI</text>
 <text x="1341.5" y="995" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
@@ -143,5 +148,5 @@
 <text x="1341.5" y="1063" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
 <text x="1341.5" y="1080" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start">STEPcode checks and actual stored-PMI inspection views</text>
 <text x="1341.5" y="1097" font-size="12.5" fill="#526477" font-weight="400" text-anchor="start"></text>
-<text x="40" y="1189" font-size="11" fill="#526477" font-weight="400" text-anchor="start">Source: docs/diagrams/drawing2cad-overview.json | ADR 0014</text>
+<text x="40" y="1257" font-size="11" fill="#526477" font-weight="400" text-anchor="start">Source: docs/diagrams/drawing2cad-overview.json | ADR 0014</text>
 </g></svg>

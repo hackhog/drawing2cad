@@ -58,3 +58,24 @@ describe("run start", () => {
     expect(JSON.parse(init.body as string)).toEqual({ profile: "" });
   });
 });
+
+// The HTTP adapter preserves the service selection and reads historical files by opaque ID.
+describe("last-result requests", () => {
+  it("keeps the build revision, validation, blockers, and release status from the API", async () => {
+    const value = { run_id: "run_failed", part: { revision: 2 }, artifacts: [{ artifact_id: "candidate/one", role: "step_candidate",
+      released: false, release_status: "not_released", model_revision: 1 }], last_results: {
+      released: false, failed_phase: "validating", reason: "Drawing verification failed.",
+      blocking: [{ rule_id: "DIM-06", status: "fail", feature: null, message: "Dimension missing." }], artifact_ids: ["candidate/one"],
+      model: { artifact_id: "candidate/one", model_revision: 1, validation: [{ check: "solid_validity", status: "pass", detail: "Valid." }] },
+      no_model_reason: null,
+    } };
+    const fetch = vi.fn(async () => new Response(JSON.stringify(value), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    const api = new HttpApi();
+    expect(await api.getRun("run_failed")).toEqual(value);
+    await api.readArtifact("candidate/one");
+    expect((fetch.mock.calls as unknown as [string][]).map(([url]) => url)).toEqual([
+      "/api/runs/run_failed", "/api/artifacts/candidate%2Fone/content",
+    ]);
+  });
+});

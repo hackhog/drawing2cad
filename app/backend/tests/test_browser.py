@@ -1,11 +1,12 @@
 """Browser tests: the built UI against the real web backend, its domain service, and its mounted MCP endpoint.
 
-A scripted model replaces the model endpoint, as in test_agent_runs.py. It creates a part but does not build it, so
-these tests cover no released STEP or drawing download. The tests need the UI build (`npm run build` in
+A scripted model replaces the model endpoint, as in test_agent_runs.py. Synthetic workers also test unreleased
+artifact downloads after a failed drawing verification; these are not CAD acceptance tests. The tests need the UI build (`npm run build` in
 app/frontend) and an installed Google Chrome; without them they are skipped.
 """
 
 from pathlib import Path
+import hashlib
 import io
 import json
 import re
@@ -22,13 +23,22 @@ from starlette.staticfiles import StaticFiles
 
 from drawing_demo import api
 from drawing_demo.agent import runner as runner_module
-from test_agent_runs import Server, environment, pdf_bytes, scripted_model, with_model_endpoint  # noqa: F401 (fixture)
+from test_agent_runs import Server, environment, pdf_bytes, scripted_model, seed_failed_verification, with_model_endpoint  # noqa: F401 (fixture)
 
 playwright = pytest.importorskip("playwright.sync_api")
 DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 TIMEOUT_MS = 30_000
 
 pytestmark = pytest.mark.skipif(not (DIST / "index.html").is_file(), reason="UI build missing: run npm run build in app/frontend")
+
+
+class RunningSite(str):
+    """A test URL with access to the same backend domain service."""
+
+    def __new__(cls, url, services):
+        value = super().__new__(cls, url)
+        value.services = services
+        return value
 
 
 def with_ui(backend):
@@ -55,14 +65,15 @@ def site(environment):
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
         environment.setenv("DRAWING2CAD_MCP_URL", f"http://127.0.0.1:{port}/mcp")
-        server = Server(uvicorn.Config(with_ui(api.create_app()), log_config=None, access_log=False))
+        backend = api.create_app()
+        server = Server(uvicorn.Config(with_ui(backend), log_config=None, access_log=False))
         thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
         thread.start()
         deadline = time.monotonic() + 10
         while not server.started and time.monotonic() < deadline:
             time.sleep(0.05)
         try:
-            yield f"http://127.0.0.1:{port}"
+            yield RunningSite(f"http://127.0.0.1:{port}", backend.state.services)
         finally:
             server.should_exit = True
             thread.join(10)
@@ -208,3 +219,52 @@ def test_projection_overlay_and_limits_in_the_review_tab(site, page, tmp_path):
     expect(section.get_by_text("Simulated projection data", exact=False)).to_be_visible()
     expect(page.get_by_label("Source drawing agreement")).to_contain_text("deviates")
     section.screenshot(path=str(tmp_path / "projection-review.png"))
+
+
+def test_failed_verification_last_results_downloads(site, page, environment, tmp_path):
+    """Exercise domain-to-browser delivery with fake CAD; no CAD acceptance is claimed."""
+    run_id = seed_failed_verification(site.services, environment)
+    with httpx2.Client(base_url=site, trust_env=False) as client:
+        value = client.get(f"/api/runs/{run_id}").json()
+    selected = [a for a in value["artifacts"] if a["artifact_id"] in value["last_results"]["artifact_ids"]]
+    assert {a["role"] for a in selected} == {"step_candidate", "drawing_pdf", "drawing_dxf", "verification_report", "verification_preview"}
+    assert all(a["released"] is False for a in selected)
+    expect = playwright.expect
+    # The fake worker STEP is intentionally synthetic. Exercise the real conversion endpoint and its failure handling.
+    with page.expect_response(lambda response: response.url.endswith("/api/model")) as converted:
+        page.goto(f"{site}/runs/{run_id}?tab=results")
+    assert converted.value.status == 422
+    section = page.get_by_role("region", name="Last results (not released)")
+    expect(section).to_be_visible()
+    expect(section.get_by_text("Failed phase: creating drawing", exact=True)).to_be_visible()
+    expect(section.get_by_text("AGENT_TIME_BUDGET", exact=False).first).to_be_visible()
+    blocking = section.get_by_role("list", name="Blocking findings")
+    expect(blocking.get_by_text("DIM-06", exact=True)).to_be_visible()
+    expect(blocking.get_by_text("FEAT-02", exact=True)).to_be_visible()
+    expect(section.get_by_text("Candidate model · Rev. 1 · not released", exact=True)).to_be_visible()
+    rows = section.get_by_role("list", name="Last result files").get_by_role("listitem")
+    expect(rows).to_have_count(5)
+    expect(section.get_by_text("released", exact=True)).to_have_count(0)
+    for index, artifact in enumerate(selected):
+        button = section.get_by_role("button", name=f"Download {artifact['filename']}", exact=True)
+        expect(button).to_be_enabled()
+        with page.expect_download() as download:
+            button.click()
+        target = tmp_path / f"result-{index}"
+        download.value.save_as(target)
+        assert hashlib.sha256(target.read_bytes()).hexdigest() == artifact["sha256"]
+
+
+def test_failed_before_build_shows_no_step_result(site, page):
+    expect = playwright.expect
+    page.goto(site)
+    upload(page, "NoBuild_dwg.pdf", pdf_bytes())
+    expect(page.get_by_text("NoBuild read")).to_be_visible()
+    page.get_by_role("cell", name="NoBuild", exact=True).click()
+    page.get_by_role("button", name="Start run").click()
+    page.get_by_role("dialog", name="Start a CAD run").get_by_role("button", name="Start run").click()
+    expect(page.get_by_text("The agent built no valid model", exact=False)).to_be_visible()
+    page.get_by_role("tab", name="Results", exact=True).click()
+    section = page.get_by_role("region", name="Last results (not released)")
+    expect(section.get_by_text("No STEP model is available:", exact=False)).to_be_visible()
+    expect(section.get_by_role("list", name="Last result files").get_by_role("listitem")).to_have_count(0)

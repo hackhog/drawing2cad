@@ -28,8 +28,8 @@ const H3 = "mb-1.5 text-xs font-semibold tracking-[.06em] text-faint uppercase";
 export function ReviewPanel({ run }: { run: Run }) {
   const review = run.review;
   if (!review) return <div className="flex flex-col gap-4"><ProjectionSection run={run} /><p className="text-muted-foreground">No review data yet.</p></div>;
-  const [tone, label] = RELEASE[review.release_state];
-  const { reasons } = delivery(run);
+  const { released, reasons } = delivery(run);
+  const [tone, label] = RELEASE[review.release_state === "released" && !released ? "blocked" : review.release_state];
   return (
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-1.5">

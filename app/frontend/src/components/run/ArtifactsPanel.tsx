@@ -1,31 +1,22 @@
-// Deliverables of a run. Artifacts of a released run with the current revision are released.
-// A finished run without release keeps its current-revision outputs as marked drafts, so a person can review the drawing;
-// stale artifacts stay locked.
+// Show release outputs and the separate last results selected by the service.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
-import { ModelFrame } from "@/components/ModelPanel";
+import { LastResultsPanel } from "./LastResultsPanel";
+import { BlobView, Empty, Preview } from "./ArtifactPreview";
 import { StatusBadge } from "@/components/Status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/lib/apiContext";
 import { saveBlob } from "@/lib/download";
-import { useArtifactUrl } from "@/lib/artifacts";
-import type { Artifact, ArtifactRole, ReleaseDrawing, Run } from "@/lib/contract";
+import type { Artifact, ReleaseDrawing, Run } from "@/lib/contract";
 import { recoveryFor } from "@/lib/errors";
 import { bytes, shortHash } from "@/lib/format";
 import { capabilitiesQuery } from "@/lib/queries";
+import { ARTIFACT_LABEL } from "@/lib/artifactLabels";
 import { delivery, isDraft, isReleased, latestShown } from "@/lib/release";
 
-const ROLE: Record<ArtifactRole, string> = {
-  drawing_pdf: "Technical drawing (PDF)", drawing_diagnostic: "Drawing diagnostic (PDF)", drawing_dxf: "Technical drawing (DXF)", step: "3D model (STEP)",
-  part_description: "Part description (JSON)", manifest: "Run manifest", trace: "MCP trace",
-  events: "Domain events", report: "Review report (JSON)",
-  verification_report: "Drawing verification report (JSON)", verification_preview: "Drawing verification preview (PNG)",
-  projection_report: "Source projection report (JSON)", projection_overlay: "Source projection overlay (PNG)",
-};
-
-// The STEP release records the drawing status. The drawing does not gate the release.
+// The service reports the drawing status recorded by the STEP release.
 const DRAWING_STATUS: Record<ReleaseDrawing["status"], string> = {
   accepted: "Drawing reviewed, verified, and released.",
   unverified: "Drawing reviewed, but its final PDF verification did not pass the acceptance gate.",
@@ -49,6 +40,8 @@ export function ArtifactsPanel({ run }: { run: Run }) {
   // A draft drawing is shown for review: the drawing review needs a person who can see the drawing.
   const preview = latestShown(run, "step");
   const drawing = latestShown(run, "drawing_pdf");
+  const lastIds = new Set(run.last_results?.artifact_ids ?? []);
+  const otherFiles = run.artifacts.filter((a) => !lastIds.has(a.artifact_id));
 
   return (
     <div className="flex flex-col gap-4">
@@ -73,23 +66,26 @@ export function ArtifactsPanel({ run }: { run: Run }) {
         </Alert>
       )}
 
+      {run.last_results && <LastResultsPanel run={run} />}
+      {run.last_results && otherFiles.length > 0 && <h2 className="font-semibold">Other run files</h2>}
       <ul className="flex flex-col gap-1.5">
-        {!run.artifacts.length && <li className="text-muted-foreground">No results yet.</li>}
-        {run.artifacts.map((a) => {
+        {!run.artifacts.length && !run.last_results && <li className="text-muted-foreground">No results yet.</li>}
+        {otherFiles.map((a) => {
           const ok = released(a);
           const diag = diagnostic(a);
           const stale = a.model_revision !== revision;
+          const candidate = a.role === "step_candidate" || a.release_status === "not_released";
           return (
             <li key={a.artifact_id} className="flex items-center gap-3 rounded-md border px-3 py-2 data-[stale]:opacity-60" data-stale={stale || undefined}>
               <div className="min-w-0 flex-1">
-                <strong className="block text-card-foreground">{ROLE[a.role]}</strong>
+                <strong className="block text-card-foreground">{ARTIFACT_LABEL[a.role]}</strong>
                 <span className="block truncate text-[11px] text-muted-foreground" title={`SHA-256 ${a.sha256}`}>
                   {a.filename} · {bytes(a.byte_count)} · SHA-256 {shortHash(a.sha256)}
                 </span>
               </div>
               <span className="text-[11px] text-muted-foreground">Rev. {a.model_revision}</span>
               <StatusBadge tone={ok ? "done" : diag ? "flag" : stale ? "flag" : "error"}>
-                {ok ? "released" : diag ? "diagnostic" : stale ? "outdated" : "locked"}
+                {ok ? "released" : candidate ? "not released" : diag ? "diagnostic" : stale ? "outdated" : "locked"}
               </StatusBadge>
               <Button variant="outline" size="sm" disabled={!(ok || diag) || !caps?.downloads || download.isPending}
                 aria-label={`Download ${a.filename}`} onClick={() => download.mutate(a)}>
@@ -100,34 +96,16 @@ export function ArtifactsPanel({ run }: { run: Run }) {
         })}
       </ul>
 
-      <section className="grid grid-cols-2 gap-3 max-[1200px]:grid-cols-1">
+      {!run.last_results && <section className="grid grid-cols-2 gap-3 max-[1200px]:grid-cols-1">
         <Preview title={`Drawing${drawing ? ` · Rev. ${drawing.model_revision} · ${released(drawing) ? "released" : "draft, not released"}` : ""}`}>
           {drawing && !run.simulated ? <BlobView artifact={drawing} kind="pdf" />
             : <Empty text={run.simulated ? "No drawing preview for simulated results." : "No drawing created yet."} />}
         </Preview>
         <Preview title={`Model${preview ? ` · Rev. ${preview.model_revision} · ${released(preview) ? "released" : "diagnostic, not released"}` : ""}`}>
-          {preview ? <BlobView artifact={preview} kind="glb" />
+          {preview ? <BlobView artifact={preview} kind="glb" notReleased={!released(preview)} />
             : <Empty text={caps?.model_preview ? "No 3D preview yet." : "The connected service does not provide a 3D preview yet."} />}
         </Preview>
-      </section>
+      </section>}
     </div>
   );
-}
-
-const Preview = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div className="flex min-h-[280px] flex-col gap-1.5">
-    <h3 className="text-xs font-semibold tracking-[.06em] text-faint uppercase">{title}</h3>{children}
-  </div>
-);
-
-const Empty = ({ text }: { text: string }) => (
-  <div className="grid flex-1 place-items-center rounded-lg border bg-viewer p-6 text-center text-xs text-muted-foreground">{text}</div>
-);
-
-function BlobView({ artifact, kind }: { artifact: Artifact; kind: "pdf" | "glb" }) {
-  const { url, error } = useArtifactUrl(useApi(), artifact.artifact_id, kind === "glb" ? "glb" : "content");
-  if (error) return <Empty text={error} />;
-  if (!url) return <Empty text="Loading …" />;
-  if (kind === "glb") return <ModelFrame url={url} name={artifact.filename} />;
-  return <object data={url} type="application/pdf" aria-label={artifact.filename} className="min-h-[280px] flex-1 rounded-lg border" />;
 }

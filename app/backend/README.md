@@ -99,7 +99,16 @@ The agent connects to the mounted `/mcp` endpoint and can call only its permitte
 The runner stores the final agent report as the first text of the note of the part run. Users can change this note later.
 The run view shows the report from the agent trace (`summary.json`), so a changed note does not change the report.
 Part state, review, and artifacts come from the domain service for each request.
-A built model without release is a finished run with release state `blocked`. Only a released STEP is an artifact.
+A built model without release has release state `blocked`.
+For a run without release, `GET /api/runs/{id}` includes `last_results` from the domain service.
+The run page shows these files in "Last results (not released)" and can display the candidate STEP in 3D.
+The section shows the failed phase, terminal error code, domain reason, and blocking verification findings.
+It lists the last validated model and the last completed drawing PDF/DXF, with available verification report and preview.
+The model record includes its build revision and validation result. A later failure can leave results from an earlier revision.
+Without a validated build, the response states that no model is available and supplies no candidate STEP.
+Each result artifact remains marked `released: false` with `release_status: "not_released"` and a reason.
+The API adds web run failure details to the domain reason. It does not change domain release acceptance.
+Only `export_step` can release the model after its applicable gates pass.
 
 | Variable | Required | Meaning |
 |---|---|---|

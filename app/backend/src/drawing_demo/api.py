@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Respons
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .agent.mapping import acceptance_view, artifact_view, part_view, release_drawing_view, review_view
+from .agent.mapping import acceptance_view, artifact_view, last_results_view, part_view, released_artifact_ids, release_drawing_view, review_view
 from .agent.projection import not_tested, projection_result
 from .agent.model import check_connection
 from .agent.profiles import ProfileStore, Provider
@@ -160,18 +160,18 @@ def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     """Part, review, and artifacts of the domain part run of a web run."""
     backend = services.backend
     part_run = record["part_run_id"]
-    state = backend.call("part_read", run_id=part_run)["part"]
+    read = backend.call("part_read", run_id=part_run)
+    state = read["part"]
     source = backend.call("source_get", source_id=record["source_id"])
     sheet = tuple(services.analysis(source)["drawing"]["sheet_size_mm"])
     review_items = part_validate(state["description"]).get("review_items", [])
     # The domain lists artifacts by ID. Creation order lets the UI select the latest drawing of a revision.
     listed = sorted(_all(backend, "artifact_list", run_id=part_run), key=lambda artifact: artifact["created"])
     release = state.get("release") or {}
-    released_ids = frozenset([(release.get("artifact") or {}).get("artifact_id")]
-                             + [a["artifact_id"] for a in (release.get("drawing") or {}).get("artifacts", [])]) - {None}
+    released_ids = released_artifact_ids(release)
     artifacts = (artifact_view(a, source["sha256"], released_ids) for a in listed)
     return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release"))),
-            "artifacts": [a for a in artifacts if a is not None]}
+            "artifacts": [a for a in artifacts if a is not None], "domain_last_results": read.get("last_results")}
 
 
 def agent_report(services: Services, record: dict[str, Any]) -> str | None:
@@ -192,11 +192,12 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     view["failed_phase"] = record.get("failed_phase")  # Records from before this field have none.
     view["agent"] = record.get("agent")
     view["iterations"] = record.get("iterations")  # Records from before this field have none.
-    view.update(part=None, review=None, artifacts=[], simulated=False, agent_report=None, projection=not_tested())
+    view.update(part=None, review=None, artifacts=[], simulated=False, agent_report=None, projection=not_tested(), last_results=None)
     if record["job"]["status"] in ("queued", "running"):
         return view
     view["agent_report"] = agent_report(services, record)
     if record["part_run_id"] is None:
+        view["last_results"] = last_results_view(None, record, "")[0]
         return view
     current = services.backend.call("drawing_read", run_id=record["part_run_id"])
     result = services.result(record, current["revision"])
@@ -212,8 +213,22 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     projection = projection_result(services.backend, listed, record["part_run_id"], result["part"]["revision"], source,
                                    tuple(services.analysis(source)["drawing"]["sheet_size_mm"]))
     projection_files = [artifact_view(a, source["sha256"]) for a in listed if a["role"] in {"projection_overlay", "projection_report"}]
-    artifacts = [a for a in result["artifacts"] if a["role"] not in {"projection_overlay", "projection_report"}]
-    return {**view, **result, "projection": projection, "artifacts": artifacts + projection_files}
+    # Refresh selected results and release flags even if build or drawing output changed at the same revision.
+    released_ids = released_artifact_ids(current.get("release"))
+    mapped = (artifact_view(a, source["sha256"], released_ids) for a in listed
+              if a["role"] not in {"projection_overlay", "projection_report"})
+    artifacts = [a for a in mapped if a is not None]
+    domain_last = current.get("last_results", result.get("domain_last_results"))
+    last = None
+    if not current.get("release"):
+        last, selected = last_results_view(domain_last, record, source["sha256"])
+        by_id = {a["artifact_id"]: a for a in artifacts + projection_files}
+        by_id.update({a["artifact_id"]: a for a in selected})
+        artifacts = list(by_id.values())
+    else:
+        artifacts += projection_files
+    public_result = {key: value for key, value in result.items() if key != "domain_last_results"}
+    return {**view, **public_result, "projection": projection, "artifacts": artifacts, "last_results": last}
 
 
 def services(request: Request) -> Services:
