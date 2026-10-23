@@ -35,6 +35,20 @@
 - Merge a pull request only after CI passes and review is complete.
 - Before removal, preserve uncommitted changes and needed ignored files. Remove the issue worktree after merge.
 
+## Subagent workflow
+
+Apply these rules to changes under version control.
+
+- If subagents are available, assign implementation tasks with a clear scope to subagents.
+- Run changes to the same files in sequence. Run only independent changes in parallel.
+- For each change, assign an independent review to a separate subagent that did not write the change.
+- Give the reviewer only the issue, the diff, and the applicable project rules. Do not give the implementation context.
+- Instruct the reviewer to compare the change with the issue acceptance criteria and with `AGENTS.md`.
+- For each finding, correct the change or reject the finding. Record a reason for each decision.
+- Record the review result in the pull request description.
+- If no subagents are available, state this in the pull request description. Do the review yourself.
+- Apply the authorship rules to all subagents.
+
 ## CAD workflow
 
 - For CAD work, use [skills/drawing2cad/SKILL.md](skills/drawing2cad/SKILL.md). The workflow must work without previous chat messages or a specific agent model.
@@ -57,7 +71,11 @@
 - Keep historical adapter code and recorded hashes unchanged. Historical FreeCAD calls are unavailable through the current MCP.
 - Do not create ad hoc model scripts, macros, or executable helper files. This restriction does not prohibit authorized development of versioned MCP server code.
 - Use only permitted sources. Do not use verification resources as unreported construction inputs. Keep original resources unchanged.
-- Give suitable independent review tasks to subagents when available. A separate reviewer is optional for delivery. The acting agent can supply its identified review attestation. Run changes to the same model in sequence. Review the results before delivery.
+- Run changes to the same model in sequence. Review the results before delivery.
+- If subagents are available, assign each run review to a separate subagent that did not create the model.
+- Give the run reviewer permitted source evidence, model outputs, validation results, and applicable project rules.
+- Record the run review result and an identified review attestation in the run evidence.
+- If no subagents are available, the acting agent must review the run and supply the attestation.
 - Create requested target-format derivatives after the required STEP tests. Distinguish an imported body from reconstructed native features.
 
 ## Files and evidence
