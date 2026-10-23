@@ -317,7 +317,7 @@ def render_drawing(spec: dict[str, Any], description: dict[str, Any], revision: 
         for dim in view["dimensions"]:
             label = point(dim["label_position"])
             attrs = {"layer": "DIMENSIONS"}
-            overrides = {"dimtxt": sheet["text_height"], "dimasz": 1.25, "dimlfac": 1 / scale,
+            overrides = {"dimtxt": sheet["text_height"], "dimasz": sheet_layout.DIMASZ_MM, "dimlfac": 1 / scale,
                          "dimdec": 4, "dimadec": 4, "dimzin": 8, "dimazin": 2, "dimtad": 0,
                          "dimgap": 0.5, "dimexe": 1.0, "dimexo": 0.5, "dimtmove": 2}
             if dim.get("theoretically_exact"):

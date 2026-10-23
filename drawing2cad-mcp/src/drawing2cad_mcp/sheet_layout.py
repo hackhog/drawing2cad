@@ -16,6 +16,8 @@ ZONE_SIZE = 50.0
 CUTTING_THICK_LENGTH = 5.0
 ARROW_LENGTH = 6.0
 ARROW_HEAD = (2.5, 1.6)
+# Arrowhead length of the native dimensions (DIMASZ). The renderer and the verification expectations use it.
+DIMASZ_MM = 1.25
 TEXT_WIDTH_FACTOR = 0.7
 # Rendered text is wider than the label estimate: the text height is the cap height. Frames and title block fields use this factor.
 FIELD_TEXT_FACTOR = 0.9

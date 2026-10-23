@@ -108,7 +108,9 @@ The tools cannot yet supply each required item. Do not hide a limit with a work-
   Show it and mark it with an uncertainty marker at one of its boundary edges. A section curve through the inside of the surface does not count.
   Its finding is then `needs_review`, and `drawing_review` must decide it.
   Mark any other feature that you cannot dimension with an uncertainty marker. Its findings are then `needs_review`.
-  `DIM-05` does not test the lines of angular dimensions in the raster. An angular dimension blocks the acceptance until its lines are checked in the raster.
+  `DIM-05` tests the dimension, extension, and leader lines of linear, radius, diameter, and angular dimensions in the raster.
+  For an angular dimension, it tests the arc beside the value and the extension lines where the arc is outside the drawn legs.
+  An angular dimension whose arc has a sheet radius of 1 mm or less fails `DIM-05`, because the arc cannot be read.
 - Verify a supplied source drawing with `source_id` only as an inspection aid. Without a binding, the model rules are `not_tested`.
 
 With these limits, the drawing status can be `accepted` for the supported content, but the final report must name the open rows.
