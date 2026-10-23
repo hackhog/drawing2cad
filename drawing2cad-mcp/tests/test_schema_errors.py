@@ -79,3 +79,16 @@ def test_semantic_defects_survive_the_defect_limit():
     assert total == 16 and len(defects) == 10
     assert defects[1]["target"] == "/references/0/p1"
     assert "first 10 of 16" in summary(defects, total)
+
+
+def test_masked_keys_keep_one_defect_for_each_invalid_field():
+    from drawing2cad_mcp.schema_errors import describe_all
+    schema = {"type": "object", "properties": {"changes": {"type": "object", "additionalProperties": {"type": "number"}}}}
+    defects, total = describe_all(Draft202012Validator(schema), {"changes": {"KeyA": "x", "KeyB": "y"}})
+    assert total == 2 and [item["target"] for item in defects] == ["/changes/*", "/changes/*"]
+
+
+def test_only_the_two_calibration_references_get_semantic_checks():
+    from drawing2cad_mcp.measurements import calibration_defects
+    equal = {"p0": [1, 1], "p1": [1, 1]}
+    assert len(calibration_defects([equal] * 20)) == 2

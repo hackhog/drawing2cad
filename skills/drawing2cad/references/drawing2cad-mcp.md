@@ -92,8 +92,10 @@ The calibration applies only to its source hash, page, and view.
 Read `p0`, `p1`, and `printed_value_mm` from the page. Do not estimate them.
 Use vector data from `drawing_extract` (sheet mm), or pixels in a page image with its `crop_context`.
 The two endpoints `p0` and `p1` of a reference must differ.
-`source_region` is [left, top, right, bottom] in fractions 0..1 of the displayed page, from its top-left corner.
-A schema failure with more than one defect lists them in `defects`. Correct all of them before a retry.
+`source_region` is [left, top, right, bottom] in fractions 0..1 of the displayed page.
+The origin of `source_region` is the top-left corner of the page.
+A schema failure gives `target` and `message` for its first defect.
+If there is more than one defect, `defects` lists them. Correct all of them before a retry.
 A schema-valid request with equal endpoints fails with `PDF_PREPARATION_FAILED`. Its message names each defective reference.
 If a calibration fails and the printed dimensions are sufficient, continue without calibration.
 Calibration is necessary only for values that the drawing does not print.

@@ -46,7 +46,8 @@ def calibration_defects(references: Any) -> list[tuple[str, str]]:
     defects = []
     if not isinstance(references, list):
         return defects
-    for index, reference in enumerate(references):
+    # A calibration has exactly two references. The schema reports a longer list, so only the first two are checked.
+    for index, reference in enumerate(references[:2]):
         if not isinstance(reference, dict):
             continue
         p0, p1 = reference.get("p0"), reference.get("p1")

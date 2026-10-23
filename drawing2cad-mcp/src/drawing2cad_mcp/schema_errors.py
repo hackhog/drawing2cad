@@ -93,12 +93,9 @@ def describe_all(validator, arguments, prefix: str = "", extra=()) -> tuple[list
     so that the limit of _MAX_DEFECTS cannot remove a semantic defect. No message repeats an input value."""
     errors = sorted(validator.iter_errors(arguments), key=lambda e: [str(part) for part in e.absolute_path])
     described = [describe(error, prefix) for error in errors]
+    # Masked targets can be equal for different input keys, so equal entries stay separate defects.
     ordered = described[:1] + [(prefix + t, m) for t, m in extra] + described[1:]
-    defects, seen = [], set()
-    for target, message in ordered:
-        if (target, message) not in seen:
-            seen.add((target, message))
-            defects.append({"target": target, "message": message})
+    defects = [{"target": target, "message": message} for target, message in ordered]
     return defects[:_MAX_DEFECTS], len(defects)
 
 
