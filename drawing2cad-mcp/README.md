@@ -142,6 +142,9 @@ The web API gives its recorded failed phase priority and adds the terminal error
 The domain service does not know that web run state.
 If retained metadata or files are invalid, `last_results.error.code` is `RESULTS_UNAVAILABLE`.
 The response omits diagnostic files and states that the retained results are unavailable. Current release inspection remains available.
+Auxiliary publication failures do not change a completed build, drawing verification, or review result.
+The service records an unavailable diagnostic marker when possible. It does not present an older snapshot as the latest result.
+The completed operation event also records publication failure. This record prevents an older snapshot from reappearing after a restart.
 
 Diagnostic results do not authorize release. Only `export_step` creates the release record after its existing gates pass.
 `release.released_artifact_ids` identifies the current released STEP and, for a current accepted complete-service pair, its drawing files.

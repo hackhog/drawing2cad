@@ -73,6 +73,8 @@ class DomainService:
         self._cad_slots = threading.BoundedSemaphore(settings.cad.concurrency)
         self._pdf_slots = threading.BoundedSemaphore(settings.server.pdf_concurrency)
         self._flags = {}
+        self._result_failures = set()
+        self._result_event_cache = {}
         self.jobs = JobService(self.store.root / "jobs", self._dispatch_job,
                                concurrency=settings.cad.concurrency)
 
@@ -676,6 +678,8 @@ class DomainService:
         if path.stat().st_size > 4 * 1024 * 1024:
             raise DomainError("RESULT_STATE_INVALID", "The stored result state exceeds its limit.")
         record = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(record, dict) and record.get("unavailable") is True:
+            raise DomainError("RESULTS_UNAVAILABLE", "The retained diagnostic record is unavailable.")
         if (not isinstance(record, dict)
                 or any(record.get(key) is not None and not isinstance(record[key], dict) for key in ("step", "drawing"))):
             raise DomainError("RESULT_STATE_INVALID", "The stored result state has invalid fields.")
@@ -702,7 +706,33 @@ class DomainService:
     def _save_last_results(self, directory, record):
         CadService._atomic(directory / "last-results.json", _json(record))
 
+    @staticmethod
+    def _unavailable_results():
+        return {"released": False, "failed_phase": None, "reason": "Retained diagnostic results are unavailable.",
+                "no_step_reason": "The retained model result is unavailable.", "step": None, "drawing": None,
+                "error": {"code": "RESULTS_UNAVAILABLE", "message": "The stored diagnostic metadata or files are unavailable or invalid."}}
+
+    def _remember_result(self, directory, operation):
+        """Keep auxiliary publication failures separate from the completed primary operation."""
+        if str(directory) in self._result_failures:
+            try:
+                self._save_last_results(directory, {"unavailable": True})
+            except (DomainError, CadError, OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+                pass
+            return
+        try:
+            operation()
+        except (DomainError, CadError, OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+            self._result_failures.add(str(directory))
+            try:
+                self._save_last_results(directory, {"unavailable": True})
+            except (DomainError, CadError, OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+                pass
+
     def _remember_build(self, ctx, cad, directory, state):
+        self._remember_result(directory, lambda: self._remember_build_result(ctx, cad, directory, state))
+
+    def _remember_build_result(self, ctx, cad, directory, state):
         built = state.get("build") or {}
         if derived_views.binding(state) is None:
             return
@@ -719,6 +749,9 @@ class DomainService:
         self._save_last_results(directory, record)
 
     def _remember_drawing(self, directory, drawing):
+        self._remember_result(directory, lambda: self._remember_drawing_result(directory, drawing))
+
+    def _remember_drawing_result(self, directory, drawing):
         record = self._last_results_record(directory)
         failed = drawing.get("status") == "fail" or (drawing.get("verification") or {}).get("status") == "fail"
         if not any(item.get("role") == "technical_drawing" for item in drawing.get("artifacts", [])):
@@ -730,14 +763,46 @@ class DomainService:
         record["failed_phase"] = "drawing" if failed else None
         self._save_last_results(directory, record)
 
+    def _results_unavailable_in_events(self, directory):
+        """Retain a publication failure when the separate result-state write failed."""
+        events = directory / "domain-events"
+        self.store._check_path(events)
+        paths, fingerprint, total = [], [], 0
+        for index, path in enumerate(events.glob("*.json")):
+            if index >= 1000:
+                raise DomainError("RESULT_STATE_INVALID", "The diagnostic event count exceeds its limit.")
+            self.store._check_path(path)
+            metadata = path.stat()
+            total += metadata.st_size
+            if metadata.st_size > 8 * 1024 * 1024 or total > 32 * 1024 * 1024:
+                raise DomainError("RESULT_STATE_INVALID", "The diagnostic event data exceeds its limit.")
+            paths.append(path)
+            fingerprint.append((path.name, metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns))
+        key = str(directory)
+        cached = self._result_event_cache.get(key)
+        if cached and cached[0] == fingerprint:
+            return cached[1]
+        unavailable = False
+        for path in paths:
+            event = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(event, dict):
+                raise DomainError("RESULT_STATE_INVALID", "The diagnostic event record is invalid.")
+            if event.get("results_unavailable") is True:
+                unavailable = True
+                break
+        self._result_event_cache[key] = (fingerprint, unavailable)
+        return unavailable
+
     def _last_results(self, ctx, directory, state):
         """Keep unavailable diagnostics separate from current release inspection."""
+        if str(directory) in self._result_failures:
+            return self._unavailable_results()
         try:
+            if self._results_unavailable_in_events(directory):
+                return self._unavailable_results()
             return self._last_results_view(ctx, directory, state)
         except (DomainError, CadError, OSError, ValueError, KeyError, TypeError, sqlite3.Error):
-            return {"released": False, "failed_phase": None, "reason": "Retained diagnostic results are unavailable.",
-                    "no_step_reason": "The retained model result is unavailable.", "step": None, "drawing": None,
-                    "error": {"code": "RESULTS_UNAVAILABLE", "message": "The stored diagnostic metadata or files are unavailable or invalid."}}
+            return self._unavailable_results()
 
     def _last_results_view(self, ctx, directory, state):
         """Project diagnostic results without changing release state or files."""
@@ -1183,6 +1248,9 @@ class DomainService:
                 CadService._atomic(event_path, _json(event))
             try:
                 result = self._run_operation(ctx, name, args, cad, directory)
+                if str(directory) in self._result_failures:
+                    result["last_results"] = self._unavailable_results()
+                    event["results_unavailable"] = True
                 event.update(status=result.get("status", "pass"), result_sha256=_digest(self._public(result)), finished_at=time.time())
                 if name in {"drawing_review", "drawing_render", "export_step"}:
                     drawing = result.get("drawing") or {}

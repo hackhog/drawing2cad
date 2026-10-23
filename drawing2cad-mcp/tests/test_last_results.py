@@ -227,3 +227,139 @@ def test_unverified_reason_has_no_agent_instruction(domain):
     call(service, "drawing_render", drawing_spec=spec)
     reason = read(service)["last_results"]["reason"]
     assert "not been verified" in reason and "Call " not in reason
+
+
+@pytest.mark.parametrize("fault", ["copy", "hash", "size"])
+def test_candidate_publication_failure_does_not_fail_validated_build(domain, monkeypatch, fault):
+    service, source, _, _, _ = domain
+    original = service.store.artifact_register
+
+    def registration(ctx, path, role, *args):
+        if role == "step_candidate":
+            if fault == "copy":
+                raise OSError("/private/copy failed")
+            if fault == "size":
+                raise DomainError("LIMIT_EXCEEDED", "/private/candidate too large")
+            return {**original(ctx, path, role, *args), "sha256": "0" * 64}
+        return original(ctx, path, role, *args)
+
+    monkeypatch.setattr(service.store, "artifact_register", registration)
+    built = call(service, "build_from_description")
+    assert built["status"] == "pass"
+    assert built["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+    assert "/private" not in json.dumps(built["last_results"])
+    release = call(service, "export_step", coverage=coverage(source))
+    assert release["status"] == "pass" and release["release"]["artifact"]["role"] == "released_step"
+    restarted = DomainService(service.settings)
+    try:
+        assert read(restarted)["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+    finally:
+        restarted.close()
+
+
+@pytest.mark.parametrize("operation", ["drawing_render", "drawing_verify", "drawing_review"])
+def test_result_record_write_failure_does_not_fail_completed_drawing_operation(domain, monkeypatch, operation):
+    from test_drawing_acceptance import passing
+    service, source, _, spec, runner, pdf = prepare(domain)
+    runner.findings, runner.report_status = passing(), "pass"
+    if operation == "drawing_review":
+        assert call(service, "drawing_verify", artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])["status"] == "pass"
+    digest = service.call(CTX, "drawing_read", {"run_id": "plate"})["drawing"]["drawing_sha256"]
+
+    def fail_write(*_args):
+        raise OSError("/private/result write failed")
+
+    monkeypatch.setattr(service, "_save_last_results", fail_write)
+    if operation == "drawing_render":
+        result = call(service, operation, drawing_spec=spec)
+    elif operation == "drawing_verify":
+        result = call(service, operation, artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])
+    else:
+        result = call(service, operation, drawing_sha256=digest, reviewer="Synthetic reviewer",
+                      source_hashes=[source["sha256"]], decision="accepted", reason="Synthetic review.")
+    assert result["status"] == "pass"
+    assert result["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+    assert read(service)["last_results"]["step"] is None
+    assert service.call(CTX, "drawing_read", {"run_id": "plate"})["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+    assert "/private" not in json.dumps(result["last_results"])
+    assert call(service, "export_step", coverage=coverage(source))["status"] == "pass"
+
+
+def test_corrupt_auxiliary_record_does_not_block_verified_pair_release(domain):
+    from test_drawing_acceptance import passing, verify_and_review
+    service, source, _, spec, runner, _ = prepare(domain)
+    cad = service._backend(CTX)[0]
+    (cad._directory("plate") / "last-results.json").write_text("[]")
+    rendered = call(service, "drawing_render", drawing_spec=spec)
+    assert rendered["status"] == "pass"
+    pdf = next(item for item in rendered["drawing"]["artifacts"] if item["media_type"] == "application/pdf")
+    assert verify_and_review(service, source, runner, pdf, passing())["status"] == "accepted"
+    released = call(service, "export_step", coverage=coverage(source), delivery="complete_service")
+    assert released["status"] == "pass" and released["release"]["pair_current"] is True
+    assert read(service)["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("failed_kind", ["build", "drawing"])
+def test_auxiliary_failure_stays_latched_after_unrelated_success_and_restart(domain, monkeypatch, failed_kind):
+    service, _, _, spec, _ = domain
+    assert call(service, "build_from_description")["status"] == "pass"
+    assert call(service, "drawing_render", drawing_spec=spec)["status"] == "pass"
+
+    def fail_write(*_args):
+        raise OSError("Synthetic unavailable disk")
+
+    monkeypatch.setattr(service, "_save_last_results", fail_write)
+    if failed_kind == "build":
+        assert call(service, "build_from_description")["status"] == "pass"
+    else:
+        assert call(service, "drawing_render", drawing_spec=spec)["status"] == "pass"
+    monkeypatch.undo()
+    if failed_kind == "build":
+        assert call(service, "drawing_render", drawing_spec=spec)["status"] == "pass"
+    else:
+        assert call(service, "build_from_description")["status"] == "pass"
+    assert read(service)["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+    restarted = DomainService(service.settings)
+    try:
+        assert read(restarted)["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+    finally:
+        restarted.close()
+
+
+@pytest.mark.parametrize("operation", ["build_from_description", "drawing_render", "drawing_verify", "drawing_review"])
+def test_failed_result_and_marker_writes_remain_unavailable_on_immediate_restart(domain, monkeypatch, operation):
+    from test_drawing_acceptance import passing
+    service, source, _, spec, runner, pdf = prepare(domain)
+    runner.findings, runner.report_status = passing(), "pass"
+    if operation == "drawing_review":
+        assert call(service, "drawing_verify", artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])["status"] == "pass"
+    cad = service._backend(CTX)[0]
+    directory = cad._directory("plate")
+    previous = (directory / "last-results.json").read_bytes()
+    digest = service.call(CTX, "drawing_read", {"run_id": "plate"})["drawing"]["drawing_sha256"]
+
+    def fail_write(*_args):
+        raise OSError("Synthetic unavailable result-state file")
+
+    monkeypatch.setattr(service, "_save_last_results", fail_write)
+    if operation == "build_from_description":
+        result = call(service, operation)
+    elif operation == "drawing_render":
+        result = call(service, operation, drawing_spec=spec)
+    elif operation == "drawing_verify":
+        result = call(service, operation, artifact_id=pdf["artifact_id"], expected_sha256=pdf["sha256"])
+    else:
+        result = call(service, operation, drawing_sha256=digest, reviewer="Synthetic reviewer",
+                      source_hashes=[source["sha256"]], decision="accepted", reason="Synthetic review.")
+    assert result["status"] == "pass"
+    assert result["last_results"]["error"]["code"] == "RESULTS_UNAVAILABLE"
+    assert (directory / "last-results.json").read_bytes() == previous
+    restarted = DomainService(service.settings)
+    try:
+        for tool in ("part_read", "drawing_read"):
+            last = restarted.call(CTX, tool, {"run_id": "plate"})["last_results"]
+            assert last["step"] is None and last["drawing"] is None
+            assert last["error"]["code"] == "RESULTS_UNAVAILABLE"
+        assert call(restarted, "export_step", coverage=coverage(source))["status"] == "pass"
+    finally:
+        restarted.close()
