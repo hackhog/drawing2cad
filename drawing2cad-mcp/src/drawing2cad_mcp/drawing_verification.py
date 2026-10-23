@@ -11,7 +11,7 @@ from typing import Any
 
 from . import sheet_layout
 from .adapters.poppler import DPI
-from .pdf_verifier import MANDATORY_RULES, number_text
+from .pdf_verifier import MANDATORY_RULES, THRESHOLDS, number_text
 
 PROFILE = "drawing2cad-verify-1"
 
@@ -131,10 +131,14 @@ def _angular_lines(view: dict, dimension: dict, label, text_height: float) -> li
     middle = (math.degrees(math.atan2(label[1] - center[1], label[0] - center[0])) - start) % 360
     if middle > sweep and 360 - middle < middle - sweep:
         middle -= 360
-    parts = [part for part in ((0.0, min(sweep, middle - gap)), (max(0.0, middle + gap), sweep))
-             if math.radians(part[1] - part[0]) * radius > 1.0]
+    # The filled arrowhead covers the first DIMASZ of the arc at each arc end, and the ink check adds its own radius.
+    # A part at an arc end starts after the arrowhead. The trim at the value gap is not changed.
+    arrow = math.degrees((sheet_layout.DIMASZ_MM + THRESHOLDS["edge_radius_mm"]) / radius)
+    parts = [(a + (arrow if a == 0.0 else 0.0), b - (arrow if b == sweep else 0.0))
+             for a, b in ((0.0, min(sweep, middle - gap)), (max(0.0, middle + gap), sweep))]
+    parts = [part for part in parts if math.radians(part[1] - part[0]) * radius > 1.0]
     if not parts:
-        # A short arc with a long value keeps at least the arrow ends.
+        # A short arc, or a long value, leaves no arc part after the arrowheads: at least the arrow ends are checked.
         end = math.degrees(1.0 / radius)
         parts = [(0.0, min(end, sweep)), (max(0.0, sweep - end), sweep)]
     segments += [_arc(center, radius, start + a, start + b) for a, b in parts]

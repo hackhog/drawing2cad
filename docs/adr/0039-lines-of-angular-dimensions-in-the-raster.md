@@ -28,6 +28,7 @@ A test with ezdxf 1.4.5 and the overrides of the renderer (`DIMTAD` 0, `DIMGAP` 
   - an extension line along each leg from 0.8 mm after the leg end to the arc, when the arc is more than 2 mm outside the drawn leg,
   - the arc parts beside the value. The value interrupts the arc over the same estimated length as for linear dimensions
     (number of characters × text height × 0.475 + 0.5 mm on each side of the label point). Only arc parts longer than 1 mm count.
+  - A part at an arc end starts after the arrowhead (DIMASZ 1.25 mm plus the ink radius of 0.35 mm), because the filled arrowhead covers the arc end.
   - When no arc part remains, the first and the last 1 mm of the arc (the arrow ends).
 - The expected line structure of the verification request accepts arc segments
   (`{"type": "arc", "center", "radius", "start_angle", "end_angle"}` in sheet mm and degrees) beside straight segments `[start, end]`.

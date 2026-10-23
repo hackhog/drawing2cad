@@ -621,11 +621,40 @@ def test_short_and_outside_angular_values_keep_the_checked_arc_parts():
 
     # A value beside the second leg, outside the angle: the complete arc is checked.
     [arc] = _dimension_lines(view([15, -5]), 2.5)[0]["segments"]
-    assert arc["radius"] == pytest.approx(math.hypot(15, 5)) and (arc["start_angle"], arc["end_angle"]) == (0.0, 90.0)
+    trim = math.degrees((1.25 + 0.35) / arc["radius"])
+    assert arc["radius"] == pytest.approx(math.hypot(15, 5))
+    assert (arc["start_angle"], arc["end_angle"]) == pytest.approx((trim, 90.0 - trim))
     # A value longer than the arc: only the arrow ends of 1 mm are checked.
     first, second = _dimension_lines(view([4, 3], 30, (17.320508, 10)), 2.5)[0]["segments"]
     assert math.radians(first["end_angle"] - first["start_angle"]) * 5 == pytest.approx(1.0)
     assert second["end_angle"] == pytest.approx(30.0) and first["start_angle"] == 0.0
+
+
+def test_expected_arc_parts_of_an_angular_dimension_start_after_the_arrowheads():
+    from drawing2cad_mcp.drawing_verification import _dimension_lines
+    from drawing2cad_mcp.pdf_verifier import THRESHOLDS
+    from drawing2cad_mcp.sheet_layout import DIMASZ_MM
+
+    def arcs(radius, sweep=90.0):
+        point = [20 * math.cos(math.radians(sweep)), 20 * math.sin(math.radians(sweep))]
+        label = [radius * math.cos(math.radians(sweep / 2)), radius * math.sin(math.radians(sweep / 2))]
+        view = {"origin": [100, 100], "scale": 1.0, "dimensions": [
+            {"id": "a", "type": "angular", "center": [0, 0], "p1": [20, 0], "p2": point, "expected": sweep,
+             "label_position": label, "evidence_ids": ["drawing"]}]}
+        return [s for s in _dimension_lines(view, 2.5)[0]["segments"] if isinstance(s, dict)]
+
+    reach = DIMASZ_MM + THRESHOLDS["edge_radius_mm"]
+    # A 90 degree arc of 7 mm radius with a 2.5 mm value: each part is 1.4 mm long, less than the arrowhead plus 1 mm.
+    first, second = arcs(7.0)
+    assert math.radians(first["end_angle"] - first["start_angle"]) * 7.0 == pytest.approx(1.0)
+    assert (first["start_angle"], second["end_angle"]) == (0.0, 90.0)
+    assert second["start_angle"] == pytest.approx(90.0 - math.degrees(1.0 / 7.0))
+    # A larger arc: each part starts at least the arrowhead length from the arc end.
+    first, second = arcs(30.0)
+    arc_length = lambda a, b: math.radians(b - a) * 30.0  # noqa: E731
+    assert arc_length(0.0, first["start_angle"]) >= DIMASZ_MM
+    assert arc_length(second["end_angle"], 90.0) >= DIMASZ_MM
+    assert arc_length(0.0, first["start_angle"]) == pytest.approx(reach)
 
 
 def test_angular_value_at_the_vertex_fails_dim_05_for_an_unreadable_arc():
