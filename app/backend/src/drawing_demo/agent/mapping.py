@@ -163,16 +163,8 @@ def artifact_view(artifact: dict[str, Any], source_sha256: str, released_ids: fr
 
 
 def released_artifact_ids(release: dict[str, Any] | None) -> frozenset[str]:
-    """Present only the files of the current release, with its recorded drawing status."""
-    release = release or {}
-    ids = {(release.get("artifact") or {}).get("artifact_id")}
-    drawing = release.get("drawing") or {}
-    current = release.get("drawing_current", True) and release.get("pair_current") is not False
-    accepted = drawing.get("status") == "accepted"
-    verified_pair = release.get("delivery") == "complete_service" and release.get("pair_current") is True
-    if current and accepted and verified_pair:
-        ids.update(item["artifact_id"] for item in drawing.get("artifacts", []))
-    return frozenset(ids - {None})
+    """Present the exact release membership supplied by the domain service."""
+    return frozenset((release or {}).get("released_artifact_ids", []))
 
 
 def last_results_view(last: dict[str, Any] | None, record: dict[str, Any], source_sha256: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:

@@ -222,18 +222,21 @@ def test_projection_overlay_and_limits_in_the_review_tab(site, page, tmp_path):
 
 
 def test_failed_verification_last_results_downloads(site, page, environment, tmp_path):
-    """Exercise domain-to-browser delivery with fake CAD; no CAD acceptance is claimed."""
-    run_id = seed_failed_verification(site.services, environment)
+    """Test real candidate preview with permitted sample STEP bytes and fake CAD checks; no CAD acceptance is claimed."""
+    sample = Path(__file__).resolve().parents[3] / "resources" / "Drawing2CAD" / "Splint" / "Splint.stp"
+    assert sample.is_file(), "The permitted STEP preview fixture is missing."
+    run_id = seed_failed_verification(site.services, environment, preview_step=sample.read_bytes())
     with httpx2.Client(base_url=site, trust_env=False) as client:
         value = client.get(f"/api/runs/{run_id}").json()
     selected = [a for a in value["artifacts"] if a["artifact_id"] in value["last_results"]["artifact_ids"]]
     assert {a["role"] for a in selected} == {"step_candidate", "drawing_pdf", "drawing_dxf", "verification_report", "verification_preview"}
     assert all(a["released"] is False for a in selected)
     expect = playwright.expect
-    # The fake worker STEP is intentionally synthetic. Exercise the real conversion endpoint and its failure handling.
+    # The sample replaces fake worker bytes before registration. The stored hash and the converted bytes must agree.
     with page.expect_response(lambda response: response.url.endswith("/api/model")) as converted:
         page.goto(f"{site}/runs/{run_id}?tab=results")
-    assert converted.value.status == 422
+    assert converted.value.status == 200
+    assert converted.value.body().startswith(b"glTF")
     section = page.get_by_role("region", name="Last results (not released)")
     expect(section).to_be_visible()
     expect(section.get_by_text("Failed phase: creating drawing", exact=True)).to_be_visible()
@@ -242,6 +245,20 @@ def test_failed_verification_last_results_downloads(site, page, environment, tmp
     expect(blocking.get_by_text("DIM-06", exact=True)).to_be_visible()
     expect(blocking.get_by_text("FEAT-02", exact=True)).to_be_visible()
     expect(section.get_by_text("Candidate model · Rev. 1 · not released", exact=True)).to_be_visible()
+    candidate = next(a for a in selected if a["role"] == "step_candidate")
+    expect(section.get_by_text(candidate["filename"] + " · not released", exact=True)).to_be_visible()
+    canvas = section.locator("canvas")
+    expect(canvas).to_be_visible()
+    # A blank canvas has one background color. Wait until the model and its edges produce rendered pixels.
+    deadline = time.monotonic() + 15
+    while True:
+        rendered = Image.open(io.BytesIO(canvas.screenshot())).convert("RGB")
+        colors = rendered.getcolors(maxcolors=256)
+        if colors is None or len(colors) > 10:
+            break
+        assert time.monotonic() < deadline, "The candidate model did not render in the 3D viewer."
+        page.wait_for_timeout(100)
+    expect(section.get_by_text("3D view not possible.", exact=False)).to_have_count(0)
     rows = section.get_by_role("list", name="Last result files").get_by_role("listitem")
     expect(rows).to_have_count(5)
     expect(section.get_by_text("released", exact=True)).to_have_count(0)

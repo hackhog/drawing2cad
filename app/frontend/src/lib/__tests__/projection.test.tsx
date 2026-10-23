@@ -97,17 +97,34 @@ describe("source projection review", () => {
       message: "Final report missing: RuntimeError: Model endpoint returned HTTP 429",
     };
     const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={value} /></QueryClientProvider>);
-    expect(html).toContain("Hinweis: Abschlussbericht fehlt");
-    expect(html).toContain("Freigabe erfolgt; nur der Abschlussbericht fehlt.");
-    expect(html).toContain("Die Dateien sind freigegeben. Der Lauf ist erfolgreich abgeschlossen.");
+    expect(html).toContain("Warning: final report missing");
+    expect(html).toContain("Release complete; only the final report is missing.");
+    expect(html).toContain("Files are released. The run completed successfully.");
     expect(html).toContain("HTTP 429");
     expect(html).toContain("released");
     expect(html).not.toContain("text-destructive");
   });
 
+  it("keeps a missing-report warning visible without presenting a candidate as released", () => {
+    const value = run("matches");
+    value.phase = "failed";
+    value.job.status = "failed";
+    value.review!.release_state = "blocked";
+    value.artifacts = value.artifacts.map((artifact) => ({ ...artifact, role: "step_candidate", released: false }));
+    value.warning = { code: "AGENT_REPORT_MISSING", message: "The report endpoint timed out." };
+    const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={value} /></QueryClientProvider>);
+    expect(html).toContain("Warning: final report missing");
+    expect(html).toContain("Files are not released. The final report is missing.");
+    expect(html).toContain("AGENT_REPORT_MISSING");
+    expect(html).toContain("The report endpoint timed out.");
+    expect(html).not.toContain("Files are released.");
+    expect(html).not.toContain("Release complete;");
+    expect(html).not.toContain(">released<");
+  });
+
   it("shows no report warning for an older run without the warning field", () => {
     const html = renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><JobCard run={run("matches")} /></QueryClientProvider>);
-    expect(html).not.toContain("Abschlussbericht fehlt");
+    expect(html).not.toContain("Warning: final report missing");
     expect(html).toContain("released");
   });
 });

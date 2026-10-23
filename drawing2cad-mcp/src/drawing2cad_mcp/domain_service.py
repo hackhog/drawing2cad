@@ -16,6 +16,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import sqlite3
 import threading
 import time
 from tempfile import TemporaryDirectory
@@ -674,7 +675,29 @@ class DomainService:
             return {"step": None, "drawing": None}
         if path.stat().st_size > 4 * 1024 * 1024:
             raise DomainError("RESULT_STATE_INVALID", "The stored result state exceeds its limit.")
-        return json.loads(path.read_text(encoding="utf-8"))
+        record = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(record, dict)
+                or any(record.get(key) is not None and not isinstance(record[key], dict) for key in ("step", "drawing"))):
+            raise DomainError("RESULT_STATE_INVALID", "The stored result state has invalid fields.")
+        for field, required in (("step", {"artifact", "build_revision", "description_sha256", "candidate_sha256", "validation"}),
+                                ("drawing", {"part_revision", "drawing_sha256", "artifacts"})):
+            if record.get(field) is not None and not required.issubset(record[field]):
+                raise DomainError("RESULT_STATE_INVALID", "The stored result fields are incomplete.")
+        step, drawing = record.get("step") or {}, record.get("drawing") or {}
+        verification = drawing.get("verification") if drawing.get("verification") is not None else {}
+        review = drawing.get("review") if drawing.get("review") is not None else {}
+        objects = (step.get("artifact", {}), step.get("validation", {}), verification, review)
+        if not all(isinstance(item, dict) for item in objects):
+            raise DomainError("RESULT_STATE_INVALID", "The stored result objects are invalid.")
+        if not isinstance(verification.get("binding", {}), dict):
+            raise DomainError("RESULT_STATE_INVALID", "The stored verification binding is invalid.")
+        for items in (verification.get("artifact_ids", []), verification.get("covered_rules", [])):
+            if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
+                raise DomainError("RESULT_STATE_INVALID", "The stored verification identifiers are invalid.")
+        for items in (drawing.get("artifacts", []), verification.get("findings", []), review.get("verification_decisions", [])):
+            if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+                raise DomainError("RESULT_STATE_INVALID", "The stored result lists are invalid.")
+        return record
 
     def _save_last_results(self, directory, record):
         CadService._atomic(directory / "last-results.json", _json(record))
@@ -708,6 +731,15 @@ class DomainService:
         self._save_last_results(directory, record)
 
     def _last_results(self, ctx, directory, state):
+        """Keep unavailable diagnostics separate from current release inspection."""
+        try:
+            return self._last_results_view(ctx, directory, state)
+        except (DomainError, CadError, OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+            return {"released": False, "failed_phase": None, "reason": "Retained diagnostic results are unavailable.",
+                    "no_step_reason": "The retained model result is unavailable.", "step": None, "drawing": None,
+                    "error": {"code": "RESULTS_UNAVAILABLE", "message": "The stored diagnostic metadata or files are unavailable or invalid."}}
+
+    def _last_results_view(self, ctx, directory, state):
         """Project diagnostic results without changing release state or files."""
         record = self._last_results_record(directory)
         step, drawing = deepcopy(record.get("step")), record.get("drawing")
@@ -744,7 +776,8 @@ class DomainService:
             rules = ", ".join(dict.fromkeys(item["rule_id"] for item in blocking))
             reason = "The drawing verification blocks release (" + rules + ")."
         elif not gate["passed"]:
-            reason = gate["reason"]
+            reason = ("The retained drawing has not been verified." if verification is None
+                      else "The retained drawing verification is incomplete or does not meet the acceptance requirements.")
         elif review.get("decision") != "accepted":
             reason = "The drawing has no accepted review."
         else:
@@ -752,9 +785,9 @@ class DomainService:
 
         def artifact(item):
             metadata = self.store.artifact_get(ctx, item["artifact_id"])
-            if (metadata["run_id"] != state["run_id"] or metadata["sha256"] != item["sha256"]
-                    or metadata["revision"] != item["revision"]):
+            if metadata["run_id"] != state["run_id"] or metadata != item:
                 raise DomainError("RESULT_ARTIFACT_CHANGED", "The result artifact does not match its record.")
+            self.store.artifact_read(ctx, metadata["artifact_id"], length=1)
             return {**metadata, "released": False, "release_status": "not_released", "reason": reason}
 
         if step:
@@ -782,7 +815,7 @@ class DomainService:
             verification = drawing_verification.status(drawing["verification"], current)
         acceptance = self._drawing_status(drawing, state, ctx, current)
         release = self._release_view(state, drawing, ctx)
-        release_fields = ("artifact", "delivery", "drawing", "drawing_current", "pair_current", "pair_reason")
+        release_fields = ("artifact", "released_artifact_ids", "delivery", "drawing", "drawing_current", "pair_current", "pair_reason")
         return {"run_id": run_id, "revision": state["revision"], "drawing": drawing, "verification": verification,
                 "acceptance": {key: acceptance.get(key) for key in ("status", "reason", "verification")},
                 "last_results": self._last_results(ctx, directory, state),
@@ -1089,6 +1122,15 @@ class DomainService:
                                       and evidence(recorded) == evidence(current))
         if ctx is not None:
             release["pair_current"], release["pair_reason"] = self._pair_current(ctx, release, state, drawing, current)
+        released_ids = []
+        step = release.get("artifact") or {}
+        if step.get("role") == "released_step":
+            released_ids.append(step["artifact_id"])
+        if (release.get("delivery") == "complete_service" and release.get("pair_current") is True
+                and release["drawing_current"] and current["status"] == "accepted"):
+            released_ids.extend(item["artifact_id"] for item in recorded.get("artifacts", [])
+                                if item.get("role") != "step_candidate")
+        release["released_artifact_ids"] = sorted(set(released_ids))
         return release
 
     def _snapshot_read(self, ctx, name, args):

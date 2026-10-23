@@ -140,8 +140,12 @@ Without a validated build, `step` is null and `no_step_reason` explains why no S
 `last_results.failed_phase` records `drawing` after a failed render or verification, including retained historical failures.
 The web API gives its recorded failed phase priority and adds the terminal error code, such as a time limit.
 The domain service does not know that web run state.
+If retained metadata or files are invalid, `last_results.error.code` is `RESULTS_UNAVAILABLE`.
+The response omits diagnostic files and states that the retained results are unavailable. Current release inspection remains available.
 
 Diagnostic results do not authorize release. Only `export_step` creates the release record after its existing gates pass.
+`release.released_artifact_ids` identifies the current released STEP and, for a current accepted complete-service pair, its drawing files.
+`drawing_read.release` includes this list. A STEP-only release includes only its released STEP ID.
 A complete-service release still requires an accepted drawing verified against the same STEP bytes and a current pair.
 An explicitly requested STEP-only release retains its separate scope.
 

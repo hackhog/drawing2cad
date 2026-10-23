@@ -43,7 +43,7 @@ export function JobCard({ run }: { run: Run }) {
                 <span>
                   {PHASE_LABEL[phase]}
                   {phase === "done" && released && run.warning?.code === "AGENT_REPORT_MISSING" && (
-                    <span className="block text-muted-foreground">Freigabe erfolgt; nur der Abschlussbericht fehlt.</span>
+                    <span className="block text-muted-foreground">Release complete; only the final report is missing.</span>
                   )}
                 </span>
               </li>
@@ -78,11 +78,11 @@ export function JobCard({ run }: { run: Run }) {
             </>
           )}
         </dl>
-        {run.warning && released && (
+        {run.warning && (
           <Alert className="[overflow-wrap:anywhere]">
-            <AlertTitle>Hinweis: Abschlussbericht fehlt</AlertTitle>
+            <AlertTitle>Warning: final report missing</AlertTitle>
             <AlertDescription>
-              <p>Die Dateien sind freigegeben. Der Lauf ist erfolgreich abgeschlossen.</p>
+              <p>{released ? "Files are released. The run completed successfully." : "Files are not released. The final report is missing."}</p>
               <p>{run.warning.message}</p>
               <code className="text-[11px]">{run.warning.code}</code>
             </AlertDescription>

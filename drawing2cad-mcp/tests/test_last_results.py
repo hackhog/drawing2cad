@@ -166,3 +166,64 @@ def test_failed_render_records_drawing_phase_without_a_completed_drawing(domain)
     changed["name"] = "Changed after failed render"
     call(service, "part_update", description=changed)
     assert read(service)["last_results"]["failed_phase"] == "drawing"
+
+
+@pytest.mark.parametrize("fault", ["json", "shape", "top_array", "step_array", "drawing_array", "verification_array",
+                                 "binding_array", "review_array", "ids_array", "missing", "foreign", "mismatch", "bytes"])
+def test_unavailable_diagnostics_do_not_hide_a_current_release(domain, fault):
+    service, source, _, _, _ = domain
+    call(service, "build_from_description")
+    released = call(service, "export_step", coverage=coverage(source))["release"]["artifact"]
+    cad = service._backend(CTX)[0]
+    directory = cad._directory("plate")
+    path = directory / "last-results.json"
+    record = json.loads(path.read_text())
+    if fault == "json":
+        path.write_text('{"private": "/secret/invalid"')
+    elif fault == "shape":
+        path.write_text('{"drawing": {"artifacts": ["invalid"]}}')
+    elif fault.endswith("_array"):
+        malformed = {"top_array": [], "step_array": {"step": []}, "drawing_array": {"drawing": []},
+                     "verification_array": {"drawing": {"verification": []}},
+                     "binding_array": {"drawing": {"verification": {"binding": []}}},
+                     "review_array": {"drawing": {"review": []}},
+                     "ids_array": {"drawing": {"verification": {"artifact_ids": [42]}}}}[fault]
+        if isinstance(malformed, dict) and isinstance(malformed.get("drawing"), dict):
+            malformed["drawing"].update(part_revision=1, drawing_sha256="0" * 64, artifacts=[])
+        path.write_text(json.dumps(malformed))
+    elif fault == "missing":
+        record["step"]["artifact"]["artifact_id"] = "art_" + "0" * 32
+        path.write_text(json.dumps(record))
+    elif fault == "foreign":
+        foreign_path = service.store.namespace_root(OTHER) / "foreign.step"
+        foreign_path.parent.mkdir(parents=True, exist_ok=True)
+        foreign_path.write_bytes(b"foreign candidate")
+        other_artifact = service.store.artifact_register(OTHER, foreign_path,
+            "step_candidate", "plate", 1, "model/step", "foreign.step")
+        record["step"]["artifact"] = other_artifact
+        path.write_text(json.dumps(record))
+    elif fault == "mismatch":
+        record["step"]["artifact"]["sha256"] = "0" * 64
+        path.write_text(json.dumps(record))
+    else:
+        service.store._path(CTX, "artifacts", record["step"]["artifact"]["artifact_id"]).unlink()
+    for tool in ("part_read", "drawing_read"):
+        result = service.call(CTX, tool, {"run_id": "plate"})
+        release_view = result["part"]["release"] if tool == "part_read" else result["release"]
+        assert release_view["artifact"] == released
+        assert release_view["released_artifact_ids"] == [released["artifact_id"]]
+        last = result["last_results"]
+        assert last["released"] is False and last["failed_phase"] is None
+        assert last["step"] is None and last["drawing"] is None
+        assert last["error"]["code"] == "RESULTS_UNAVAILABLE"
+        assert last["reason"] == "Retained diagnostic results are unavailable."
+        assert last["no_step_reason"] == "The retained model result is unavailable."
+        assert "/secret/invalid" not in json.dumps(last)
+
+
+def test_unverified_reason_has_no_agent_instruction(domain):
+    service, _, _, spec, _ = domain
+    call(service, "build_from_description")
+    call(service, "drawing_render", drawing_spec=spec)
+    reason = read(service)["last_results"]["reason"]
+    assert "not been verified" in reason and "Call " not in reason

@@ -29,6 +29,7 @@ DRAWING = {"type": "object", "description": "The complete DrawingSpec from drawi
 
 DOMAIN_SCHEMAS = deepcopy(CAD_SCHEMAS)
 DOMAIN_DESCRIPTIONS = deepcopy(CAD_DESCRIPTIONS)
+DOMAIN_DESCRIPTIONS["part_read"] = "Read current part, revision, build state, budget, and events, plus retained diagnostic last_results. Audit reads remain available after the execution budget is reached."
 DOMAIN_SCHEMAS["part_create"]["properties"]["sources"]["items"] = _object({
     "source_id": ID, "sha256": HASH, "role": {"enum": ["construction", "verification"]}})
 DOMAIN_DESCRIPTIONS["part_create"] = "Create a part from uploaded source IDs and exact hashes. Evidence must use these source IDs. Verification sources cannot supply construction values."
@@ -130,7 +131,7 @@ _EXTRA = {
                        "drawing_render draws 2.0 content with a title block, a border, section marks, and tolerance frames. Use native angular and radius dimensions plus source-linked notes for wall draft and inside fillets. Notes must identify their affected regions."),
     "drawing_validate": (_object({**REVISION, "drawing_spec": DRAWING}), "Check supplied views, dimensions, evidence, uncertainty markers, and layout against the current part. Does not render or prove CAD equivalence."),
     "drawing_render": (_object({**REVISION, "drawing_spec": DRAWING}), "Render supplied geometry and native DXF dimensions in the restricted worker. Return matching DXF and PDF artifacts on success. Layout failures can return bounded collision details and diagnostic PDF/JSON artifacts bound to the exact drawing and part revision. Diagnostic artifacts cannot be reviewed as an accepted drawing. A STEP release links them as the files of a failed drawing. Invalidate the previous drawing review before worker execution; schema or non-layout preflight failures leave it unchanged."),
-    "drawing_read": (_object(RUN), "Read current drawing state, artifact IDs, and review binding."),
+    "drawing_read": (_object(RUN), "Read current drawing state, artifact IDs, review binding, release membership, and retained diagnostic last_results."),
     "drawing_review": (_object({**REVISION, "drawing_sha256": HASH, "reviewer": {"type": "string", "minLength": 1, "maxLength": 200},
                                 "reason": TEXT, "source_hashes": {"type": "array", "items": HASH, "minItems": 1, "uniqueItems": True},
                                 "decision": {"enum": ["accepted", "rejected"]},

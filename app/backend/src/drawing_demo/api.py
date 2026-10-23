@@ -171,7 +171,8 @@ def part_result(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     released_ids = released_artifact_ids(release)
     artifacts = (artifact_view(a, source["sha256"], released_ids) for a in listed)
     return {"part": part_view(state), "review": review_view(state, review_items, sheet, released=bool(state.get("release"))),
-            "artifacts": [a for a in artifacts if a is not None], "domain_last_results": read.get("last_results")}
+            "artifacts": [a for a in artifacts if a is not None], "domain_last_results": read.get("last_results"),
+            "domain_build_status": (state.get("build") or {}).get("status")}
 
 
 def agent_report(services: Services, record: dict[str, Any]) -> str | None:
@@ -201,12 +202,17 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
         return view
     current = services.backend.call("drawing_read", run_id=record["part_run_id"])
     result = services.result(record, current["revision"])
+    domain_last = current.get("last_results", result.get("domain_last_results"))
     # The acceptance and the release freshness change with reviews, verifications, and file changes.
     # Read them each time; the cached result does not hold them.
     if result.get("review") is not None:
         review = {**result["review"], "drawing_acceptance": acceptance_view(current.get("acceptance"))}
-        if result["review"].get("release_state") == "released":
+        if current.get("release"):
+            review["release_state"] = "released"
             review["drawing"] = release_drawing_view(current.get("release"))
+        else:
+            built = bool((domain_last or {}).get("step")) or result.get("domain_build_status") == "pass"
+            review.update(release_state="blocked" if built else "draft", drawing=None)
         result = {**result, "review": review}
     source = services.backend.call("source_get", source_id=record["source_id"])
     listed = sorted(_all(services.backend, "artifact_list", run_id=record["part_run_id"]), key=lambda a: a["created"])
@@ -218,7 +224,6 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
     mapped = (artifact_view(a, source["sha256"], released_ids) for a in listed
               if a["role"] not in {"projection_overlay", "projection_report"})
     artifacts = [a for a in mapped if a is not None]
-    domain_last = current.get("last_results", result.get("domain_last_results"))
     last = None
     if not current.get("release"):
         last, selected = last_results_view(domain_last, record, source["sha256"])
@@ -227,7 +232,7 @@ def run_view(services: Services, record: dict[str, Any]) -> dict[str, Any]:
         artifacts = list(by_id.values())
     else:
         artifacts += projection_files
-    public_result = {key: value for key, value in result.items() if key != "domain_last_results"}
+    public_result = {key: value for key, value in result.items() if key not in {"domain_last_results", "domain_build_status"}}
     return {**view, **public_result, "projection": projection, "artifacts": artifacts, "last_results": last}
 
 

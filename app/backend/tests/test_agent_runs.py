@@ -818,23 +818,25 @@ def test_a_candidate_is_never_released_even_if_named_by_a_release():
     assert artifact_view(candidate, SHA, frozenset({candidate["artifact_id"]}))["released"] is False
 
 
-@pytest.mark.parametrize(("release", "expected"), [
-    ({"delivery": "complete_service", "drawing": {"status": "unverified"}}, False),
-    ({"delivery": "complete_service", "drawing": {"status": "accepted"}, "pair_current": False}, False),
-    ({"delivery": "complete_service", "drawing": {"status": "accepted"}, "drawing_current": False}, False),
-    ({"delivery": "complete_service", "drawing": {"status": "accepted"}, "pair_current": True}, True),
-    ({"delivery": "step_only", "drawing": {"status": "unreviewed"}}, False),
-    ({"delivery": "step_only", "drawing": {"status": "accepted"}}, False),
-    ({"delivery": "step_only", "drawing": {"status": "failed"}}, False),
-])
-def test_only_recorded_current_release_drawings_are_released(release, expected):
+def test_unavailable_diagnostics_do_not_claim_that_no_model_was_built():
+    from drawing_demo.agent.mapping import last_results_view
+
+    last = {"reason": "Diagnostic results are unavailable.", "no_step_reason": "The candidate diagnostic file is unavailable.",
+            "step": None, "drawing": None}
+    view, artifacts = last_results_view(last, {}, SHA)
+    assert view["model"] is None and artifacts == []
+    assert view["no_model_reason"] == "The candidate diagnostic file is unavailable."
+    assert "No validated model was built" not in str(view)
+
+
+@pytest.mark.parametrize("ids", [[], ["step"], ["step", "drawing"]])
+def test_only_domain_release_membership_is_presented(ids):
     from drawing_demo.agent.mapping import released_artifact_ids
 
-    release["artifact"] = {"artifact_id": "step"}
-    release["drawing"]["artifacts"] = [{"artifact_id": "drawing"}]
-    ids = released_artifact_ids(release)
-    assert "step" in ids
-    assert ("drawing" in ids) is expected
+    release = {"artifact": {"artifact_id": "unlisted_step"}, "drawing": {"status": "accepted",
+               "artifacts": [{"artifact_id": "unlisted_drawing"}]}, "released_artifact_ids": ids}
+    assert released_artifact_ids(release) == frozenset(ids)
+    assert released_artifact_ids(None) == frozenset()
 
 
 def test_terminal_run_without_a_part_has_explicit_no_model(environment):
@@ -871,9 +873,11 @@ def test_same_revision_last_results_refresh_without_a_part_read(tmp_path):
                                jobs=SimpleNamespace(directory=lambda run_id: tmp_path))
     record = {"run_id": "run", "source_id": "src", "phase": "failed", "failed_phase": "drawing",
               "job": {"status": "failed"}, "error": {"code": "AGENT_FAILED"}, "part_run_id": "part"}
-    assert api.run_view(services, record)["last_results"]["model"] is None
+    first = api.run_view(services, record)
+    assert first["last_results"]["model"] is None and first["review"]["release_state"] == "draft"
     value = api.run_view(services, record)
     assert value["last_results"]["model"]["model_revision"] == 1
+    assert value["review"]["release_state"] == "blocked"
     assert len(value["artifacts"]) == 5 and all(not a["released"] for a in value["artifacts"])
     assert "domain_last_results" not in value and cached["artifacts"] == []
 
@@ -884,7 +888,7 @@ def test_same_revision_release_uses_current_ids_and_never_releases_a_candidate(t
     candidate = {**last_result_fixture()["step"]["artifact"], "created": 1}
     step = {**candidate, "artifact_id": "art_" + "6" * 32, "role": "released_step", "created": 2}
     pdf = {**last_result_fixture()["drawing"]["artifacts"][0], "created": 3}
-    current = {"artifact": step, "delivery": "step_only", "drawing_current": True,
+    current = {"artifact": step, "delivery": "step_only", "drawing_current": True, "released_artifact_ids": [step["artifact_id"]],
                "drawing": {"status": "unverified", "artifacts": [pdf, candidate]}}
 
     class Backend:
@@ -896,7 +900,7 @@ def test_same_revision_release_uses_current_ids_and_never_releases_a_candidate(t
             assert operation == "drawing_read"
             return {"revision": 1, "acceptance": None, "release": current}
 
-    cached = {"part": {"revision": 1}, "review": {"release_state": "released"},
+    cached = {"part": {"revision": 1}, "review": {"release_state": "blocked"},
               "artifacts": [{**candidate, "released": True}]}
     services = SimpleNamespace(backend=Backend(), result=lambda record, revision=None: cached,
                                analysis=lambda source: {"drawing": {"sheet_size_mm": [420, 297]}},
@@ -904,13 +908,14 @@ def test_same_revision_release_uses_current_ids_and_never_releases_a_candidate(t
     record = {"run_id": "run", "source_id": "src", "phase": "done", "job": {"status": "succeeded"},
               "error": None, "part_run_id": "part"}
     value = api.run_view(services, record)
-    assert value["last_results"] is None
+    assert value["last_results"] is None and value["review"]["release_state"] == "released"
     assert {a["role"]: a["released"] for a in value["artifacts"]} == {"step_candidate": False, "step": True, "drawing_pdf": False}
     current["artifact"] = candidate
+    current["released_artifact_ids"] = [candidate["artifact_id"]]
     assert all(not a["released"] for a in api.run_view(services, record)["artifacts"])
 
 
-def seed_failed_verification(services, monkeypatch, *, fail_job=True):
+def seed_failed_verification(services, monkeypatch, *, fail_job=True, preview_step=None):
     """Create domain artifacts with fake CAD and verification; this is not CAD acceptance evidence."""
     with monkeypatch.context() as imports:
         imports.syspath_prepend(str(Path(__file__).resolve().parents[3] / "drawing2cad-mcp" / "tests"))
@@ -928,7 +933,16 @@ def seed_failed_verification(services, monkeypatch, *, fail_job=True):
     backend = services.backend
     domain = backend.application.domain
     cad = domain._backend(backend.context)[0]
-    cad.runner = VerifyingRunner(cad.runner.storage)
+    class PreviewRunner(VerifyingRunner):
+        """Use permitted sample STEP bytes only for the browser preview, with synthetic CAD checks."""
+
+        def run(self, operation, **arguments):
+            result = super().run(operation, **arguments)
+            if operation == "build" and preview_step is not None and result.get("status") == "pass":
+                Path(result["candidate_step"]).write_bytes(preview_step)
+            return result
+
+    cad.runner = PreviewRunner(cad.runner.storage)
     cad.runner.findings = [{"rule_id": rule, "status": "fail" if rule in {"DIM-06", "FEAT-02"} else "pass",
                            "severity": "major", "feature": None, "message": "Synthetic verification finding."}
                           for rule in drawing_verification.MANDATORY_RULES]
