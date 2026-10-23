@@ -58,3 +58,24 @@ def test_source_region_error_names_the_normalized_format():
     assert target == "/references/0/source_region/2"
     assert "[left, top, right, bottom] as fractions 0..1 of the displayed page" in message
     assert "7.5" not in message and "secret" not in message
+
+
+def test_input_object_keys_are_masked_in_targets():
+    from drawing2cad_mcp.schema_errors import describe_all
+    schema = {"type": "object", "properties": {"changes": {"type": "object", "additionalProperties": {"type": "number"},
+                                                           "properties": {"known": {"type": "number"}}}}}
+    defects, total = describe_all(Draft202012Validator(schema), {"changes": {"SecretToken": "x", "known": "y"}})
+    assert total == 2
+    targets = {item["target"] for item in defects}
+    assert targets == {"/changes/*", "/changes/known"}
+    assert all("SecretToken" not in item["message"] for item in defects)
+
+
+def test_semantic_defects_survive_the_defect_limit():
+    from drawing2cad_mcp.schema_errors import describe_all, summary
+    schema = {"type": "object", "properties": {f"f{i}": {"type": "number"} for i in range(15)}}
+    defects, total = describe_all(Draft202012Validator(schema), {f"f{i}": "x" for i in range(15)},
+                                  extra=[("/references/0/p1", "The reference endpoints p0 and p1 are equal.")])
+    assert total == 16 and len(defects) == 10
+    assert defects[1]["target"] == "/references/0/p1"
+    assert "first 10 of 16" in summary(defects, total)

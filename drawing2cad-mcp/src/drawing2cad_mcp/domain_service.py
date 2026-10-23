@@ -201,8 +201,8 @@ class DomainService:
             # The JSON Pointers and the failed schema rules tell the agent which fields to correct.
             # The messages never repeat an input value, because it can be private.
             extra = calibration_defects(arguments.get("references")) if name == "pdf_calibrate" and isinstance(arguments, dict) else ()
-            defects = describe_schema_errors(Draft202012Validator(DOMAIN_SCHEMAS[name]), arguments, prefix, extra)
-            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + schema_error_summary(defects),
+            defects, total = describe_schema_errors(Draft202012Validator(DOMAIN_SCHEMAS[name]), arguments, prefix, extra)
+            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + schema_error_summary(defects, total),
                               target=defects[0]["target"], defects=defects if len(defects) > 1 else None,
                               next_action=f"Read the input schema of {name} and correct the field at the target.") from None
         except (ValueError, TypeError, RecursionError):

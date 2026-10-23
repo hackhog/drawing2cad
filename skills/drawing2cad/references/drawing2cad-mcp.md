@@ -89,11 +89,14 @@ Each reference includes `dimension_id`, `printed_value_mm`, `p0`, `p1`, `source_
 Set `coordinate_space` to `sheet_mm` or `pixels`.
 For pixel coordinates, supply the exact `crop_context`.
 The calibration applies only to its source hash, page, and view.
-Read `p0`, `p1`, and `printed_value_mm` from the page: use vector data from `drawing_extract` (sheet mm), or pixel positions in a rendered page or crop with its `crop_context`. Do not estimate them.
+Read `p0`, `p1`, and `printed_value_mm` from the page. Do not estimate them.
+Use vector data from `drawing_extract` (sheet mm), or pixels in a page image with its `crop_context`.
 The two endpoints `p0` and `p1` of a reference must differ.
-`source_region` is [left, top, right, bottom] as fractions 0..1 of the displayed page, from its top-left corner. It is not in sheet mm or pixels.
-A failed request returns all defects that the service finds, in `defects`. Correct all of them before a retry.
-If a calibration fails and the printed dimensions are sufficient for the construction, continue without calibration. Calibration is necessary only for values that the drawing does not print.
+`source_region` is [left, top, right, bottom] in fractions 0..1 of the displayed page, from its top-left corner.
+A schema failure with more than one defect lists them in `defects`. Correct all of them before a retry.
+A schema-valid request with equal endpoints fails with `PDF_PREPARATION_FAILED`. Its message names each defective reference.
+If a calibration fails and the printed dimensions are sufficient, continue without calibration.
+Calibration is necessary only for values that the drawing does not print.
 
 Measurement evidence records its `origin`, `source_region`, `reason`, and `view_id`.
 The returned result is an estimate.

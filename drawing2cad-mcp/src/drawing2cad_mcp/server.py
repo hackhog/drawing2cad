@@ -105,12 +105,12 @@ def invalid_arguments(validator, name: str, arguments: Any, lead: str = "", caug
     """Report all schema defects of a request, and the semantic defects of a calibration, in one result.
     If the published schema accepts the request, report the caught error of the nested contract."""
     extra = calibration_defects(arguments.get("references")) if name == "pdf_calibrate" and isinstance(arguments, dict) else ()
-    defects = describe_schema_errors(validator, arguments, extra=extra) if validator is not None else []
+    defects, total = describe_schema_errors(validator, arguments, extra=extra) if validator is not None else ([], 0)
     if not defects and caught is not None:
         target, message = describe_schema_error(caught)
-        defects = [{"target": target, "message": message}]
+        defects, total = [{"target": target, "message": message}], 1
     error = {"code": "INVALID_ARGUMENTS", "target": defects[0]["target"] if defects else "",
-             "message": lead + schema_error_summary(defects)}
+             "message": lead + schema_error_summary(defects, total)}
     if len(defects) > 1:
         error["defects"] = defects
     return json_result({"error": error}, is_error=True)

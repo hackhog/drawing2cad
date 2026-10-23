@@ -235,3 +235,14 @@ async def test_calibration_schema_error_lists_every_defect(app):
     assert "fractions 0..1 of the displayed page" in error["message"]
     assert "more defects" in error["message"]
     assert error["message"] in result.content[0].text
+
+
+async def test_schema_valid_equal_endpoints_name_each_reference(app, tmp_path):
+    source = make_pdf(tmp_path / "plain.pdf")
+    reference = {"dimension_id": "d1", "printed_value_mm": 20, "p0": [10, 10], "p1": [10, 10],
+                 "source_region": [0.1, 0.2, 0.3, 0.4], "evidence": "printed_dimension"}
+    result = await invoke(app, "pdf_calibrate", path=str(source), page=1,
+                          references=[reference, {**reference, "dimension_id": "d2"}])
+    error = result.structured_content["error"]
+    assert error["code"] == "PDF_PREPARATION_FAILED"
+    assert "/references/0/p1" in error["message"] and "/references/1/p1" in error["message"]
