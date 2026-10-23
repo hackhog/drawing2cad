@@ -123,3 +123,28 @@ describe("candidate release isolation", () => {
     expect(render(run)).not.toContain("Released: model");
   });
 });
+
+describe("drawing status and release membership", () => {
+  it.each(["accepted", "failed"] as const)("keeps an %s drawing separate from a STEP-only release", (status) => {
+    const run = failedRun();
+    delete run.last_results;
+    run.phase = "done";
+    run.job.status = "succeeded";
+    run.error = null;
+    run.review!.release_state = "released";
+    run.review!.drawing = { status, reason: null, current: true, delivery: "step_only", pair_current: null };
+    run.artifacts = [
+      { ...artifact("released-step", "step", 2), released: true, release_status: undefined },
+      { ...artifact("unreleased-drawing", "drawing_pdf", 2), released: false },
+    ];
+    const html = render(run);
+    expect(html).toContain("Released: model of revision 2");
+    expect(html).toContain(status === "accepted" ? "Drawing reviewed and verified." : "Drawing faulty. The diagnostic files are not released.");
+    expect(html).not.toContain("Drawing reviewed, verified, and released.");
+    expect(html).not.toContain("diagnostic files belong to the release");
+    expect(html).toContain("Drawing · Rev. 2 · draft, not released");
+    const drawingRow = html.slice(html.indexOf("Technical drawing (PDF)"), html.indexOf("Download unreleased-drawing.pdf"));
+    expect(drawingRow).toContain(">not released<");
+    expect(drawingRow).not.toContain(">released<");
+  });
+});

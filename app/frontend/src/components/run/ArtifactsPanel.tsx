@@ -18,11 +18,11 @@ import { delivery, isDraft, isReleased, latestShown } from "@/lib/release";
 
 // The service reports the drawing status recorded by the STEP release.
 const DRAWING_STATUS: Record<ReleaseDrawing["status"], string> = {
-  accepted: "Drawing reviewed, verified, and released.",
+  accepted: "Drawing reviewed and verified.",
   unverified: "Drawing reviewed, but its final PDF verification did not pass the acceptance gate.",
   unreviewed: "Drawing created, but not reviewed.",
   rejected: "Drawing rejected in review.",
-  failed: "Drawing faulty. The diagnostic files belong to the release.",
+  failed: "Drawing faulty. The diagnostic files are not released.",
   missing: "No drawing created.",
 };
 
