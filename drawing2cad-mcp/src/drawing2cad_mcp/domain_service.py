@@ -35,7 +35,8 @@ from .drawing_contract import DRAWING_SCHEMA_VERSION, drawing_schema, drawing_va
 from .measurements_tools import MEASUREMENT_METHODS
 from .pdf import MAX_STROKE_LIMIT, PdfError, PdfProcessError, PdfService
 from .part_schema import EdgeSelectionDiagnostic
-from .schema_errors import describe as describe_schema_error
+from .schema_errors import describe_all as describe_schema_errors, summary as schema_error_summary
+from .measurements import calibration_defects
 from .source_flags import check_decision, review_flags
 from .step import StepError, StepService
 
@@ -196,12 +197,14 @@ class DomainService:
             encoded = _json(arguments)
             if len(encoded) > 8 * 1024 * 1024:
                 raise DomainError("LIMIT_EXCEEDED", "The request exceeds the domain size limit.")
-        except ValidationError as error:
-            # The JSON Pointer and the failed schema rule tell the agent which field to correct.
-            # The message never repeats the input value, because it can be private.
-            target, message = describe_schema_error(error, prefix)
-            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + message,
-                              target=target, next_action=f"Read the input schema of {name} and correct the field at the target.") from None
+        except ValidationError:
+            # The JSON Pointers and the failed schema rules tell the agent which fields to correct.
+            # The messages never repeat an input value, because it can be private.
+            extra = calibration_defects(arguments.get("references")) if name == "pdf_calibrate" and isinstance(arguments, dict) else ()
+            defects = describe_schema_errors(Draft202012Validator(DOMAIN_SCHEMAS[name]), arguments, prefix, extra)
+            raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract. " + schema_error_summary(defects),
+                              target=defects[0]["target"], defects=defects if len(defects) > 1 else None,
+                              next_action=f"Read the input schema of {name} and correct the field at the target.") from None
         except (ValueError, TypeError, RecursionError):
             raise DomainError("INVALID_ARGUMENT", "The arguments do not match the tool contract.") from None
 

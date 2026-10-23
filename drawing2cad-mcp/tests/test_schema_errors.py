@@ -46,3 +46,15 @@ def test_root_pointer_is_empty_and_combinators_name_their_rule():
     any_of = {"type": "object", "properties": {"x": {"anyOf": [{"type": "integer"}, {"type": "boolean"}]}}}
     _, message = describe(_error(any_of, {"x": PRIVATE}))
     assert "'anyOf'" in message and "at least one" in message and "secret" not in message
+
+
+def test_source_region_error_names_the_normalized_format():
+    from drawing2cad_mcp.measurements_tools import MEASUREMENT_SCHEMAS
+    reference = {"dimension_id": PRIVATE, "printed_value_mm": 20, "p0": [1, 1], "p1": [1, 1],
+                 "source_region": [0.1, 0.2, 7.5, 0.4], "evidence": "printed_dimension"}
+    errors = list(Draft202012Validator(MEASUREMENT_SCHEMAS["pdf_calibrate"]).iter_errors(
+        {"path": PRIVATE, "page": 1, "references": [reference, reference]}))
+    target, message = describe(errors[0])
+    assert target == "/references/0/source_region/2"
+    assert "[left, top, right, bottom] as fractions 0..1 of the displayed page" in message
+    assert "7.5" not in message and "secret" not in message

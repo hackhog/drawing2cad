@@ -366,3 +366,17 @@ async def test_model_failure_has_timing_and_error_evidence(tmp_path):
     assert result["status"] == "failed"
     assert result["error"]["type"] == "TimeoutError"
     assert list(tmp_path.glob("*-model-error.json"))
+
+
+def test_failed_call_shows_its_error_in_text_content():
+    error = {"code": "INVALID_ARGUMENTS", "target": "/references/0/source_region/2",
+             "message": "The value fails the schema rule 'maximum'.",
+             "defects": [{"target": "/references/0/p1", "message": "The reference endpoints p0 and p1 are equal."}]}
+    raw = {"isError": True, "structuredContent": {"error": error},
+           "content": [{"type": "text", "text": json.dumps({"error": error})}]}
+    forwarded = json.loads(response_messages("pdf_calibrate", raw, 4000)[0]["content"])
+    text = forwarded["content"][0]["text"]
+    assert text.startswith("Tool error INVALID_ARGUMENTS at /references/0/source_region/2: ")
+    assert "- /references/0/p1: The reference endpoints p0 and p1 are equal." in text
+    passed = {"structuredContent": {"status": "pass"}, "content": [{"type": "text", "text": '{"status": "pass"}'}]}
+    assert json.loads(response_messages("pdf_info", passed, 4000)[0]["content"])["content"] == []

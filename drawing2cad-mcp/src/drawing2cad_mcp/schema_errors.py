@@ -14,6 +14,12 @@ from jsonschema import ValidationError
 _SHOWN = {"type", "enum", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
           "minLength", "maxLength", "minItems", "maxItems", "multipleOf", "pattern", "format", "uniqueItems"}
 _MAX_EXPECTED = 160
+_MAX_DEFECTS = 10
+
+# Format notes for fields whose meaning the schema rule alone does not explain.
+_FIELD_NOTES = {
+    "source_region": "source_region is [left, top, right, bottom] as fractions 0..1 of the displayed page, from its top-left corner.",
+}
 
 
 def pointer(error: ValidationError, prefix: str = "") -> str:
@@ -44,7 +50,38 @@ def describe(error: ValidationError, prefix: str = "") -> tuple[str, str]:
         expected = json.dumps(error.validator_value, ensure_ascii=False, default=str)
         if len(expected) <= _MAX_EXPECTED:
             message += f" Expected: {expected}."
-    return target, message
+    return target, message + _field_note(error)
 
 
-__all__ = ["describe", "pointer"]
+def _field_note(error: ValidationError) -> str:
+    """Return the format note of the nearest named field in the error path, if one exists."""
+    for part in reversed(list(error.absolute_path)):
+        if isinstance(part, str):
+            note = _FIELD_NOTES.get(part)
+            return " " + note if note else ""
+    return ""
+
+
+def describe_all(validator, arguments, prefix: str = "", extra=()) -> list[dict[str, str]]:
+    """Return all schema defects of the arguments, then the extra semantic defects, at most _MAX_DEFECTS.
+    Each defect has a target and a message. No message repeats an input value."""
+    defects, seen = [], set()
+    errors = sorted(validator.iter_errors(arguments), key=lambda e: [str(part) for part in e.absolute_path])
+    for target, message in [describe(error, prefix) for error in errors] + [(prefix + t, m) for t, m in extra]:
+        if (target, message) not in seen:
+            seen.add((target, message))
+            defects.append({"target": target, "message": message})
+    return defects[:_MAX_DEFECTS]
+
+
+def summary(defects: list[dict[str, str]]) -> str:
+    """Return one message for the first defect and the number of other defects."""
+    if not defects:
+        return ""
+    message = defects[0]["message"]
+    if len(defects) > 1:
+        message += f" The request has {len(defects) - 1} more defects. Read defects and correct all of them before you retry."
+    return message
+
+
+__all__ = ["describe", "describe_all", "pointer", "summary"]

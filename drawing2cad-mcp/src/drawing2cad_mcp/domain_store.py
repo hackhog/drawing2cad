@@ -22,10 +22,10 @@ class DomainError(Exception):
     """A transport-independent error with a stable code."""
 
     def __init__(self, code: str, message: str, target: str | None = None,
-                 next_action: str | None = None):
+                 next_action: str | None = None, defects: list[dict] | None = None):
         super().__init__(message)
         self.code, self.message = code, message
-        self.target, self.next_action = target, next_action
+        self.target, self.next_action, self.defects = target, next_action, defects
 
     def to_dict(self) -> dict:
         result = {"code": self.code, "message": self.message}
@@ -33,6 +33,8 @@ class DomainError(Exception):
             result["target"] = self.target
         if self.next_action is not None:
             result["next_action"] = self.next_action
+        if self.defects:
+            result["defects"] = self.defects
         return result
 
     as_dict = to_dict

@@ -600,3 +600,16 @@ def test_job_submit_schema_error_points_to_the_nested_argument(domain):
                                          "arguments": {"run_id": "/srv/private/secret", "expected_revision": 1}})
     assert error.value.target == "/arguments/run_id"
     assert "secret" not in error.value.message
+
+
+def test_domain_calibration_error_lists_every_defect(domain):
+    service, source, *_ = domain
+    reference = {"dimension_id": "d1", "printed_value_mm": 20, "p0": [10, 10], "p1": [10, 10],
+                 "source_region": [0.1, 0.2, 2.0, 0.4], "evidence": "printed_dimension"}
+    with pytest.raises(DomainError) as caught:
+        service.call(CTX, "pdf_calibrate", {"source_id": source["source_id"], "page": 1,
+                                            "references": [reference, {**reference, "dimension_id": "d2"}]})
+    error = caught.value.to_dict()
+    assert error["code"] == "INVALID_ARGUMENT" and error["target"] == "/references/0/source_region/2"
+    assert {"/references/0/p1", "/references/1/p1"} <= {item["target"] for item in error["defects"]}
+    assert "fractions 0..1 of the displayed page" in error["message"]

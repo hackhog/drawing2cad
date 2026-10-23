@@ -23,7 +23,8 @@ from PIL import Image
 
 from . import __version__
 from .config import Settings
-from .schema_errors import describe as describe_schema_error
+from .measurements import calibration_defects
+from .schema_errors import describe as describe_schema_error, describe_all as describe_schema_errors, summary as schema_error_summary
 from .cad_service import CadError, CadService
 from .cad_tools import CAD_DESCRIPTIONS, CAD_SCHEMAS
 from .measurements_tools import MEASUREMENT_DESCRIPTIONS, MEASUREMENT_METHODS, MEASUREMENT_SCHEMAS
@@ -98,6 +99,21 @@ VALIDATORS = {name: Draft202012Validator(tool.input_schema) for name, tool in LO
 def json_result(data: dict[str, Any], *, is_error: bool = False, images: list[ImageContent] | None = None) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(data, ensure_ascii=False)), *(images or [])],
                           structured_content=data, is_error=is_error)
+
+
+def invalid_arguments(validator, name: str, arguments: Any, lead: str = "", caught: ValidationError | None = None) -> CallToolResult:
+    """Report all schema defects of a request, and the semantic defects of a calibration, in one result.
+    If the published schema accepts the request, report the caught error of the nested contract."""
+    extra = calibration_defects(arguments.get("references")) if name == "pdf_calibrate" and isinstance(arguments, dict) else ()
+    defects = describe_schema_errors(validator, arguments, extra=extra) if validator is not None else []
+    if not defects and caught is not None:
+        target, message = describe_schema_error(caught)
+        defects = [{"target": target, "message": message}]
+    error = {"code": "INVALID_ARGUMENTS", "target": defects[0]["target"] if defects else "",
+             "message": lead + schema_error_summary(defects)}
+    if len(defects) > 1:
+        error["defects"] = defects
+    return json_result({"error": error}, is_error=True)
 
 
 def error_result(code: str, message: str) -> CallToolResult:
@@ -356,8 +372,7 @@ class Application:
                 return await asyncio.shield(task)
             return error_result("UNKNOWN_TOOL", f"Unknown tool: {name}")
         except ValidationError as error:
-            target, message = describe_schema_error(error)
-            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": target, "message": message}}, is_error=True)
+            return invalid_arguments(VALIDATORS.get(name), name, arguments, caught=error)
         except PdfError as error:
             return error_result("PDF_PREPARATION_FAILED", str(error))
         except (StepError, WorkflowError, CadError) as error:
@@ -392,12 +407,10 @@ class Application:
                 images.append(ImageContent(type="image", data=preview.pop("data_base64"), mime_type="image/png"))
             return json_result(data, images=images, is_error=bool(data.get("error")) or data.get("status") == "fail")
         except ValidationError as error:
-            # The JSON Pointer and the failed schema rule tell the agent which field to correct.
-            # The message never repeats the input value, because it can be private.
-            target, message = describe_schema_error(error)
-            return json_result({"error": {"code": "INVALID_ARGUMENTS", "target": target,
-                                          "message": "Arguments do not match the published tool schema. " + message}},
-                               is_error=True)
+            # The JSON Pointers and the failed schema rules tell the agent which fields to correct.
+            # The messages never repeat an input value, because it can be private.
+            return invalid_arguments(Draft202012Validator(self.domain_catalog[name].input_schema), name, arguments,
+                                     "Arguments do not match the published tool schema. ", caught=error)
         except DomainError as error:
             return json_result({"error": error.to_dict()}, is_error=True)
         except Exception:

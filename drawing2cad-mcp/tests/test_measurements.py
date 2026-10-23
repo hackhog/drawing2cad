@@ -134,3 +134,18 @@ def test_nonfinite_observations_are_rejected(fixture, bad):
     values[0]["p0"] = [bad, 10]
     with pytest.raises(PdfError, match="finite"):
         service.calibrate(path, 1, values)
+
+
+def test_calibration_reports_all_reference_defects_together():
+    from drawing2cad_mcp.measurements import MeasurementError, calibrate, calibration_defects
+    equal = {"dimension_id": "a", "printed_value_mm": 20, "p0": [3, 4], "p1": [3, 4],
+             "source_region": [0.5, 0.2, 0.4, 0.3], "evidence": "printed_dimension"}
+    second = {**equal, "dimension_id": "b"}
+    defects = calibration_defects([equal, second])
+    assert [target for target, _ in defects] == ["/references/0/p1", "/references/0/source_region",
+                                                 "/references/1/p1", "/references/1/source_region"]
+    assert all("[3, 4]" not in message for _, message in defects)
+    with pytest.raises(MeasurementError) as error:
+        calibrate("a" * 64, 1, [equal, second])
+    assert "/references/0/p1" in str(error.value) and "/references/1/source_region" in str(error.value)
+    assert calibration_defects("not a list") == [] and calibration_defects([None, {"p0": "x"}]) == []

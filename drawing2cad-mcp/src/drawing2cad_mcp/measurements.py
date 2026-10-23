@@ -39,6 +39,33 @@ def _region(value: Any) -> list[float]:
     return [left, top, right, bottom]
 
 
+def calibration_defects(references: Any) -> list[tuple[str, str]]:
+    """Return the semantic defects of calibration references as (JSON Pointer, message).
+    The schema checks types and ranges. This check finds defects that the schema cannot express.
+    It never raises and never repeats an input value."""
+    defects = []
+    if not isinstance(references, list):
+        return defects
+    for index, reference in enumerate(references):
+        if not isinstance(reference, dict):
+            continue
+        p0, p1 = reference.get("p0"), reference.get("p1")
+        try:
+            if _point(p0) == _point(p1):
+                defects.append((f"/references/{index}/p1", "The reference endpoints p0 and p1 are equal. "
+                                "Use the two different endpoints of the printed dimension, read from drawing_extract vectors or from a page image with crop_context."))
+        except MeasurementError:
+            pass
+        region = reference.get("source_region")
+        if isinstance(region, (list, tuple)) and len(region) == 4 and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) for v in region):
+            left, top, right, bottom = region
+            if not (left < right and top < bottom):
+                defects.append((f"/references/{index}/source_region", "source_region needs left < right and top < bottom. "
+                                "source_region is [left, top, right, bottom] as fractions 0..1 of the displayed page, from its top-left corner."))
+    return defects
+
+
 def _text(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > 500:
         raise MeasurementError(f"{label} must be nonempty text with at most 500 characters.")
@@ -62,6 +89,10 @@ def calibrate(
         raise MeasurementError("relative_tolerance must not exceed 0.05.")
     if not isinstance(references, list) or len(references) != 2:
         raise MeasurementError("Exactly two independent printed dimensions are required.")
+    defects = calibration_defects(references)
+    if defects:
+        # Report all reference defects together, so that the agent can correct them in one retry.
+        raise MeasurementError(" ".join(f"{target}: {message}" for target, message in defects))
     context = None
     if coordinate_space == "pixels":
         if not isinstance(crop_context, dict):

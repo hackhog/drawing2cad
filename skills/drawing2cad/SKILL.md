@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.31.0"
+  version: "0.32.0"
 ---
 
 # drawing2cad
@@ -19,6 +19,8 @@ Use it only for an explicitly requested STEP-only delivery or a development test
 3. If details are unclear, use `pdf_crop_region`; use `drawing_extract` only as supporting evidence. Use images when the vector profile does not apply.
    Domain only: call `source_flags_read`. Apply each user decision on a review flag: ignore the flagged strokes, use the assigned stroke class, or use the corrected text. Record a value from a decision as a user decision, not as a source dimension.
 4. If measurement is necessary, call `pdf_calibrate` before `pdf_measure_distance` or `pdf_measure_circle` for the same source and view.
+   Calibrate only with endpoints and printed values that you read from the page: vector data from `drawing_extract`, or pixels with `crop_context`. The two endpoints of a reference must differ. `source_region` is [left, top, right, bottom] as fractions 0..1 of the displayed page.
+   If a calibration fails and the printed dimensions are sufficient, continue without calibration. Do not send the same failed request again.
 5. Inventory features and printed dimensions, including each printed fillet and chamfer. Infer missing values from drawing geometry. Record assumptions with reason, region, units, and feature.
 6. Prepare the versioned description and source measurements. Call `part_validate`; use its calculated volumes and extents. Correct defects until it passes.
 7. Call `part_create` with a distinct `run_id`, description, authorized sources, and a suitable `step_budget`; retain the returned revision.

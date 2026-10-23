@@ -476,3 +476,17 @@ def test_no_proxy_hosts_do_not_use_the_proxy(environment_proxy, monkeypatch):
     monkeypatch.setenv("NO_PROXY", "model.test")
     result = model.check_connection(ModelSettings("http://model.test/v1", "m", "k"), timeout=10)
     assert result["ok"] is False and environment_proxy["targets"] == []
+
+
+def test_a_failed_tool_call_reaches_the_model_with_its_error_text():
+    from drawing2cad_mcp.local_model_client import response_messages
+    from drawing_demo.agent.model import to_openai
+
+    error = {"code": "INVALID_ARGUMENTS", "target": "/references/0/source_region/2",
+             "message": "source_region is [left, top, right, bottom] as fractions 0..1 of the displayed page."}
+    raw = {"isError": True, "structuredContent": {"error": error}, "content": [{"type": "text", "text": json.dumps({"error": error})}]}
+    call = {"id": "call-1", "function": {"name": "pdf_calibrate", "arguments": {}}}
+    messages = [{"role": "system", "content": "s"}, {"role": "assistant", "content": "", "tool_calls": [call]},
+                *response_messages("pdf_calibrate", raw, 4000)]
+    tool = next(message for message in to_openai(messages) if message["role"] == "tool")
+    assert "Tool error INVALID_ARGUMENTS at /references/0/source_region/2" in tool["content"]
