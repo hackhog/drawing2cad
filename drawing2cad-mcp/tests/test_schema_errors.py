@@ -46,3 +46,49 @@ def test_root_pointer_is_empty_and_combinators_name_their_rule():
     any_of = {"type": "object", "properties": {"x": {"anyOf": [{"type": "integer"}, {"type": "boolean"}]}}}
     _, message = describe(_error(any_of, {"x": PRIVATE}))
     assert "'anyOf'" in message and "at least one" in message and "secret" not in message
+
+
+def test_source_region_error_names_the_normalized_format():
+    from drawing2cad_mcp.measurements_tools import MEASUREMENT_SCHEMAS
+    reference = {"dimension_id": PRIVATE, "printed_value_mm": 20, "p0": [1, 1], "p1": [1, 1],
+                 "source_region": [0.1, 0.2, 7.5, 0.4], "evidence": "printed_dimension"}
+    errors = list(Draft202012Validator(MEASUREMENT_SCHEMAS["pdf_calibrate"]).iter_errors(
+        {"path": PRIVATE, "page": 1, "references": [reference, reference]}))
+    target, message = describe(errors[0])
+    assert target == "/references/0/source_region/2"
+    assert "[left, top, right, bottom] as fractions 0..1 of the displayed page" in message
+    assert "7.5" not in message and "secret" not in message
+
+
+def test_input_object_keys_are_masked_in_targets():
+    from drawing2cad_mcp.schema_errors import describe_all
+    schema = {"type": "object", "properties": {"changes": {"type": "object", "additionalProperties": {"type": "number"},
+                                                           "properties": {"known": {"type": "number"}}}}}
+    defects, total = describe_all(Draft202012Validator(schema), {"changes": {"SecretToken": "x", "known": "y"}})
+    assert total == 2
+    targets = {item["target"] for item in defects}
+    assert targets == {"/changes/*", "/changes/known"}
+    assert all("SecretToken" not in item["message"] for item in defects)
+
+
+def test_semantic_defects_survive_the_defect_limit():
+    from drawing2cad_mcp.schema_errors import describe_all, summary
+    schema = {"type": "object", "properties": {f"f{i}": {"type": "number"} for i in range(15)}}
+    defects, total = describe_all(Draft202012Validator(schema), {f"f{i}": "x" for i in range(15)},
+                                  extra=[("/references/0/p1", "The reference endpoints p0 and p1 are equal.")])
+    assert total == 16 and len(defects) == 10
+    assert defects[1]["target"] == "/references/0/p1"
+    assert "first 10 of 16" in summary(defects, total)
+
+
+def test_masked_keys_keep_one_defect_for_each_invalid_field():
+    from drawing2cad_mcp.schema_errors import describe_all
+    schema = {"type": "object", "properties": {"changes": {"type": "object", "additionalProperties": {"type": "number"}}}}
+    defects, total = describe_all(Draft202012Validator(schema), {"changes": {"KeyA": "x", "KeyB": "y"}})
+    assert total == 2 and [item["target"] for item in defects] == ["/changes/*", "/changes/*"]
+
+
+def test_only_the_two_calibration_references_get_semantic_checks():
+    from drawing2cad_mcp.measurements import calibration_defects
+    equal = {"p0": [1, 1], "p1": [1, 1]}
+    assert len(calibration_defects([equal] * 20)) == 2

@@ -179,6 +179,18 @@ def authorize_call(name, arguments, plan, available):
     return arguments
 
 
+def error_text(error: dict) -> str:
+    """Return the error of a failed tool call as plain text: code, target, message, and each listed defect."""
+    lines = [f"Tool error {error.get('code', 'UNKNOWN')}"
+             + (f" at {error['target']}" if error.get("target") else "") + f": {error.get('message', '')}"]
+    for defect in error.get("defects") or []:
+        if isinstance(defect, dict):
+            lines.append(f"- {defect.get('target') or 'request'}: {defect.get('message', '')}")
+    if error.get("next_action"):
+        lines.append(f"Next action: {error['next_action']}")
+    return "\n".join(lines)
+
+
 def response_messages(name, result, maximum_chars):
     """Forward exact text within a bound and preserve MCP images for vision."""
     text_result = {key: value for key, value in result.items() if key != "content" and value is not None}
@@ -197,6 +209,11 @@ def response_messages(name, result, maximum_chars):
                 except (ValueError, KeyError):
                     pass
             content.append(item)
+    error = structured.get("error") if isinstance(structured, dict) else None
+    if (result.get("isError") or result.get("is_error")) and isinstance(error, dict) and not any(
+            item.get("type") == "text" for item in content):
+        # Some models read only the text content. A failed call must show its error there.
+        content.insert(0, {"type": "text", "text": error_text(error)})
     text_result["content"] = content
     rendered = json.dumps(text_result, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     if len(rendered) > maximum_chars:

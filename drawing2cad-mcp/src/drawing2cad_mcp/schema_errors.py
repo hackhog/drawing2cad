@@ -14,12 +14,43 @@ from jsonschema import ValidationError
 _SHOWN = {"type", "enum", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
           "minLength", "maxLength", "minItems", "maxItems", "multipleOf", "pattern", "format", "uniqueItems"}
 _MAX_EXPECTED = 160
+_MAX_DEFECTS = 10
+
+# Format notes for fields whose meaning the schema rule alone does not explain.
+_FIELD_NOTES = {
+    "source_region": "source_region is [left, top, right, bottom] as fractions 0..1 of the displayed page, from its top-left corner.",
+}
+
+
+def _safe_path(error: ValidationError) -> list:
+    """Return the instance path. An object key that the schema does not name (for example a key of
+    additionalProperties or patternProperties) is input, so it becomes "*"."""
+    schema = list(error.absolute_schema_path)
+    position, parts = 0, []
+    for part in error.absolute_path:
+        if isinstance(part, int):
+            parts.append(part)
+            continue
+        named = False
+        while position < len(schema):
+            token = schema[position]
+            position += 1
+            if token == "properties" and position < len(schema) and schema[position] == part:
+                position += 1
+                named = True
+                break
+            if token in ("patternProperties", "additionalProperties", "propertyNames", "dependentSchemas"):
+                position += 1 if token == "patternProperties" else 0
+                break
+        parts.append(part if named else "*")
+    return parts
 
 
 def pointer(error: ValidationError, prefix: str = "") -> str:
     """Return the JSON Pointer of the invalid field. The root is the empty string.
-    The prefix locates a nested object that was validated separately, for example "/arguments"."""
-    return prefix + "".join("/" + str(part).replace("~", "~0").replace("/", "~1") for part in error.absolute_path)
+    The prefix locates a nested object that was validated separately, for example "/arguments".
+    Object keys that come from the input, not from the schema, are replaced by "*"."""
+    return prefix + "".join("/" + str(part).replace("~", "~0").replace("/", "~1") for part in _safe_path(error))
 
 
 def describe(error: ValidationError, prefix: str = "") -> tuple[str, str]:
@@ -44,7 +75,41 @@ def describe(error: ValidationError, prefix: str = "") -> tuple[str, str]:
         expected = json.dumps(error.validator_value, ensure_ascii=False, default=str)
         if len(expected) <= _MAX_EXPECTED:
             message += f" Expected: {expected}."
-    return target, message
+    return target, message + _field_note(error)
 
 
-__all__ = ["describe", "pointer"]
+def _field_note(error: ValidationError) -> str:
+    """Return the format note of the nearest named field in the error path, if one exists."""
+    for part in reversed(_safe_path(error)):
+        if isinstance(part, str):
+            note = _FIELD_NOTES.get(part)
+            return " " + note if note else ""
+    return ""
+
+
+def describe_all(validator, arguments, prefix: str = "", extra=()) -> tuple[list[dict[str, str]], int]:
+    """Return the schema defects of the arguments and the extra semantic defects, and the total count.
+    The list keeps the first schema defect first, then the semantic defects, then the other schema defects,
+    so that the limit of _MAX_DEFECTS cannot remove a semantic defect. No message repeats an input value."""
+    errors = sorted(validator.iter_errors(arguments), key=lambda e: [str(part) for part in e.absolute_path])
+    described = [describe(error, prefix) for error in errors]
+    # Masked targets can be equal for different input keys, so equal entries stay separate defects.
+    ordered = described[:1] + [(prefix + t, m) for t, m in extra] + described[1:]
+    defects = [{"target": target, "message": message} for target, message in ordered]
+    return defects[:_MAX_DEFECTS], len(defects)
+
+
+def summary(defects: list[dict[str, str]], total: int | None = None) -> str:
+    """Return one message for the first defect and the number of other defects."""
+    if not defects:
+        return ""
+    total = len(defects) if total is None else total
+    message = defects[0]["message"]
+    if total > 1:
+        message += f" The request has {total - 1} more defects. Read defects and correct all of them before you retry."
+    if total > len(defects):
+        message += f" defects lists the first {len(defects)} of {total}."
+    return message
+
+
+__all__ = ["describe", "describe_all", "pointer", "summary"]
