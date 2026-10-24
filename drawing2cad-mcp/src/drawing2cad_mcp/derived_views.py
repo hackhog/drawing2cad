@@ -36,6 +36,25 @@ class SectionRequest(ClosedModel):
     source_view_id: Identifier = Field(description="Another requested view that shows the cutting line. It must show the plane as a line.")
 
 
+def kind_field_defects(view) -> list[tuple[str, str]]:
+    """Return fixed instructions for missing or forbidden fields of a known view kind."""
+    if not isinstance(view, dict):
+        return []
+    kind = view.get("kind")
+    if kind == "section":
+        needed, forbidden, label = "cutting_plane", "view_direction", "a section"
+    elif kind in ("orthographic", "isometric"):
+        needed, forbidden, label = "view_direction", "cutting_plane", "an orthographic or isometric view"
+    else:
+        return []
+    defects = []
+    if view.get(needed) is None:
+        defects.append((needed, f"Supply {needed} for {label}. Do not set it to null."))
+    if forbidden in view:
+        defects.append((forbidden, f"Remove {forbidden} from {label}. Omit the field; do not set it to null."))
+    return defects
+
+
 class ViewRequest(ClosedModel):
     id: Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,47}$")]
     kind: Literal["orthographic", "isometric", "section"]
@@ -51,13 +70,9 @@ class ViewRequest(ClosedModel):
 
     @model_validator(mode="after")
     def validate_kind_fields(self):
-        if self.kind == "section":
-            if self.cutting_plane is None or "view_direction" in self.model_fields_set:
-                raise ValueError("For a section, supply cutting_plane and omit view_direction. "
-                                 "Remove view_direction; do not set it to null.")
-        elif self.view_direction is None or "cutting_plane" in self.model_fields_set:
-            raise ValueError("For orthographic or isometric views, supply view_direction and omit cutting_plane. "
-                             "Remove cutting_plane; do not set it to null.")
+        defects = kind_field_defects(self.model_dump(exclude_unset=True))
+        if defects:
+            raise ValueError(" ".join(message for _, message in defects))
         return self
 
 
@@ -83,7 +98,13 @@ def normalize_requests(views: list[dict]) -> list[dict[str, Any]]:
         for detail in error.errors(include_url=False, include_context=False, include_input=False)[:10]:
             location = "/".join(str(item) if isinstance(item, int) or item in known_fields else "*"
                                 for item in detail["loc"])
-            message = detail["msg"] if detail["type"] == "value_error" else detail["type"]
+            message = detail["type"]
+            # Rebuild kind instructions from fixed text. Other validator messages can contain private input.
+            if (detail["type"] == "value_error" and len(detail["loc"]) == 2
+                    and detail["loc"][0] == "views" and isinstance(detail["loc"][1], int)):
+                defects = kind_field_defects(views[detail["loc"][1]])
+                if defects:
+                    message = " ".join(instruction for _, instruction in defects)
             fields.append(location + ": " + message)
         raise ValueError("The view requests do not match their schema: " + "; ".join(fields) + ".") from None
     identifiers = [view.id for view in request.views]

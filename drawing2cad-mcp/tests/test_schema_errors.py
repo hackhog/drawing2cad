@@ -94,10 +94,9 @@ def test_only_the_two_calibration_references_get_semantic_checks():
     assert len(calibration_defects([equal] * 20)) == 2
 
 
-def test_anyof_feedback_uses_only_a_bounded_trusted_schema_description():
+def test_generic_anyof_feedback_does_not_append_schema_descriptions():
     schema = {"anyOf": [{"type": "integer"}, {"type": "boolean"}],
               "description": "Supply one of the permitted forms."}
     _, message = describe(_error(schema, {"description": PRIVATE}))
-    assert message.endswith(schema["description"]) and "secret" not in message
-    _, message = describe(_error({**schema, "description": "x" * 501}, PRIVATE))
-    assert "xxx" not in message and "secret" not in message
+    assert "at least one permitted form must match" in message
+    assert schema["description"] not in message and "secret" not in message

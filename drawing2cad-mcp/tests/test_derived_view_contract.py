@@ -37,7 +37,6 @@ def app(tmp_path):
     value.domain.close()
 
 
-
 @pytest.mark.parametrize("view", [TOP, ISO, SECTION], ids=["orthographic", "isometric", "section"])
 @pytest.mark.parametrize("explicit", [False, True], ids=["defaults", "explicit-options"])
 def test_valid_forms_preserve_defaults_and_supported_options(view, explicit):
@@ -72,15 +71,30 @@ async def test_invalid_forms_fail_with_actionable_private_feedback(app, view, ne
     assert not validator.is_valid(request)
     with pytest.raises(ValueError) as runtime:
         normalize_requests(request["views"])
-    assert PRIVATE not in str(runtime.value)
+    runtime_text = str(runtime.value)
+    assert PRIVATE not in runtime_text
+    if view.get(needed) is None:
+        assert "Supply " + needed in runtime_text
+    if forbidden in view:
+        assert "Remove " + forbidden in runtime_text
+    else:
+        assert "Remove " not in runtime_text
     with pytest.raises(DomainError) as domain:
         DomainService._validate("drawing_derive_views", request)
     result = await app.on_call_tool(None, CallToolRequestParams(name="drawing_derive_views", arguments=request))
     assert result.is_error
     for error in (domain.value.to_dict(), result.structured_content["error"]):
         text = json.dumps(error)
-        assert "supply " + needed in text and "omit " + forbidden in text
-        assert "Remove a forbidden field; do not set it to null" in text
+        if needed not in view:
+            assert error["target"].endswith("/" + needed)
+            assert "Supply " + needed in text and forbidden not in text
+        elif forbidden in view:
+            assert error["target"].endswith("/" + forbidden)
+            assert "Remove " + forbidden in text and "Supply " + needed not in text
+            assert "Omit the field; do not set it to null" in text
+        else:
+            assert error["target"].endswith("/" + needed)
+            assert "'type'" in text and forbidden not in text
         assert PRIVATE not in text
 
 
@@ -134,7 +148,7 @@ async def test_live_contract_error_reaches_model_and_keeps_repeat_guard(app, tmp
     published = next(item for item in payloads[0]["tools"] if item["function"]["name"] == "drawing_derive_views")
     assert published["function"]["parameters"] == app.get_schema("drawing_derive_views")
     feedback = json.dumps(payloads[1]["messages"])
-    assert "supply view_direction and omit cutting_plane" in feedback
+    assert "Remove cutting_plane from an orthographic or isometric view" in feedback
     assert "do not set it to null" in feedback
 
 
@@ -147,3 +161,73 @@ def test_private_values_and_unknown_keys_do_not_leak(private_field):
     with pytest.raises(DomainError) as domain:
         DomainService._validate("drawing_derive_views", arguments(view))
     assert "secret" not in json.dumps(domain.value.to_dict())
+
+
+@pytest.mark.parametrize("view", [TOP, ISO, SECTION], ids=["orthographic", "isometric", "section"])
+async def test_unrelated_field_error_keeps_its_target_and_has_no_kind_instructions(app, view):
+    request = arguments({**view, "up": "x"})
+    expected_target = "/views/1/up" if view["kind"] == "section" else "/views/0/up"
+    with pytest.raises(DomainError) as domain:
+        DomainService._validate("drawing_derive_views", request)
+    result = await app.on_call_tool(None, CallToolRequestParams(name="drawing_derive_views", arguments=request))
+    for error in (domain.value.to_dict(), result.structured_content["error"]):
+        assert error["target"] == expected_target
+        assert "'type'" in error["message"] and '"array"' in error["message"]
+        assert "Supply " not in error["message"] and "Remove " not in error["message"]
+        assert "defects" not in error
+
+
+@pytest.mark.parametrize("change,field,rule", [({"up": "x"}, "up", "'type'"),
+                                               ({"cutting_plane": None}, "cutting_plane", "Remove cutting_plane")])
+async def test_eight_view_errors_use_eight_defect_slots(app, change, field, rule):
+    request = {"run_id": "localtest-a", "expected_revision": 1,
+               "views": [{**TOP, "id": f"view_{index}", **change} for index in range(8)]}
+    with pytest.raises(DomainError) as domain:
+        DomainService._validate("drawing_derive_views", request)
+    result = await app.on_call_tool(None, CallToolRequestParams(name="drawing_derive_views", arguments=request))
+    for error in (domain.value.to_dict(), result.structured_content["error"]):
+        assert error["target"] == "/views/0/" + field
+        assert [defect["target"] for defect in error["defects"]] == [f"/views/{index}/{field}" for index in range(8)]
+        assert "7 more defects" in error["message"] and "first 10" not in error["message"]
+        assert all(rule in defect["message"] for defect in error["defects"])
+
+
+@pytest.mark.parametrize("view", [TOP, ISO, SECTION], ids=["orthographic", "isometric", "section"])
+def test_unknown_fields_do_not_add_a_redundant_kind_error(view):
+    with pytest.raises(DomainError) as domain:
+        DomainService._validate("drawing_derive_views", arguments({**view, PRIVATE: 1}))
+    error = domain.value.to_dict()
+    assert "additionalProperties" in error["message"] and "defects" not in error
+    assert "Supply " not in error["message"] and "Remove " not in error["message"]
+    assert "secret" not in json.dumps(error)
+
+
+def test_runtime_does_not_forward_an_unrelated_validator_message(monkeypatch):
+    from pydantic import ValidationError
+    from drawing2cad_mcp.derived_views import Request
+
+    def fail(cls, value):
+        raise ValidationError.from_exception_data("Request", [{
+            "type": "value_error", "loc": ("views", 0), "input": PRIVATE, "ctx": {"error": ValueError(PRIVATE)}}])
+
+    monkeypatch.setattr(Request, "model_validate", classmethod(fail))
+    with pytest.raises(ValueError) as error:
+        normalize_requests([TOP])
+    assert "value_error" in str(error.value) and "secret" not in str(error.value)
+
+
+@pytest.mark.parametrize("view", [TOP, ISO, SECTION], ids=["orthographic", "isometric", "section"])
+def test_missing_and_forbidden_fields_both_receive_only_their_required_actions(view):
+    needed = "cutting_plane" if view["kind"] == "section" else "view_direction"
+    forbidden = "view_direction" if view["kind"] == "section" else "cutting_plane"
+    changed = {**view, forbidden: None}
+    del changed[needed]
+    with pytest.raises(DomainError) as domain:
+        DomainService._validate("drawing_derive_views", arguments(changed))
+    defects = domain.value.to_dict()["defects"]
+    assert len(defects) == 2
+    assert [defect["target"].rsplit("/", 1)[-1] for defect in defects] == [needed, forbidden]
+    assert defects[0]["message"].startswith("Supply " + needed)
+    assert "Remove " not in defects[0]["message"]
+    assert defects[1]["message"].startswith("Remove " + forbidden)
+    assert "Supply " not in defects[1]["message"]
