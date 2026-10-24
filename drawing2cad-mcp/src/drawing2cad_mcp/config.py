@@ -19,7 +19,7 @@ class PdfSettings(BaseModel):
 
 class ServerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    transport: Literal["stdio", "streamable-http"] = "stdio"
+    transport: Literal["streamable-http"] = "streamable-http"
     preview_max_pixels: int = Field(default=4000000, gt=0, le=16000000, strict=True)
     preview_max_bytes: int = Field(default=6000000, gt=0, le=12000000, strict=True)
     pdf_concurrency: int = Field(default=2, ge=1, le=4, strict=True)

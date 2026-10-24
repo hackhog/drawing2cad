@@ -216,7 +216,7 @@
       "id": "mcptransport",
       "from": "agent",
       "to": "mcp",
-      "label": "stdio / authenticated HTTP",
+      "label": "authenticated Streamable HTTP",
       "variant": "emphasis"
     },
     {

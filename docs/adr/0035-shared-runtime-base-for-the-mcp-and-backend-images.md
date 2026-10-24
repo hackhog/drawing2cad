@@ -4,6 +4,7 @@ Date: 2026-10-21
 
 ## Status
 
+The MCP transport description below is replaced by [ADR 0040](0040-streamable-http-as-the-only-mcp-transport.md).
 Accepted. Changes the image build of [ADR 0027](0027-container-images-on-ghcr-for-version-tags.md). The publication rules of ADR 0027 stay valid.
 Implemented in `deployment/Dockerfile`, `drawing2cad-mcp/src/drawing2cad_mcp/runtime_tools.py`, the Compose files, and the workflows.
 

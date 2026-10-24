@@ -59,7 +59,7 @@ class TestServer(uvicorn.Server):
 
 @pytest.fixture
 def http_application(tmp_path, monkeypatch):
-    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    monkeypatch.setenv(TOKEN_ENV, TEST_TOKEN)
     return TrackedApplication(Settings(
         pdf=PdfSettings(allowed_roots=[tmp_path], output_root=tmp_path / "out",
                         pdftoppm=os.environ.get("DRAWING2CAD_PDFTOPPM")),
@@ -100,7 +100,7 @@ async def running_server(application):
 
 
 @asynccontextmanager
-async def mcp_session(url, *, token=None):
+async def mcp_session(url, *, token=TEST_TOKEN):
     headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
     async with httpx2.AsyncClient(headers=headers, timeout=10, trust_env=False) as client:
         async with streamable_http_client(url, http_client=client) as streams:
@@ -237,11 +237,21 @@ async def test_http_bearer_rejects_before_tool_dispatch(http_application, monkey
             assert http_application.tool_calls == 1
 
 
+async def test_http_unknown_paths_remain_not_found(http_application):
+    async with running_server(http_application) as url:
+        async with httpx2.AsyncClient(timeout=10, trust_env=False) as client:
+            for path in ("/", "/unknown", "/mcp/unknown", "/api/missing"):
+                response = await client.get(url.removesuffix("/mcp") + path)
+                assert response.status_code == 404
+            assert http_application.tool_calls == 0
+
+
 async def test_http_rejects_unlisted_host_and_origin(http_application):
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": {"name": "drawing2cad_status", "arguments": {}}}
     async with running_server(http_application) as url:
-        async with httpx2.AsyncClient(timeout=10, trust_env=False) as client:
+        async with httpx2.AsyncClient(headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+                                      timeout=10, trust_env=False) as client:
             host = await client.post(url, headers={"Host": "untrusted.example"}, json=body)
             origin = await client.post(url, headers={"Origin": "https://untrusted.example"}, json=body)
             assert host.status_code == 421
@@ -251,8 +261,10 @@ async def test_http_rejects_unlisted_host_and_origin(http_application):
             assert not (await session.call_tool("drawing2cad_status", {})).is_error
 
 
-def test_non_loopback_http_requires_token(http_application, monkeypatch):
-    http_application.settings.http.host = "0.0.0.0"
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1", "0.0.0.0"])
+def test_every_http_listener_requires_token(http_application, monkeypatch, host):
+    http_application.settings.http.host = host
+    monkeypatch.delenv(TOKEN_ENV)
     with pytest.raises(ValueError, match="(?i)token"):
         create_http_app(http_application)
     monkeypatch.setenv(TOKEN_ENV, TEST_TOKEN)

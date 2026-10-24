@@ -107,6 +107,8 @@ Check the current part-description schema before transferring regions; its coord
 
 ## Runtime boundary
 
+Connect to the configured Streamable HTTP `/mcp` endpoint with its bearer token before a run.
+Keep the token in the client environment, outside plans and run evidence.
 Use `drawing2cad_status` and `cad_capabilities` to identify the installed service.
 A reachable HTTP endpoint does not prove worker readiness.
 Use `cad_worker_probe` and inspect actual results.

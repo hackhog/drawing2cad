@@ -1,7 +1,5 @@
 # drawing2cad built from the current source. Use it for unreleased changes. Run the commands from the repository root.
 #   Web app:         docker compose --env-file .env -f deployment/compose.local.yaml up --build -d
-#   MCP over stdio:  docker compose --env-file .env -f deployment/compose.local.yaml build mcp
-#                    docker compose --env-file .env -f deployment/compose.local.yaml run --rm -T mcp
 #   MCP over HTTP:   docker compose --env-file .env -f deployment/compose.local.yaml --profile mcp-http up --build -d mcp-http
 # The services extend deployment/compose.yaml, so the runtime settings stay the same. Only the image source differs.
 # The local tags keep a local build apart from the published images.
@@ -29,16 +27,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-
-  mcp:
-    extends:
-      file: compose.yaml
-      service: mcp
-    build:
-      context: ..
-      dockerfile: deployment/Dockerfile
-      target: mcp
-    image: drawing2cad-mcp:local
 
   mcp-http:
     extends:

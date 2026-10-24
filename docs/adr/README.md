@@ -40,5 +40,6 @@ Format: Michael Nygard. One file per decision. A replaced decision stays in the 
 | [0037](0037-feature-coverage-of-the-drawing.md) | Feature coverage of the drawing |
 | [0038](0038-run-timeline-from-the-agent-trace.md) | Run timeline from the agent trace |
 | [0039](0039-lines-of-angular-dimensions-in-the-raster.md) | Lines of angular dimensions in the raster |
+| [0040](0040-streamable-http-as-the-only-mcp-transport.md) | Streamable HTTP as the only MCP transport, with a required bearer token |
 
 The numbers come from the first local work. Numbers 0001, 0002 and 0005 are local tool or open team decisions and are not in this repository.

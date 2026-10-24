@@ -4,6 +4,7 @@ Date: 2026-10-17
 
 ## Status
 
+The MCP transport and Compose service description below is replaced by [ADR 0040](0040-streamable-http-as-the-only-mcp-transport.md).
 Implementation decision for the M2 MCP and shared services.
 This extends [ADR 0014](0014-headless-build123d-metric-prototype.md).
 It does not report a completed resource acceptance trial.

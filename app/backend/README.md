@@ -20,6 +20,8 @@ poetry run pytest
 poetry run drawing-demo
 ```
 
+Set `DRAWING2CAD_HTTP_TOKEN` before startup. The mounted `/mcp` endpoint requires this bearer token, and the agent runner sends it.
+
 `poetry install` installs the locked dependencies and the dev group (pytest, Playwright).
 For a production installation without the dev group, use `poetry install --only main`.
 
@@ -126,7 +128,7 @@ Only `export_step` can release the model after its applicable gates pass.
 | `DRAWING2CAD_DATA_DIR` | no | Data directory; `/data` in the container |
 | `DRAWING2CAD_SKILL_PATH` | no | Skill file for the agent; the image sets it |
 | `DRAWING2CAD_MCP_URL` | no | MCP endpoint for agent runs; default `http://127.0.0.1:$PORT/mcp` |
-| `DRAWING2CAD_HTTP_TOKEN` | no | Bearer token for `/mcp`; the runner sends it |
+| `DRAWING2CAD_HTTP_TOKEN` | yes | Bearer token for `/mcp`; required at startup and sent by the runner |
 | `DRAWING2CAD_CAD_ENABLED` | no | `1` (default) enables CAD operations of the domain service |
 
 CAD execution requires the Linux sandbox of the MCP worker. Use Docker Compose for agent runs on macOS or Windows.

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hmac
-import ipaddress
 import os
 import re
 from typing import TYPE_CHECKING
@@ -11,6 +10,7 @@ from typing import TYPE_CHECKING
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
+from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 if TYPE_CHECKING:
@@ -18,21 +18,12 @@ if TYPE_CHECKING:
     from .server import Application
 
 
-def _is_loopback(host: str) -> bool:
-    if host.lower() == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
-
-
-def _read_token(settings: HTTPSettings) -> str | None:
+def _read_token(settings: HTTPSettings) -> str:
     token = os.environ.get(settings.token_env)
-    if token is not None and re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", token) is None:
+    if token is None:
+        raise ValueError(f"Set {settings.token_env} before starting HTTP; a bearer token is required")
+    if re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", token) is None:
         raise ValueError(f"{settings.token_env} must contain a nonempty ASCII bearer token")
-    if token is None and not _is_loopback(settings.host):
-        raise ValueError(f"Set {settings.token_env} before binding HTTP to a non-loopback host")
     return token
 
 
@@ -80,7 +71,8 @@ def create_http_app(application: Application) -> Starlette:
             allowed_origins=settings.allowed_origins,
         ),
     )
-    if token is not None:
-        app.add_middleware(BearerTokenMiddleware, token=token)
+    # Authenticate the MCP route. Unknown paths must keep their 404 response when the backend mounts this app.
+    route = next(route for route in app.routes if isinstance(route, Route) and route.path == "/mcp")
+    route.app = BearerTokenMiddleware(route.app, token=token)
     application.transport = "streamable-http"
     return app

@@ -20,8 +20,7 @@ import time
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
+from .client_transport import connect, read_token, redact, reject_token, validate_server
 
 
 ALLOWED_TOOLS = frozenset({
@@ -99,8 +98,7 @@ def _local_url(url):
 
 def validate_plan(plan):
     """Reject ambiguous or unbounded trial configuration before execution."""
-    if not isinstance(plan, dict) or not isinstance(plan.get("server"), dict):
-        raise ValueError("The plan must include a stdio server.")
+    validate_server(plan)
     if not isinstance(plan.get("model"), str) or not plan["model"]:
         raise ValueError("The plan must name a local model.")
     if not isinstance(plan.get("source_path"), str) or not plan["source_path"].endswith(".pdf"):
@@ -242,13 +240,14 @@ def response_messages(name, result, maximum_chars):
 class Trace:
     """Write each event before another external operation starts."""
 
-    def __init__(self, output):
+    def __init__(self, output, token=None):
         self.output = output
         self.index = 0
+        self.token = token
 
     def write(self, kind, data):
         self.index += 1
-        event = {**data, "sequence": self.index, "at": _now(), "kind": kind}
+        event = redact({**data, "sequence": self.index, "at": _now(), "kind": kind}, self.token)
         path = self.output / f"{self.index:03d}-{kind}.json"
         path.write_text(_json(event), encoding="utf-8")
         with (self.output / "trace.jsonl").open("a", encoding="utf-8") as trace:
@@ -860,28 +859,30 @@ async def run(plan_path, output):
         raise ValueError("The plan exceeds 4 MiB.")
     plan = json.loads(plan_bytes.decode("utf-8-sig"))
     validate_plan(plan)
+    token = read_token(plan)
     skill_path = (plan_path.parent / plan["skill_path"]).resolve(strict=True)
     skill_bytes = skill_text(skill_path, "source_id" in plan).encode("utf-8")
+    reject_token(skill_bytes.decode("utf-8"), token)
     references = skill_references(skill_path)
+    reject_token(references.files, token)
     output.mkdir(parents=True, exist_ok=False)
     (output / "plan.json").write_bytes(plan_bytes)
     (output / "skill.md").write_bytes(skill_bytes)
-    trace = Trace(output)
+    trace = Trace(output, token=token)
     summary = {"status": "failed"}
     try:
-        with (output / "server-stderr.log").open("w", encoding="utf-8") as errors:
-            async with stdio_client(StdioServerParameters(**plan["server"]), errlog=errors) as streams:
-                async with ClientSession(*streams, read_timeout_seconds=plan.get("call_timeout_seconds", 240)) as session:
-                    initialized = await session.initialize()
-                    trace.write("initialize", {"response": initialized.model_dump(mode="json", by_alias=True)})
-                    catalog = await session.list_tools()
-                    catalog_json = catalog.model_dump(mode="json", by_alias=True)
-                    trace.write("catalog", {"response": catalog_json})
-                    summary = await drive(session, catalog_json["tools"], plan, skill_bytes.decode("utf-8"), trace,
-                                          references=references)
+        async with connect(plan["server"], token, plan.get("call_timeout_seconds", 240)) as session:
+            initialized = await session.initialize()
+            trace.write("initialize", {"response": initialized.model_dump(mode="json", by_alias=True)})
+            catalog = await session.list_tools()
+            catalog_json = catalog.model_dump(mode="json", by_alias=True)
+            trace.write("catalog", {"response": catalog_json})
+            summary = await drive(session, catalog_json["tools"], plan, skill_bytes.decode("utf-8"), trace,
+                                  model_call=call_model, references=references)
     except Exception as error:
-        summary.update(status="failed", error=_error(error))
+        summary.update(status="failed", error=redact(_error(error), token))
         trace.write("session-error", summary)
+    summary = redact(summary, token)
     summary.update(plan_sha256=hashlib.sha256(plan_bytes).hexdigest(), skill_sha256=hashlib.sha256(skill_bytes).hexdigest(),
                    client_sha256=client_sha256)
     (output / "summary.json").write_text(_json(summary), encoding="utf-8")

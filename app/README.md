@@ -19,6 +19,7 @@ The backend uses the MCP package as a Python dependency.
 ## Build and run
 
 Copy `.env.example` in the repository root to `.env`, then set the required values.
+Set `DRAWING2CAD_HTTP_TOKEN` before startup. The backend requires it for its mounted MCP endpoint and agent runner.
 From the repository root, run:
 
 ```bash
@@ -43,6 +44,8 @@ cd app/backend
 poetry install
 poetry run drawing-demo
 ```
+
+Set `DRAWING2CAD_HTTP_TOKEN` in that terminal before you start the API.
 
 Start the UI in another terminal:
 
@@ -106,10 +109,11 @@ See [backend/README.md](backend/README.md) for the endpoints and configuration.
 The browser uploads PDFs to `/api/sources`. The backend transfers each source to the shared domain service.
 "Lauf starten" queues an agent run ([ADR 0018](../docs/adr/0018-agent-runner-in-the-web-backend.md)):
 the agent builds the model only through the MCP endpoint of the same service, and step 4 shows the released model.
-Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values; without `.env`, runs show as unavailable.
+Runs need a model endpoint. Copy `.env.example` in the repository root to `.env` and fill in the values.
+Without a model endpoint, runs show as unavailable. The backend still requires `DRAWING2CAD_HTTP_TOKEN` at startup.
 Use `--env-file .env` so Compose reads the root file for interpolation.
 A shell `DRAWING2CAD_AGENT_API_KEY` overrides the file value, so the key can stay in a password manager.
-If no `.env` exists, omit `--env-file .env`. The service `env_file` is optional.
+If no `.env` exists, omit `--env-file .env` and supply `DRAWING2CAD_HTTP_TOKEN` through the shell. The service `env_file` is optional.
 To add profiles with keys in the web UI, set a master key (`DRAWING2CAD_SECRET_KEY`); the backend stores these keys only encrypted.
 See [backend/README.md](backend/README.md#configuration-store-and-master-key).
 

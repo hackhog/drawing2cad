@@ -4,6 +4,7 @@ Date: 2026-10-17
 
 ## Status
 
+The MCP transport description below is replaced by [ADR 0040](0040-streamable-http-as-the-only-mcp-transport.md).
 Accepted. Replaces the separate extractor package and its CLI.
 Supersedes the packaging and execution decisions in [ADR 0003](0003-vector-extractor-as-fact-base.md) and [ADR 0009](0009-drawing-extract-as-mcp-tool.md).
 Updates the module location in [ADR 0004](0004-text-by-glyph-templates.md) and the demo dependency in [ADR 0006](0006-demo-as-one-container-docker-compose.md).

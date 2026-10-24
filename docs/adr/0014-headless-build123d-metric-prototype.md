@@ -4,6 +4,7 @@ Date: 2026-10-17
 
 ## Status
 
+The MCP transport references below are replaced by [ADR 0040](0040-streamable-http-as-the-only-mcp-transport.md).
 Accepted design for the M1 prototype.
 Runtime acceptance is separate from this decision.
 Record actual tests and missing results in the run manifests and in the pull request.
