@@ -7,7 +7,7 @@ export type Layer = "skill" | "loop" | "mcp" | "cad";
 
 export const LAYERS: { id: Layer; title: string; text: string }[] = [
   { id: "skill", title: "Skill", text: "SKILL.md and its references are the instructions of the model. They set the order: read and record evidence, describe the part, build, draw, release. The loop supplies the references of each step." },
-  { id: "loop", title: "Agent loop", text: "Each turn sends the conversation and the tool list to the model and executes the tool calls that it requests. After a failed call, the loop sends a correction and blocks identical repeats." },
+  { id: "loop", title: "Agent loop", text: "Each turn sends the conversation and the tool list to the model and executes the tool calls that it requests. After a failed call, the loop sends a correction and blocks identical repeats. After an answer without a tool call, it asks the model to continue until a release or a final report." },
   { id: "mcp", title: "MCP server", text: "Checks each argument against the tool schema, reads the uploaded PDF (text, image, vectors, measurements), and stores part, drawing, and notes." },
   { id: "cad", title: "CAD worker and release", text: "build123d builds the solid in a sandbox without network and checks its geometry. export_step releases the STEP file only after re-import, geometry, and drawing checks pass." },
 ];
@@ -27,6 +27,7 @@ export function stepLabel(step: RunStep): string {
     case "model": return step.tool_calls.length ? `Model turn ${step.turn ?? ""}`.trim() : `Model answer ${step.turn ?? ""}`.trim();
     case "tool": return step.tool;
     case "correction": return `Correction after ${step.tool}`;
+    case "continuation": return `Continuation request ${step.count ?? ""}`.trim();
   }
 }
 
@@ -55,8 +56,9 @@ export function explanation(step: RunStep): string {
     case "skill": return "The loop added these skill references to the conversation, because the next step needs them.";
     case "model": return step.tool_calls.length
       ? `The model read the conversation (${step.prompt_tokens?.toLocaleString("en-US") ?? "?"} tokens) and requested ${step.tool_calls.length} tool call(s).`
-      : "The model answered without a tool call. This ends the conversation.";
+      : "The model answered without a tool call. This ends the run after a release or with a final report (first line FINAL REPORT). Otherwise the loop asks the model to continue.";
     case "correction": return "The previous tool call failed. The loop told the model the error and that an identical request stops the run.";
+    case "continuation": return `The model answered without a tool call and without a final report, and no release exists. The loop asked the model to continue (request ${step.count ?? "?"} of ${step.limit ?? "?"}).`;
     case "tool": return TOOL_TEXT.find(([pattern]) => pattern.test(step.tool))?.[1] ?? "A tool of the MCP server.";
   }
 }
@@ -83,14 +85,17 @@ export function problemGroups(steps: RunStep[]): ProblemGroup[] {
   return [...groups.values()];
 }
 
-export interface Totals { modelSeconds: number; toolSeconds: number; turns: number; calls: number; failed: number; corrections: number }
+export interface Totals {
+  modelSeconds: number; toolSeconds: number; turns: number; calls: number; failed: number; corrections: number; continuations: number;
+}
 
 export function totals(steps: RunStep[]): Totals {
-  const result: Totals = { modelSeconds: 0, toolSeconds: 0, turns: 0, calls: 0, failed: 0, corrections: 0 };
+  const result: Totals = { modelSeconds: 0, toolSeconds: 0, turns: 0, calls: 0, failed: 0, corrections: 0, continuations: 0 };
   for (const step of steps) {
     if (step.kind === "model") { result.turns += 1; result.modelSeconds += step.seconds ?? 0; }
     if (step.kind === "tool") { result.calls += 1; result.toolSeconds += step.seconds ?? 0; if (step.status === "failed") result.failed += 1; }
     if (step.kind === "correction") result.corrections += 1;
+    if (step.kind === "continuation") result.continuations += 1;
   }
   return result;
 }
@@ -100,7 +105,8 @@ export function outcome(summary: RunLoopSummary | null, budget: number | undefin
   if (!summary) return null;
   const text: Record<string, string> = {
     released: "The agent released a STEP model.",
-    stopped_without_release: "The model ended the conversation without a release.",
+    stopped_without_release: "The model gave its final report without a release.",
+    stopped_without_tool_call: "The model stopped without a tool call: it answered again without a tool call or a final report after the last continuation request.",
     tool_budget_reached: `The agent used all ${budget ?? summary.tool_requests} tool calls of its budget before a release.`,
     turn_budget_reached: "The agent used all model turns of its budget before a release.",
     time_budget_reached: "The run used its time budget before a release.",

@@ -59,7 +59,7 @@ export function TimelinePanel({ run }: { run: Run }) {
   const groups = problemGroups(steps);
   const ending = outcome(data.summary, run.iterations?.step_budget);
   const timed = steps.filter((s) => (s.kind === "model" || s.kind === "tool") && (s.seconds ?? 0) > 0);
-  const layerCount = (id: Layer) => steps.filter((s) => layerOf(s) === id && s.kind !== "model" && s.kind !== "correction").length;
+  const layerCount = (id: Layer) => steps.filter((s) => layerOf(s) === id && s.kind !== "model" && s.kind !== "correction" && s.kind !== "continuation").length;
 
   return (
     <div className="flex flex-col gap-5">
@@ -70,6 +70,7 @@ export function TimelinePanel({ run }: { run: Run }) {
           {sum.turns} model turns · {duration(sum.modelSeconds)} model time · {sum.calls} tool calls · {seconds(sum.toolSeconds)} MCP and CAD time
           {sum.failed > 0 && <> · <span className="font-semibold text-flag">{sum.failed} failed</span></>}
           {sum.corrections > 0 && <> · {sum.corrections} corrections</>}
+          {sum.continuations > 0 && <> · {sum.continuations} continuation requests</>}
         </p>
       </section>
 
@@ -136,7 +137,7 @@ export function TimelinePanel({ run }: { run: Run }) {
                 s.sequence === selected && "bg-run-bg shadow-[inset_3px_0_0_var(--run)]")}>
               <span className="font-mono text-[10.5px] text-faint">{s.turn != null ? `T${s.turn}` : ""}</span>
               <span className={cn("flex items-baseline gap-1.5 font-mono text-[11.5px] [overflow-wrap:anywhere]",
-                failed(s) && "text-flag", s.kind === "correction" && "text-bad italic", s.kind === "model" && "text-muted-foreground")}>
+                failed(s) && "text-flag", s.kind === "correction" && "text-bad italic", s.kind === "continuation" && "italic", s.kind === "model" && "text-muted-foreground")}>
                 <i aria-hidden="true" className={cn("inline-block size-2 flex-none", failed(s) ? "bg-flag" : LAYER_BG[layerOf(s)])} />
                 {stepLabel(s)}{failed(s) && " ✕"}
               </span>
@@ -187,7 +188,7 @@ function StepDetail({ run, step }: { run: Run; step: RunStep }) {
             )}
             {data.text && (
               <section>
-                <h4 className={H3}>{step.kind === "model" ? "Model text" : step.kind === "correction" ? "Message to the model" : "Reason"}</h4>
+                <h4 className={H3}>{step.kind === "model" ? "Model text" : step.kind === "correction" || step.kind === "continuation" ? "Message to the model" : "Reason"}</h4>
                 <p className="max-h-56 overflow-auto rounded-md border bg-surface px-3 py-2 text-xs whitespace-pre-wrap text-card-foreground [overflow-wrap:anywhere]">{data.text}</p>
               </section>
             )}

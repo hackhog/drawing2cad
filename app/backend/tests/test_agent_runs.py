@@ -481,6 +481,33 @@ def test_a_repeated_failed_request_fails_the_run_with_its_tool_field_and_count_w
         assert result["iterations"]["mcp_calls"] == 1 and result["iterations"]["blocked_requests"] == 1
 
 
+@pytest.mark.parametrize(("part", "expected"), [
+    (None, "AGENT_NO_TOOL_CALL"),
+    ({"build": {"status": "pass"}, "release": None}, "AGENT_NO_TOOL_CALL"),
+    ({"build": {"status": "pass"}, "release": {"sha256": "a" * 64}}, None),
+])
+def test_answers_without_a_tool_call_after_the_continuation_limit_fail_the_run_without_a_release(environment, part, expected):
+    with TestClient(api.create_app()) as client:
+        services = client.app.state.services
+        source = upload(client)
+        run = services.jobs.add(source["source_id"])
+        if part is not None:
+            services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="modeling")
+            original = services.backend.call
+            environment.setattr(services.backend, "call", lambda operation, **arguments:
+                                {"part": part} if operation == "part_read" else original(operation, **arguments))
+        services.runner.finish(run["run_id"], {"status": "stopped_without_tool_call", "model_turns": 9, "tool_requests": 5,
+                                               "mcp_calls": 5, "blocked_requests": 0, "continuations": 3})
+        result = services.jobs.get(run["run_id"])
+        assert result["iterations"]["continuations"] == 3
+        if expected:
+            assert result["job"]["status"] == "failed" and result["error"]["code"] == expected
+            assert result["error"]["message"] == "The model answered 4 times without a tool call and without a final report."
+        else:
+            # A released part stays a result.
+            assert result["job"]["status"] == "succeeded" and result["error"] is None
+
+
 @pytest.mark.parametrize("phase", ["model_inference", None])
 def test_an_exhausted_deadline_without_a_part_is_a_time_budget_result(environment, phase):
     with TestClient(api.create_app()) as client:
@@ -556,7 +583,7 @@ def scripted_model(plan, payload, timeout):
     source_id, digest = re.search(r"source ID (src_[0-9a-f]{32}) \(SHA-256 ([0-9a-f]{64})\)", system).groups()
     prefix = re.search(r"run IDs that start with (web-[0-9a-f]+)-", system).group(1)
     if len(payload["messages"]) > 2:
-        return {"message": {"role": "assistant", "content": "Report: part created, not built."}}
+        return {"message": {"role": "assistant", "content": "FINAL REPORT\nReport: part created, not built."}}
     calls = [
         {"function": {"name": "pdf_info", "arguments": {"source_id": source_id}}},
         {"function": {"name": "part_create", "arguments": {
@@ -598,10 +625,10 @@ def test_an_agent_run_uses_the_mounted_mcp_endpoint(environment):
     # The run failed while modeling; the report is the run note, not the error message.
     assert run["failed_phase"] == "modeling" and "Report" not in run["error"]["message"]
     assert run["part"]["revision"] == 1 and [p["name"] for p in run["part"]["parameters"]] == ["length", "thickness"]
-    assert run["agent_report"] == "Report: part created, not built."
+    assert run["agent_report"] == "FINAL REPORT\nReport: part created, not built."
     # Two model turns: one with two tool requests, one with the final answer. Both requests reached the MCP.
     assert run["iterations"] == {"model_turns": 2, "tool_requests": 2, "step_budget": runner_module.LIMITS["step_budget"],
-                                 "mcp_calls": 2, "blocked_requests": 0}
+                                 "mcp_calls": 2, "blocked_requests": 0, "continuations": 0}
     assert run["review"]["release_state"] == "draft" and run["artifacts"] == []
     assert "summary.json" in files and "trace/trace.jsonl" in files
     # The timeline shows the same run: skill references, both model turns, and both tool calls with their results.

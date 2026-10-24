@@ -166,7 +166,8 @@ class AgentRunner:
         limits = run_limits(self.jobs.get(run_id))
         part_run = self.jobs.update(run_id, iterations=iterations(
             summary.get("model_turns", 0), summary.get("tool_requests", 0), limits["step_budget"],
-            mcp_calls=summary.get("mcp_calls", 0), blocked_requests=summary.get("blocked_requests", 0)))["part_run_id"]
+            mcp_calls=summary.get("mcp_calls", 0), blocked_requests=summary.get("blocked_requests", 0),
+            continuations=summary.get("continuations", 0)))["part_run_id"]
         report = summary.get("final_text") or ""
         if part_run is not None and report:
             self.store_report(part_run, report)
@@ -198,6 +199,16 @@ class AgentRunner:
                        "Look at the trace. Start the run again with a model that corrects tool arguments.",
                        field=stalled.get("target"))
             return
+        if summary.get("status") == "stopped_without_tool_call":
+            # The model stopped again after the last continuation message. Only a release makes the run a result.
+            part = self.backend.call("part_read", run_id=part_run)["part"] if part_run is not None else None
+            if not (part and part.get("release")):
+                answers = summary.get("continuations", 0) + 1
+                self._fail(run_id, "AGENT_NO_TOOL_CALL",
+                           f"The model answered {answers} times without a tool call and without a final report.",
+                           "Look at the trace. Start the run again, or use a model that requests tools until it gives "
+                           "a final report.")
+                return
         out_of_time = summary.get("status") == "time_budget_reached"
         if part_run is None:
             if out_of_time:

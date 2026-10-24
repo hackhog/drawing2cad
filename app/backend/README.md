@@ -119,8 +119,8 @@ Only `export_step` can release the model after its applicable gates pass.
 | `DRAWING2CAD_AGENT_API_KEY` | for runs | API key; never in Git |
 | `DRAWING2CAD_AGENT_API_KEY_HEADER` | no | `Authorization` (Bearer, default) or `api-key` (Azure AI Foundry) |
 | `DRAWING2CAD_AGENT_REASONING_EFFORT` | no | Sent as `reasoning_effort` (Chat Completions) or `reasoning.effort` (Responses API) |
-| `DRAWING2CAD_AGENT_STEP_BUDGET`, `_MAX_TURNS`, `_MODEL_TIMEOUT_SECONDS`, `_CALL_TIMEOUT_SECONDS`, `_TOTAL_TIMEOUT_SECONDS`, `_MAX_TOOL_TEXT_CHARS` | no | Run limits of an environment profile, with the same profile prefix as above, for example `DRAWING2CAD_AGENT_LITELLM_STEP_BUDGET`. Unset limits use the defaults |
-| `DRAWING2CAD_RUN_MAX_<LIMIT>` | no | Maximum of a run limit for all profiles, for example `DRAWING2CAD_RUN_MAX_STEP_BUDGET` (defaults: step budget 100, turns 150, model call 1800 s, tool call 900 s, run 14400 s, tool result 400000 characters) |
+| `DRAWING2CAD_AGENT_STEP_BUDGET`, `_MAX_TURNS`, `_MODEL_TIMEOUT_SECONDS`, `_CALL_TIMEOUT_SECONDS`, `_TOTAL_TIMEOUT_SECONDS`, `_MAX_TOOL_TEXT_CHARS`, `_MAX_CONTINUATIONS` | no | Run limits of an environment profile, with the same profile prefix as above, for example `DRAWING2CAD_AGENT_LITELLM_STEP_BUDGET`. Unset limits use the defaults |
+| `DRAWING2CAD_RUN_MAX_<LIMIT>` | no | Maximum of a run limit for all profiles, for example `DRAWING2CAD_RUN_MAX_STEP_BUDGET` (defaults: step budget 100, turns 150, model call 1800 s, tool call 900 s, run 14400 s, tool result 400000 characters, continuations 10) |
 | `DRAWING2CAD_SECRET_KEY_FILE` | for UI keys | File with the master key, for example a Docker secret under `/run/secrets/`. It has priority over `DRAWING2CAD_SECRET_KEY` |
 | `DRAWING2CAD_SECRET_KEY` | for UI keys | Master key: 32 random bytes, Base64-encoded. It encrypts the API keys of UI profiles with AES-256-GCM. Without it, the UI cannot save keys; environment profiles still work |
 | `DRAWING2CAD_DATA_DIR` | no | Data directory; `/data` in the container |

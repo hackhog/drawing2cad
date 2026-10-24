@@ -115,7 +115,7 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
 
     # The run page opens the timeline: the end of the loop, the four layers, and each step with its details.
     expect(page.get_by_role("tab", name="Timeline")).to_have_attribute("aria-selected", "true")
-    expect(page.get_by_text("The model ended the conversation without a release.")).to_be_visible()
+    expect(page.get_by_text("The model gave its final report without a release.")).to_be_visible()
     expect(page.get_by_text("How a run works")).to_be_visible()
     steps = page.get_by_role("navigation", name="Steps")
     steps.get_by_role("button", name=re.compile("part_create")).click()
@@ -140,7 +140,7 @@ def test_upload_run_review_note_and_run_files(site, page, tmp_path):
     expect(notes.get_by_text("Report: part created, not built.")).to_be_visible()
     page.get_by_role("button", name="Edit").click()
     note = page.get_by_label("Run note")
-    expect(note).to_have_value("Report: part created, not built.")
+    expect(note).to_have_value("FINAL REPORT\nReport: part created, not built.")
     note.fill("Clarify the edge radius with design.")
     page.get_by_role("button", name="Save note").click()
     expect(page.get_by_text("Revision 2")).to_be_visible()

@@ -362,3 +362,13 @@ def test_the_first_profile_does_not_overwrite_a_selection_of_another_backend(tmp
     finally:
         first.close()
         second.close()
+
+
+def test_the_continuation_limit_is_a_run_limit_with_a_default_and_a_maximum(environment):
+    assert DEFAULT_LIMITS["max_continuations"] == 3 and DEFAULT_MAXIMUMS["max_continuations"] == 10
+    with TestClient(api.create_app()) as client:
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "limits": {"max_continuations": 11}})
+        assert res.status_code == 422 and res.json()["detail"]["field"] == "limits.max_continuations"
+        client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "limits": {"max_continuations": 5}})
+        view = client.get("/api/agent/profiles").json()
+        assert view["profiles"][0]["limits"] == {"max_continuations": 5}

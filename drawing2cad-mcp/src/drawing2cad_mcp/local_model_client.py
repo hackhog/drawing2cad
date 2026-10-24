@@ -46,6 +46,10 @@ QUESTION_TOOL = {"type": "function", "function": {
     "parameters": {"type": "object", "additionalProperties": False, "required": ["question", "reason"],
                    "properties": {"question": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}},
 }}
+# The first line of a final report. An answer without a tool call ends a run without a release only with this line.
+FINAL_REPORT_MARKER = "FINAL REPORT"
+# Continuation requests of one run after answers without a tool call, a release, or a final report.
+DEFAULT_MAX_CONTINUATIONS = 3
 _BRIDGE_CODE = """import json,sys,urllib.request
 data=json.load(sys.stdin)
 body=json.dumps(data['payload'],allow_nan=False).encode()
@@ -97,7 +101,8 @@ def validate_plan(plan):
         raise ValueError("The run prefix must be a bounded identifier.")
     for key, default, low, high in (("step_budget", 45, 1, 100), ("max_turns", 60, 1, 100),
                                    ("model_timeout_seconds", 300, 1, 300), ("total_timeout_seconds", 1200, 1, 7200),
-                                   ("call_timeout_seconds", 240, 1, 600), ("max_tool_text_chars", 80000, 1000, 500000)):
+                                   ("call_timeout_seconds", 240, 1, 600), ("max_tool_text_chars", 80000, 1000, 500000),
+                                   ("max_continuations", DEFAULT_MAX_CONTINUATIONS, 0, 10)):
         value = plan.get(key, default)
         if type(value) is not int or not low <= value <= high:
             raise ValueError(f"Invalid {key}.")
@@ -378,6 +383,23 @@ def corrective_message(name, failure):
         "calibration when the printed dimensions are sufficient, you can continue without it.")}
 
 
+def is_final_report(text):
+    """True if the first line with text is FINAL_REPORT_MARKER.
+
+    The check ignores letter case, spaces, Markdown heading and emphasis characters, and a colon at the end.
+    """
+    first = next((line for line in (text or "").splitlines() if line.strip()), "")
+    return first.strip().strip("#*_` ").rstrip(":").strip().upper() == FINAL_REPORT_MARKER
+
+
+def continuation_message(count, limit):
+    """The user message after an answer without a tool call, a release, or a final report."""
+    return {"role": "user", "content": (
+        "No release exists. Continue with the next tool call. If you cannot continue, give your final report: "
+        f"start it with the line {FINAL_REPORT_MARKER} and name the blocking reason. "
+        f"This is continuation request {count} of {limit}.")}
+
+
 def reference_message(paths, references, reason):
     """One user message with the text of the given skill references."""
     blocks = "".join(f"\n\n<reference path=\"{path}\">\n{references.files[path].strip()}\n</reference>" for path in paths)
@@ -391,6 +413,10 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
     With `references`, the client supplies the skill references of each step once, after the first tool request of
     that step, as a user message. Text messages are not shortened later, so the references stay available. The model
     reads other skill files with skill_read. These reads use no MCP call and do not count against the tool budget.
+
+    An answer without a tool call ends the run only after a release or with a final report (FINAL_REPORT_MARKER).
+    Otherwise the client sends a continuation message, at most `max_continuations` times. After that limit, the
+    status is stopped_without_tool_call.
     """
     tools = tool_catalog(catalog)
     if references is not None:
@@ -420,14 +446,18 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                  "Read source_flags_read before construction and apply the user decisions on review flags. " if domain else "")
               + ("The client supplies the skill references of each step after your first tool request of that step. "
                  "Read other skill files with skill_read. " if references is not None else "")
-              + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls.\n\n{skill}")
+              + f"The complete trial permits {plan.get('step_budget', 45)} tool requests, including failed calls. "
+              + "Request a tool in each answer until the work is done. End the run with a final report: its first line is "
+              f"{FINAL_REPORT_MARKER}. Name the actual result, the open items, and each blocking reason. Without a release, "
+              "an answer without a tool call and without this first line does not end the run.\n\n" + skill)
     task = ("Reconstruct the authorized PDF as a parameterized part description. Validate the model, "
             + ("make and verify a complete dimensioned drawing and release it with delivery complete_service, " if domain else "")
             + "release STEP if its checks pass, and export the review. Use the live schemas. Explain the actual result and remaining limits.")
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": task}]
     summary = {"status": "running", "model": plan["model"], "tool_requests": 0, "mcp_calls": 0, "blocked_requests": 0,
                "model_turns": 0, "model_seconds": 0.0, "mcp_seconds": 0.0, "questions": [], "released": False,
-               "model_statistics": [], "skill_reads": 0, "supplied_references": []}
+               "model_statistics": [], "skill_reads": 0, "supplied_references": [], "continuations": 0}
+    max_continuations = plan.get("max_continuations", DEFAULT_MAX_CONTINUATIONS)
     supplied = summary["supplied_references"]
     # Failed requests by canonical request and server state. A successful call of a state-changing tool changes the
     # state, so the same request can then legitimately give another result.
@@ -484,9 +514,21 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
             if not isinstance(requests, list):
                 raise ValueError("Tool calls must be a list.")
             if not requests:
-                summary["final_text"] = message.get("content", "")
-                summary["status"] = "released" if summary["released"] else "stopped_without_release"
-                break
+                text = message.get("content") or ""
+                if summary["released"] or is_final_report(text):
+                    summary["final_text"] = text
+                    summary["status"] = "released" if summary["released"] else "stopped_without_release"
+                    break
+                if summary["continuations"] >= max_continuations:
+                    # The model stopped again without a tool call, a release, or a final report.
+                    summary["status"] = "stopped_without_tool_call"
+                    break
+                summary["continuations"] += 1
+                continuation = continuation_message(summary["continuations"], max_continuations)
+                trace.write("continuation", {"turn": turn, "count": summary["continuations"], "limit": max_continuations,
+                                             "message": continuation["content"]})
+                messages.append(continuation)
+                continue
             image_messages = []
             corrections = []
             step_references = []

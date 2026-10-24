@@ -30,10 +30,10 @@ ACTOR = "web-ui"
 
 # Run limits of the agent loop. A profile can set each one; an unset limit uses the default.
 DEFAULT_LIMITS = {"step_budget": 45, "max_turns": 60, "model_timeout_seconds": 300, "call_timeout_seconds": 240,
-                  "total_timeout_seconds": 2400, "max_tool_text_chars": 80000}
+                  "total_timeout_seconds": 2400, "max_tool_text_chars": 80000, "max_continuations": 3}
 # The deployment can change each maximum with DRAWING2CAD_RUN_MAX_<LIMIT>, for example DRAWING2CAD_RUN_MAX_STEP_BUDGET.
 DEFAULT_MAXIMUMS = {"step_budget": 100, "max_turns": 150, "model_timeout_seconds": 1800, "call_timeout_seconds": 900,
-                    "total_timeout_seconds": 14400, "max_tool_text_chars": 400000}
+                    "total_timeout_seconds": 14400, "max_tool_text_chars": 400000, "max_continuations": 10}
 MAXIMUM_PREFIX = "DRAWING2CAD_RUN_MAX_"
 
 

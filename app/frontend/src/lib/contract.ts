@@ -127,6 +127,7 @@ export type RunStep = { sequence: number; at: string | null; turn: number | null
   | { kind: "tool"; tool: string; request_number: number | null; phase: StepPhase; status: "ok" | "failed" | "no_response";
       seconds: number | null; problem: StepProblem | null; arguments: string; images: number }
   | { kind: "correction"; tool: string; code: string | null; text: string }
+  | { kind: "continuation"; count: number | null; limit: number | null; text: string }
 );
 
 /** The final summary of the agent loop. It is null while the run is active. */
@@ -137,6 +138,8 @@ export interface RunLoopSummary {
   tool_requests: number | null;
   mcp_calls: number | null;
   blocked_requests: number | null;
+  /** Continuation messages after answers without a tool call. Older traces have none. */
+  continuations?: number | null;
   model_seconds: number | null;
   mcp_seconds: number | null;
   duration_seconds: number | null;
@@ -254,7 +257,8 @@ export interface Run {
    * Runs from before these fields were recorded have no `reasoning_effort` or `skill_version`; null means none is set. */
   agent?: { model: string; profile?: string; reasoning_effort?: string | null; skill_version?: string | null; mcp_version: string } | null;
   /** Model turns and tool requests of the agent loop so far, with the tool request budget. */
-  iterations?: { model_turns: number; tool_requests: number; step_budget: number; mcp_calls?: number; blocked_requests?: number } | null;
+  iterations?: { model_turns: number; tool_requests: number; step_budget: number; mcp_calls?: number; blocked_requests?: number;
+    continuations?: number } | null;
   /** The phase in which a failed run stopped. */
   failed_phase?: RunPhase | null;
   job: Job;
@@ -325,7 +329,8 @@ export type AgentApi = "chat" | "responses";
 
 /** Run limits of the agent loop (ADR 0028). */
 export type AgentLimitName =
-  | "step_budget" | "max_turns" | "model_timeout_seconds" | "call_timeout_seconds" | "total_timeout_seconds" | "max_tool_text_chars";
+  | "step_budget" | "max_turns" | "model_timeout_seconds" | "call_timeout_seconds" | "total_timeout_seconds" | "max_tool_text_chars"
+  | "max_continuations";
 /** Limits that a profile sets. A missing or null limit uses the server default. */
 export type AgentLimits = Partial<Record<AgentLimitName, number | null>>;
 

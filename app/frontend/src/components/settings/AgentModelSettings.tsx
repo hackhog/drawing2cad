@@ -51,6 +51,7 @@ const API_LABEL: Record<AgentApi, string> = { chat: "Chat Completions", response
 const LIMIT_LABEL: Record<AgentLimitName, string> = {
   step_budget: "Tool requests", max_turns: "Model turns", model_timeout_seconds: "Model call (s)",
   call_timeout_seconds: "Tool call (s)", total_timeout_seconds: "Run (s)", max_tool_text_chars: "Tool result (characters)",
+  max_continuations: "Continuation requests",
 };
 const EFFORTS = ["", "none", "minimal", "low", "medium", "high"];
 const NO_AGENT = "Local, no AI";
@@ -305,7 +306,8 @@ function ProfileForm({ profile, taken, limits, onDone }: {
 function LimitFields({ limits, value, onChange }: {
   limits: NonNullable<AgentProfiles["limits"]>; value: AgentLimits; onChange: (value: AgentLimits) => void;
 }) {
-  const names = Object.keys(LIMIT_LABEL) as AgentLimitName[];
+  // An older server does not know each limit; show only the limits that it reports.
+  const names = (Object.keys(LIMIT_LABEL) as AgentLimitName[]).filter((name) => name in limits.defaults);
   return (
     <details className="rounded-lg border px-3 py-2" open={names.some((name) => value[name] != null)}>
       <summary className="cursor-pointer text-xs font-semibold">Run limits</summary>

@@ -31,6 +31,7 @@ Example plan fields:
   "run_prefix": "localtrial",
   "step_budget": 45,
   "max_turns": 60,
+  "max_continuations": 3,
   "model_timeout_seconds": 300,
   "total_timeout_seconds": 1200,
   "options": {"temperature": 0, "num_ctx": 32768, "num_predict": 8192},
@@ -71,6 +72,11 @@ MCP images are forwarded as image evidence to models with vision support.
 
 Failed and denied tool requests count against the budget.
 A required user question stops the trial and remains in the summary.
+An answer without a tool call ends the trial only after a release or with a final report.
+The first line of a final report is `FINAL REPORT`. The check ignores letter case, spaces, Markdown heading and emphasis characters, and a colon at the end.
+After another answer without a tool call, the client sends a continuation message and the trial continues.
+`max_continuations` (default 3) limits these messages. After the limit, the status is `stopped_without_tool_call`.
+The trace records each continuation message as a `continuation` event. The summary counts them in `continuations`.
 A transport failure stops the trial because mutation completion can be unknown.
 The client does not infer successful release from the model's final text.
 Any later model mutation or build request clears its release claim until another successful export. A drawing render or review does not clear it.

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from drawing2cad_mcp.local_model_client import Trace, canonical_request, deterministic_failure, drive
-from test_local_model_client import Session, call, catalog, model_response, plan
+from test_local_model_client import Session, call, catalog, model_response, plan, report
 
 SOURCE_ID = "src_" + "a" * 32
 SOURCE_SHA = "b" * 64
@@ -132,7 +132,7 @@ async def test_a_corrected_request_continues_to_later_steps(tmp_path):
         model_response([call("pdf_calibrate", calibration([0, 0, 10, 10]))]),
         model_response([call("pdf_calibrate", calibration([0.1, 0.1, 0.4, 0.3], first=(120, 400), second=(320, 400)))]),
         model_response([call("part_validate", {"description": {}})]),
-        model_response(text="Done."),
+        model_response(text=report("Done.")),
     )
     result = await drive(session, catalog("pdf_calibrate", "part_validate"), domain_plan(), "Skill", Trace(tmp_path),
                          model_call=model)
@@ -171,7 +171,7 @@ async def test_a_changed_part_state_and_transient_errors_permit_a_new_attempt(tm
         model_response([call("part_update", UPDATE)]),             # A successful mutation changes the part state.
         model_response([call("build_from_description", BUILD)]),  # Permitted again; a transient error.
         model_response([call("build_from_description", BUILD)]),  # A transient error can repeat.
-        model_response(text="Done."),
+        model_response(text=report("Done.")),
     )
     result = await drive(session, catalog("build_from_description", "part_update"), plan(step_budget=10), "Skill", Trace(tmp_path),
                          model_call=model)
@@ -208,7 +208,7 @@ async def test_a_successful_state_change_outside_the_part_permits_a_new_attempt(
         model_response([call("part_export_review", review)]),
         model_response([call("export_step", review)]),
         model_response([call("part_export_review", review)]),
-        model_response(text="Done."),
+        model_response(text=report("Done.")),
     )
     result = await drive(session, catalog("part_export_review", "export_step"), plan(step_budget=10), "Skill",
                          Trace(tmp_path), model_call=model)

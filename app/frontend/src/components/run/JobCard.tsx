@@ -62,6 +62,9 @@ export function JobCard({ run }: { run: Run }) {
               {!!run.iterations.blocked_requests && (
                 <><dt>Blocked</dt><dd>{run.iterations.blocked_requests} repeated failed requests</dd></>
               )}
+              {!!run.iterations.continuations && (
+                <><dt>Continued</dt><dd>{run.iterations.continuations} answers without a tool call</dd></>
+              )}
             </>
           )}
           {run.agent && (
