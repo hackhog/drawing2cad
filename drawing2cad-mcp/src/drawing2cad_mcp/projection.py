@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from .projection_check import compare_view
+from .projection_check import _stage, compare_view
 
 AXES = {"+X": (1, 0, 0), "-X": (-1, 0, 0), "+Y": (0, 1, 0), "-Y": (0, -1, 0), "+Z": (0, 0, 1), "-Z": (0, 0, -1)}
 _EDGE_STEP_MM = 0.25
@@ -88,21 +88,26 @@ def _inside(stroke, region) -> bool:
 
 def check(step_path: Path, pdf_path: Path, page: int, views: list[dict], directory: Path) -> dict[str, Any]:
     """Project the candidate into each requested view and compare it with the drawing strokes in the view region."""
-    from build123d import import_step
-
-    from .vector import extract
-
-    shape = import_step(str(step_path))
-    drawing = extract(pdf_path, page)
+    with _stage("dependencies"):
+        from build123d import import_step
+        from .vector import extract
+    with _stage("step_import"):
+        shape = import_step(str(step_path))
+    with _stage("source_extraction"):
+        drawing = extract(pdf_path, page)
     reports = []
     for view in views:
-        model = project(shape, view["toward_viewer"], view["up"])
-        strokes = [s for s in drawing.strokes if s.kind.value in DRAWING_KINDS and _inside(s, view["region"])]
-        report = compare_view(model, [_stroke_polyline(s) for s in strokes], mm_per_sheet_mm=view["mm_per_sheet_mm"])
+        with _stage("step_projection"):
+            model = project(shape, view["toward_viewer"], view["up"])
+        with _stage("source_preparation"):
+            strokes = [s for s in drawing.strokes if s.kind.value in DRAWING_KINDS and _inside(s, view["region"])]
+            lines = [_stroke_polyline(s) for s in strokes]
+        report = compare_view(model, lines, mm_per_sheet_mm=view["mm_per_sheet_mm"])
         report.update(view_id=view["view_id"], region_sheet_mm=list(view["region"]), stroke_count=len(strokes),
                       toward_viewer=view["toward_viewer"], up=view["up"], mm_per_sheet_mm=view["mm_per_sheet_mm"])
         reports.append(report)
-    overlay = _overlay(drawing.sheet_size_mm, reports, directory / "projection-overlay.png")
+    with _stage("result_generation"):
+        overlay = _overlay(drawing.sheet_size_mm, reports, directory / "projection-overlay.png")
     # The worker protocol accepts pass or fail. A view that is not tested is not a pass.
     status = "pass" if all(report["status"] == "pass" for report in reports) else "fail"
     for report in reports:

@@ -84,3 +84,22 @@ def test_projection_check_rejects_invalid_views(domain):
                  {**VIEWS[0], "up": "-Z"}, {**VIEWS[0], "region": [150, 10, 10, 120]}, {**VIEWS[0], "hidden_lines": "compare"}):
         with pytest.raises(DomainError):
             call(service, source, views=[view])
+
+
+def test_worker_timeout_stays_a_failed_unperformed_comparison(domain, monkeypatch):
+    service, source, cad, runner = prepare(domain)
+    before = cad._load(cad._directory("plate"))
+    received = {}
+
+    def timeout(operation, **kwargs):
+        received.update(operation=operation, arguments=kwargs)
+        return {"status": "fail", "error": {"code": "WORKER_TIMEOUT", "message": "The worker exceeded its configured limit."}}
+
+    monkeypatch.setattr(runner, "run", timeout)
+    result = call(service, source)
+    assert result["status"] == "fail"
+    assert result["error"]["code"] == "WORKER_TIMEOUT"
+    assert result["views"] == [] and result["artifacts"] == []
+    assert received["operation"] == "projection_check"
+    assert "timeout" not in received["arguments"]
+    assert cad._load(cad._directory("plate")) == before
