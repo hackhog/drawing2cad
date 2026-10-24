@@ -16,7 +16,8 @@ from .mapping import PHASE_BY_TOOL
 
 EVENT_FILE = re.compile(r"(?P<sequence>\d{3,})-(?P<kind>[a-z-]+)\.json")
 # Event kinds of the timeline. Model requests, the conversation, and the summary are not steps.
-STEP_KINDS = {"skill-references", "model-response", "tool-request", "tool-response", "corrective-instruction", "continuation"}
+STEP_KINDS = {"skill-references", "model-response", "tool-request", "tool-response", "corrective-instruction", "continuation",
+              "argument-decoded"}
 # Bounds for the step list, which the UI polls during a run, and for the details of one step.
 PREVIEW_CHARS = 280
 DETAIL_CHARS = 20000
@@ -112,6 +113,14 @@ def _tool_step(request: dict[str, Any], response: dict[str, Any] | None) -> dict
             "images": sum(1 for item in result.get("content", []) if item.get("type") == "image")}
 
 
+def _decoding_text(event: dict[str, Any]) -> str:
+    """The text of a decoded argument. The event holds only the tool, the JSON pointer, and the types."""
+    path = event.get("path") or "the argument root"
+    decoded = event.get("decoded_type") or "object"
+    return (f"The model sent the value at {path} as a JSON text, a {event.get('original_type') or 'string'}. "
+            f"The tool schema expects an {decoded}. The loop decoded the text and sent the {decoded}.")
+
+
 def steps(trace: Path) -> list[dict[str, Any]]:
     """The timeline steps of a trace. A tool step joins a tool request with its response; it uses the request sequence."""
     result: list[dict[str, Any]] = []
@@ -137,6 +146,10 @@ def steps(trace: Path) -> list[dict[str, Any]]:
         elif kind == "continuation":
             result.append({**base, "kind": "continuation", "turn": event.get("turn"), "count": event.get("count"),
                            "limit": event.get("limit"), "text": _short(event.get("message", ""), PREVIEW_CHARS)})
+        elif kind == "argument-decoded":
+            result.append({**base, "kind": "decoding", "turn": event.get("turn"), "tool": event.get("name"),
+                           "path": event.get("path"), "original_type": event.get("original_type"),
+                           "decoded_type": event.get("decoded_type"), "text": _decoding_text(event)})
         elif kind == "skill-references":
             result.append({**base, "kind": "skill", "turn": event.get("turn"), "paths": event.get("paths") or [],
                            "text": event.get("reason") or ""})
@@ -186,6 +199,9 @@ def step_detail(trace: Path, sequence: int) -> dict[str, Any] | None:
                 "arguments": None, "result": None, "problem": event.get("failure"), "images": []}
     if kind == "continuation":
         return {"sequence": sequence, "kind": "continuation", "text": _short(event.get("message", ""), DETAIL_CHARS),
+                "arguments": None, "result": None, "problem": None, "images": []}
+    if kind == "argument-decoded":
+        return {"sequence": sequence, "kind": "decoding", "tool": event.get("name"), "text": _decoding_text(event),
                 "arguments": None, "result": None, "problem": None, "images": []}
     if kind == "skill-references":
         return {"sequence": sequence, "kind": "skill", "text": event.get("reason") or "",

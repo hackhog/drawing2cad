@@ -5,8 +5,12 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from jsonschema import Draft202012Validator
 
-from drawing2cad_mcp.local_model_client import Trace, canonical_request, deterministic_failure, drive
+from drawing2cad_mcp.local_model_client import (
+    Trace, canonical_request, decode_json_text_arguments, deterministic_failure, drive,
+)
+from drawing2cad_mcp.server import invalid_arguments
 from test_local_model_client import Session, call, catalog, model_response, plan, report
 
 SOURCE_ID = "src_" + "a" * 32
@@ -214,3 +218,211 @@ async def test_a_successful_state_change_outside_the_part_permits_a_new_attempt(
                          Trace(tmp_path), model_call=model)
     assert session.calls == ["part_export_review", "export_step", "part_export_review"]
     assert result["blocked_requests"] == 0 and result["status"] == "stopped_without_release"
+
+
+# A drawing_validate schema in the published form, with a local reference, a type list, and string parameters.
+DECODE_SCHEMA = {
+    "type": "object", "additionalProperties": False, "required": ["run_id", "drawing_spec"],
+    "properties": {
+        "run_id": {"type": "string"},
+        "drawing_spec": {"type": "object", "properties": {
+            "sheet": {"type": "object"},
+            "views": {"type": "array", "items": {"$ref": "#/$defs/view"}},
+            "note": {"type": "string"},
+            "other": {"$ref": "#/$defs/missing"},
+            "anchor": {"$ref": "#/$defs/view/properties/origin"}}},
+        "tags": {"type": ["array", "null"]},
+        "label": {"type": "string"},
+    },
+    "$defs": {"view": {"type": "object", "properties": {"origin": {"type": "array"}}}},
+}
+# An input value that the trace events of a decoding must not contain.
+PRIVATE = "private-value-7f3a"
+SPEC = {"schema_version": "2.0", "sheet": {"size": "A3"}, "views": [{"id": "front", "origin": [0, 0]}], "note": PRIVATE}
+
+
+def decode_catalog():
+    return [{"name": "drawing_validate", "description": "Test", "inputSchema": DECODE_SCHEMA}]
+
+
+def schema_response(name, arguments):
+    """The response of the MCP server: the real schema error text for the published schema, or a pass."""
+    validator = Draft202012Validator(DECODE_SCHEMA)
+    if validator.is_valid(arguments):
+        return ok_response()
+    return invalid_arguments(validator, name, arguments).model_dump(mode="json", by_alias=True)
+
+
+def validate_call(arguments):
+    return {"function": {"name": "drawing_validate", "arguments": arguments}}
+
+
+def trace_events(path, kind):
+    return [event for line in (path / "trace.jsonl").read_text().splitlines() if (event := json.loads(line))["kind"] == kind]
+
+
+@pytest.mark.asyncio
+async def test_an_object_argument_sent_as_json_text_reaches_the_mcp_as_an_object(tmp_path):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or schema_response(name, arguments))
+    model, _ = recorded(
+        model_response([validate_call({"run_id": "localtest-a", "drawing_spec": json.dumps(SPEC)})]),
+        model_response(text=report("Validated.")))
+    result = await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [{"run_id": "localtest-a", "drawing_spec": SPEC}]
+    assert result["status"] == "stopped_without_release" and result["mcp_calls"] == 1
+    assert not trace_events(tmp_path, "tool-response")[0]["response"]["isError"]
+    assert "corrective-instruction" not in trace_kinds(tmp_path)
+    decoded = trace_events(tmp_path, "argument-decoded")
+    assert [{key: event[key] for key in ("turn", "request_number", "name", "path", "original_type", "decoded_type")}
+            for event in decoded] == [{"turn": 1, "request_number": 1, "name": "drawing_validate", "path": "/drawing_spec",
+                                       "original_type": "string", "decoded_type": "object"}]
+    assert PRIVATE not in json.dumps(decoded) and "A3" not in json.dumps(decoded)
+    # The decoding is written before the request, so that the request and its response stay adjacent.
+    kinds = trace_kinds(tmp_path)
+    assert kinds.index("argument-decoded") + 1 == kinds.index("tool-request") == kinds.index("tool-response") - 1
+    assert trace_events(tmp_path, "tool-request")[0]["arguments"]["drawing_spec"] == SPEC
+    # The model response in the trace keeps the original JSON text.
+    original = trace_events(tmp_path, "model-response")[0]["response"]["message"]["tool_calls"][0]["function"]["arguments"]
+    assert isinstance(original["drawing_spec"], str)
+
+
+@pytest.mark.asyncio
+async def test_nested_object_and_array_arguments_sent_as_json_text_are_decoded(tmp_path):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or schema_response(name, arguments))
+    spec = {**SPEC, "sheet": json.dumps(SPEC["sheet"]), "views": json.dumps([{"id": "front", "origin": "[0, 0]"}])}
+    arguments = {"run_id": "localtest-a", "drawing_spec": json.dumps(spec), "tags": json.dumps(["a"])}
+    model, _ = recorded(model_response([validate_call(arguments)]), model_response(text=report("Done.")))
+    await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [{"run_id": "localtest-a", "drawing_spec": SPEC, "tags": ["a"]}]
+    assert not trace_events(tmp_path, "tool-response")[0]["response"]["isError"]
+    assert [(event["path"], event["decoded_type"]) for event in trace_events(tmp_path, "argument-decoded")] == [
+        ("/drawing_spec", "object"), ("/drawing_spec/sheet", "object"), ("/drawing_spec/views", "array"),
+        ("/drawing_spec/views/0/origin", "array"), ("/tags", "array")]
+
+
+@pytest.mark.parametrize("arguments", [
+    # String parameters keep JSON text.
+    {"run_id": "localtest-a", "label": '{"a": 1}', "drawing_spec": {"note": "[1, 2]"}},
+    # An unresolved reference and a schema without a type keep the value.
+    {"run_id": "localtest-a", "drawing_spec": {"other": "{}", "views": [{"id": "[]"}]}},
+])
+def test_strings_of_string_and_unknown_schemas_stay_unchanged(arguments):
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result is arguments and decoded == []
+
+
+def test_a_type_list_that_permits_a_string_keeps_the_string():
+    schema = {"type": "object", "properties": {"value": {"type": ["object", "string"]}}}
+    assert decode_json_text_arguments({"value": "{}"}, schema) == ({"value": "{}"}, [])
+
+
+def test_a_nested_local_reference_is_resolved_as_a_json_pointer():
+    arguments = {"run_id": "localtest-a", "drawing_spec": {"anchor": "[0, 0]"}}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result == {"run_id": "localtest-a", "drawing_spec": {"anchor": [0, 0]}}
+    assert decoded == [{"path": "/drawing_spec/anchor", "original_type": "string", "decoded_type": "array"}]
+
+
+@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}', '{"a": 1e999}', '{"a": [1, {"b": -1e999}]}'])
+def test_json_text_with_a_non_finite_number_stays_a_string(text):
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result is arguments and decoded == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": 1e999}'])
+async def test_json_text_with_a_non_finite_number_reaches_the_mcp_unchanged(tmp_path, text):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or ok_response())
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    model, _ = recorded(model_response([validate_call(arguments)]), model_response(text=report("Done.")))
+    result = await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [arguments] and result["mcp_calls"] == 1
+    assert "argument-decoded" not in trace_kinds(tmp_path)
+
+
+TRUNCATED_SURROGATE_TEXTS = ['{"name": "\\ud83d"}', '{"\\ud83d": 1}', '{"a": [1, {"b": "x\\ude00y"}]}']
+
+
+@pytest.mark.parametrize("text", TRUNCATED_SURROGATE_TEXTS)
+def test_json_text_with_a_lone_surrogate_stays_a_string(text):
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result is arguments and decoded == []
+
+
+def test_json_text_with_an_escaped_emoji_pair_is_decoded():
+    arguments = {"run_id": "localtest-a", "drawing_spec": '{"name": "\\ud83d\\ude00"}'}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result == {"run_id": "localtest-a", "drawing_spec": {"name": "\U0001F600"}}
+    assert [item["path"] for item in decoded] == ["/drawing_spec"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", TRUNCATED_SURROGATE_TEXTS)
+async def test_json_text_with_a_lone_surrogate_reaches_the_mcp_unchanged(tmp_path, text):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or ok_response())
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    model, _ = recorded(model_response([validate_call(arguments)]), model_response(text=report("Done.")))
+    result = await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [arguments] and result["mcp_calls"] == 1
+    assert "argument-decoded" not in trace_kinds(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_a_string_parameter_with_json_text_reaches_the_mcp_unchanged(tmp_path):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or schema_response(name, arguments))
+    arguments = {"run_id": "localtest-a", "label": '{"a": 1}', "drawing_spec": {"note": "[1, 2]"}}
+    model, _ = recorded(model_response([validate_call(arguments)]), model_response(text=report("Done.")))
+    await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [arguments] and "argument-decoded" not in trace_kinds(tmp_path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("field", "text", "container"), [
+    ("drawing_spec", '{"schema_version": "2.0",', "object"),  # Invalid JSON.
+    ("drawing_spec", "[1, 2]", "object"),  # JSON of another type.
+    ("tags", '{"a": 1}', "array"),  # An object text for an array parameter with a type list.
+])
+async def test_invalid_json_text_is_sent_unchanged_and_the_correction_has_a_hint(tmp_path, field, text, container):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or schema_response(name, arguments))
+    arguments = {"run_id": "localtest-a", "drawing_spec": {"note": PRIVATE}, field: text}
+    model, requests = recorded(model_response([validate_call(arguments)]), model_response(text=report("Blocked.")))
+    result = await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [arguments] and result["mcp_calls"] == 1
+    assert "argument-decoded" not in trace_kinds(tmp_path)
+    correction = requests[1][-1]["content"]
+    assert correction.startswith(f"The drawing_validate request failed with INVALID_ARGUMENTS at /{field}: ")
+    assert f"The value at /{field} is a string. Send the JSON {container} itself, not a JSON text." in correction
+    assert text not in correction and PRIVATE not in correction
+    assert trace_events(tmp_path, "corrective-instruction")[0]["message"] == correction
+
+
+@pytest.mark.asyncio
+async def test_a_type_error_of_a_value_that_is_not_a_string_has_no_json_text_hint(tmp_path):
+    session = ScriptedSession(lambda name, arguments, count: schema_response(name, arguments))
+    model, requests = recorded(model_response([validate_call({"run_id": "localtest-a", "drawing_spec": 5})]),
+                               model_response(text=report("Blocked.")))
+    await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    correction = requests[1][-1]["content"]
+    assert "fails the schema rule 'type'" in correction and "not a JSON text" not in correction
+
+
+@pytest.mark.asyncio
+async def test_the_repeat_guard_compares_the_decoded_arguments(tmp_path):
+    # The same request as JSON text and then as an object is one request: the client blocks the second.
+    session = ScriptedSession(lambda name, arguments, count: error_response(
+        {"code": "LABEL_CLIPPING", "target": "/drawing_spec/views/0", "message": "A label is clipped."}))
+    model, _ = recorded(
+        model_response([validate_call({"run_id": "localtest-a", "drawing_spec": json.dumps(SPEC)})]),
+        model_response([validate_call({"run_id": "localtest-a", "drawing_spec": SPEC})]),
+        model_response(text="Not reached."))
+    result = await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert session.calls == ["drawing_validate"]
+    assert result["status"] == "no_progress" and result["blocked_requests"] == 1

@@ -7,7 +7,7 @@ export type Layer = "skill" | "loop" | "mcp" | "cad";
 
 export const LAYERS: { id: Layer; title: string; text: string }[] = [
   { id: "skill", title: "Skill", text: "SKILL.md and its references are the instructions of the model. They set the order: read and record evidence, describe the part, build, draw, release. The loop supplies the references of each step." },
-  { id: "loop", title: "Agent loop", text: "Each turn sends the conversation and the tool list to the model and executes the tool calls that it requests. After a failed call, the loop sends a correction and blocks identical repeats. After an answer without a tool call, it asks the model to continue until a release or a final report." },
+  { id: "loop", title: "Agent loop", text: "Each turn sends the conversation and the tool list to the model and executes the tool calls that it requests. After a failed call, the loop sends a correction and blocks identical repeats. After an answer without a tool call, it asks the model to continue until a release or a final report. If the model sends an object or array argument as JSON text, the loop decodes it before the MCP call." },
   { id: "mcp", title: "MCP server", text: "Checks each argument against the tool schema, reads the uploaded PDF (text, image, vectors, measurements), and stores part, drawing, and notes." },
   { id: "cad", title: "CAD worker and release", text: "build123d builds the solid in a sandbox without network and checks its geometry. export_step releases the STEP file only after re-import, geometry, and drawing checks pass." },
 ];
@@ -28,6 +28,7 @@ export function stepLabel(step: RunStep): string {
     case "tool": return step.tool;
     case "correction": return `Correction after ${step.tool}`;
     case "continuation": return `Continuation request ${step.count ?? ""}`.trim();
+    case "decoding": return `Decoded argument of ${step.tool}`;
   }
 }
 
@@ -59,6 +60,9 @@ export function explanation(step: RunStep): string {
       : "The model answered without a tool call. This ends the run after a release or with a final report (first line FINAL REPORT). Otherwise the loop asks the model to continue.";
     case "correction": return "The previous tool call failed. The loop told the model the error and that an identical request stops the run.";
     case "continuation": return `The model answered without a tool call and without a final report, and no release exists. The loop asked the model to continue (request ${step.count ?? "?"} of ${step.limit ?? "?"}).`;
+    case "decoding": return `The model sent the argument at ${step.path || "the argument root"} as a JSON text (a string). `
+      + `The tool schema expects ${step.decoded_type === "array" ? "an array" : "an object"}, so the loop decoded the text and sent the value to the MCP server. `
+      + "The MCP server checks the decoded value against the schema as usual.";
     case "tool": return TOOL_TEXT.find(([pattern]) => pattern.test(step.tool))?.[1] ?? "A tool of the MCP server.";
   }
 }
@@ -86,16 +90,17 @@ export function problemGroups(steps: RunStep[]): ProblemGroup[] {
 }
 
 export interface Totals {
-  modelSeconds: number; toolSeconds: number; turns: number; calls: number; failed: number; corrections: number; continuations: number;
+  modelSeconds: number; toolSeconds: number; turns: number; calls: number; failed: number; corrections: number; continuations: number; decodings: number;
 }
 
 export function totals(steps: RunStep[]): Totals {
-  const result: Totals = { modelSeconds: 0, toolSeconds: 0, turns: 0, calls: 0, failed: 0, corrections: 0, continuations: 0 };
+  const result: Totals = { modelSeconds: 0, toolSeconds: 0, turns: 0, calls: 0, failed: 0, corrections: 0, continuations: 0, decodings: 0 };
   for (const step of steps) {
     if (step.kind === "model") { result.turns += 1; result.modelSeconds += step.seconds ?? 0; }
     if (step.kind === "tool") { result.calls += 1; result.toolSeconds += step.seconds ?? 0; if (step.status === "failed") result.failed += 1; }
     if (step.kind === "correction") result.corrections += 1;
     if (step.kind === "continuation") result.continuations += 1;
+    if (step.kind === "decoding") result.decodings += 1;
   }
   return result;
 }

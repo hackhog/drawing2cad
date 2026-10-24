@@ -128,6 +128,8 @@ export type RunStep = { sequence: number; at: string | null; turn: number | null
       seconds: number | null; problem: StepProblem | null; arguments: string; images: number }
   | { kind: "correction"; tool: string; code: string | null; text: string }
   | { kind: "continuation"; count: number | null; limit: number | null; text: string }
+  /** The loop decoded an argument that the model sent as JSON text where the tool schema expects an object or array. */
+  | { kind: "decoding"; tool: string; path: string | null; original_type: string | null; decoded_type: string | null; text: string }
 );
 
 /** The final summary of the agent loop. It is null while the run is active. */

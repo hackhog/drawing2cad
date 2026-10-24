@@ -12,6 +12,8 @@ const tool = (sequence: number, name: string, code: string | null = null, second
 });
 const correction: RunStep = { ...base, sequence: 9, kind: "correction", tool: "build_from_description", code: "EDGE_SELECTION", text: "" };
 const continuation: RunStep = { ...base, sequence: 11, kind: "continuation", count: 1, limit: 3, text: "No release exists." };
+const decoding: RunStep = { ...base, sequence: 12, kind: "decoding", tool: "drawing_validate", path: "/drawing_spec",
+  original_type: "string", decoded_type: "object", text: "" };
 
 const steps: RunStep[] = [
   { ...base, sequence: 1, turn: 0, kind: "skill", paths: ["references/a.md"], text: "the first step" },
@@ -32,8 +34,9 @@ describe("timeline", () => {
   });
 
   it("adds model time and tool time separately", () => {
-    expect(totals(steps)).toEqual({ modelSeconds: 30, toolSeconds: 7, turns: 1, calls: 4, failed: 3, corrections: 1, continuations: 0 });
+    expect(totals(steps)).toEqual({ modelSeconds: 30, toolSeconds: 7, turns: 1, calls: 4, failed: 3, corrections: 1, continuations: 0, decodings: 0 });
     expect(totals([...steps, model(10, 2, []), continuation]).continuations).toBe(1);
+    expect(totals([...steps, decoding]).decodings).toBe(1);
   });
 
   it("names steps and explains them for beginners", () => {
@@ -52,6 +55,15 @@ describe("timeline", () => {
     // An answer without a tool call ends the run only after a release or with a final report.
     expect(explanation(model(10, 2, []))).toBe("The model answered without a tool call. This ends the run after a release "
       + "or with a final report (first line FINAL REPORT). Otherwise the loop asks the model to continue.");
+  });
+
+  it("shows a decoded argument as a loop step of its own", () => {
+    expect(layerOf(decoding)).toBe("loop");
+    expect(stepLabel(decoding)).toBe("Decoded argument of drawing_validate");
+    expect(explanation(decoding)).toBe("The model sent the argument at /drawing_spec as a JSON text (a string). "
+      + "The tool schema expects an object, so the loop decoded the text and sent the value to the MCP server. "
+      + "The MCP server checks the decoded value against the schema as usual.");
+    expect(explanation({ ...decoding, path: "/views", decoded_type: "array" })).toMatch(/at \/views .* expects an array,/);
   });
 
   it("explains why the loop ended", () => {
