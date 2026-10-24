@@ -229,7 +229,8 @@ DECODE_SCHEMA = {
             "sheet": {"type": "object"},
             "views": {"type": "array", "items": {"$ref": "#/$defs/view"}},
             "note": {"type": "string"},
-            "other": {"$ref": "#/$defs/missing"}}},
+            "other": {"$ref": "#/$defs/missing"},
+            "anchor": {"$ref": "#/$defs/view/properties/origin"}}},
         "tags": {"type": ["array", "null"]},
         "label": {"type": "string"},
     },
@@ -315,6 +316,32 @@ def test_strings_of_string_and_unknown_schemas_stay_unchanged(arguments):
 def test_a_type_list_that_permits_a_string_keeps_the_string():
     schema = {"type": "object", "properties": {"value": {"type": ["object", "string"]}}}
     assert decode_json_text_arguments({"value": "{}"}, schema) == ({"value": "{}"}, [])
+
+
+def test_a_nested_local_reference_is_resolved_as_a_json_pointer():
+    arguments = {"run_id": "localtest-a", "drawing_spec": {"anchor": "[0, 0]"}}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result == {"run_id": "localtest-a", "drawing_spec": {"anchor": [0, 0]}}
+    assert decoded == [{"path": "/drawing_spec/anchor", "original_type": "string", "decoded_type": "array"}]
+
+
+@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}', '{"a": 1e999}', '{"a": [1, {"b": -1e999}]}'])
+def test_json_text_with_a_non_finite_number_stays_a_string(text):
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result is arguments and decoded == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": 1e999}'])
+async def test_json_text_with_a_non_finite_number_reaches_the_mcp_unchanged(tmp_path, text):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or ok_response())
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    model, _ = recorded(model_response([validate_call(arguments)]), model_response(text=report("Done.")))
+    result = await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [arguments] and result["mcp_calls"] == 1
+    assert "argument-decoded" not in trace_kinds(tmp_path)
 
 
 @pytest.mark.asyncio

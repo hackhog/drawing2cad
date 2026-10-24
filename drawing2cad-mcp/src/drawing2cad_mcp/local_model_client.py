@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import hashlib
 import ipaddress
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
@@ -407,20 +408,48 @@ def _pointer_token(key):
     return str(key).replace("~", "~0").replace("/", "~1")
 
 
+def _pointer_target(root, reference):
+    """The value that a local reference ("#/...") points to in the root schema, else None."""
+    value = root
+    for token in reference[2:].split("/"):
+        token = token.replace("~1", "/").replace("~0", "~")
+        if isinstance(value, dict) and token in value:
+            value = value[token]
+        elif isinstance(value, list) and token.isdigit() and int(token) < len(value):
+            value = value[int(token)]
+        else:
+            return None
+    return value
+
+
 def _resolve_schema(schema, root):
-    """The schema after its local references (#/$defs/... or #/definitions/...), else None."""
+    """The schema after its local references (JSON pointers that start with "#/"), else None."""
     for _ in range(_MAX_REFERENCES):
         if not isinstance(schema, dict) or "$ref" not in schema:
             return schema if isinstance(schema, dict) else None
         reference = schema["$ref"]
-        if not isinstance(reference, str) or not reference.startswith(("#/$defs/", "#/definitions/")):
+        if not isinstance(reference, str) or not reference.startswith("#/"):
             return None
-        section, _, name = reference[2:].partition("/")
-        definitions = root.get(section) if isinstance(root, dict) else None
-        if not isinstance(definitions, dict):
-            return None
-        schema = definitions.get(name.replace("~1", "/").replace("~0", "~"))
+        schema = _pointer_target(root, reference)
     return None
+
+
+def _reject_constant(constant):
+    raise ValueError(f"Non-finite number {constant}")
+
+
+def _has_non_finite_number(value):
+    """True if a decoded JSON value contains a float that is not finite, for example 1e999."""
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, float) and not math.isfinite(item):
+            return True
+        if isinstance(item, dict):
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
+    return False
 
 
 def _expected_containers(schema):
@@ -436,8 +465,9 @@ def decode_json_text_arguments(arguments, schema):
     """Decode argument values that a model sent as JSON text where the published schema expects an object or array.
 
     The decoding applies only to a string value whose schema type is object or array (also in a type list without
-    string), and only if the string is valid JSON of an expected type. It follows the "properties" of object schemas
-    and the "items" schema of array schemas, at the top level and in nested values, and resolves local references.
+    string). The string must be valid JSON of an expected type. It must not contain NaN, Infinity, or a number
+    that is too large for a finite float. The decoding follows the "properties" of object schemas and the "items"
+    schema of array schemas, at the top level and in nested values. It resolves local references.
     It keeps other values unchanged, also strings of an unknown or unresolved schema. The MCP schema and the MCP
     validation stay strict: the server receives only the decoded value.
 
@@ -453,10 +483,10 @@ def decode_json_text_arguments(arguments, schema):
         expected = _expected_containers(node)
         if isinstance(value, str) and expected:
             try:
-                candidate = json.loads(value)
+                candidate = json.loads(value, parse_constant=_reject_constant)
             except (ValueError, RecursionError):
                 return value
-            if _json_type(candidate) not in expected:
+            if _json_type(candidate) not in expected or _has_non_finite_number(candidate):
                 return value
             decoded.append({"path": path, "original_type": "string", "decoded_type": _json_type(candidate)})
             value = candidate

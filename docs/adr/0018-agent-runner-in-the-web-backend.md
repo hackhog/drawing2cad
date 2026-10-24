@@ -59,17 +59,18 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
   release, or its note. An identical request with the same server state is blocked before execution, and the run stops as `no_progress` (`AGENT_NO_PROGRESS` with the tool, the field,
   and the repeat count). Transient errors, for example `WORKER_TIMEOUT`, and successful repeated calls are not blocked.
   The client invents no replacement values; interpretation, assumptions, and corrections stay with the model.
-- **Arguments as JSON text:** some models send an object or array argument as JSON text (a string that contains the
-  encoded value). Before the MCP call, `drive()` decodes such a string when the published input schema of the tool gives
-  the parameter the type `object` or `array` and the string is valid JSON of that type. The decoding applies at the top
-  level and in nested `properties` and `items` schemas, and follows local `$defs` references. It does not change strings
-  of parameters whose schema type is `string` or unknown. The published schema and the MCP validation stay strict. The
-  trace records each decoding as an `argument-decoded` event with the tool, the JSON pointer, the original type, and the
-  decoded type, without input values. The tool request and the repeat check use the decoded arguments; the model
-  response in the trace keeps the original text. A string that is not valid JSON of the expected type goes to the MCP
-  unchanged. If the MCP then reports a failed `type` rule for an object or array at a path that holds a string, the
-  corrective instruction adds a hint that names only the path and the expected type.
   A deadline that ends during model inference or a tool call gives `time_budget_reached` (`AGENT_TIME_BUDGET` when no STEP release exists; a built model stays readable).
+- **Arguments as JSON text:** some models send an object or array argument as JSON text (a string that contains the
+  encoded value). Before the MCP call, `drive()` decodes such a string. The published input schema of the tool must give
+  the parameter the type `object` or `array`. The string must be valid JSON of that type, with no `NaN`, `Infinity`, or
+  number too large for a finite float. The decoding applies at the top level and in nested `properties` and `items`
+  schemas. It follows local references (`$ref` values that start with `#/`, for example `#/$defs/...`). It does not
+  change strings of parameters whose schema type is `string` or unknown. The published schema and the MCP validation
+  stay strict. The trace records each decoding as an `argument-decoded` event with the tool, the JSON pointer, the
+  original type, and the decoded type, without input values. The tool request and the repeat check use the decoded
+  arguments. The model response in the trace keeps the original text. A string that is not valid JSON of the expected
+  type goes to the MCP unchanged. The MCP can then report a failed `type` rule for an object or array at a path that
+  holds a string. In this case the corrective instruction adds a hint that names only the path and the expected type.
 - **Answers without a tool call:** such an answer ends the run only after a STEP release or with a final report. The first line of a
   final report is `FINAL REPORT`; the system message and the skill name this marker. The check ignores letter case and the Markdown
   heading and emphasis characters. After the marker, the line can continue with a colon, a hyphen, an en dash, or a space and more text.
