@@ -69,7 +69,12 @@ def describe(error: ValidationError, prefix: str = "") -> tuple[str, str]:
     if rule == "oneOf":
         return target, f"The value at {location} fails the schema rule 'oneOf': exactly one permitted form must match."
     if rule == "anyOf":
-        return target, f"The value at {location} fails the schema rule 'anyOf': at least one permitted form must match."
+        message = f"The value at {location} fails the schema rule 'anyOf': at least one permitted form must match."
+        # The description comes from the trusted schema, never from an input value.
+        note = error.schema.get("description")
+        if isinstance(note, str) and len(note) <= 500:
+            message += " " + note
+        return target, message
     message = f"The value at {location} fails the schema rule '{rule}'."
     if rule in _SHOWN:
         expected = json.dumps(error.validator_value, ensure_ascii=False, default=str)

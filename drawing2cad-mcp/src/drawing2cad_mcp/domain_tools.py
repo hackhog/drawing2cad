@@ -68,6 +68,24 @@ DERIVED_VIEW = _object({
                               "viewing_side": {"enum": ["positive_normal", "negative_normal"]},
                               "source_view_id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,47}$"}}),
 }, ["id", "kind", "up"])
+# Keep the common properties for clients that decode nested JSON container arguments.
+_VIEW_PROPERTIES = DERIVED_VIEW["properties"]
+DERIVED_VIEW["description"] = (
+    "For orthographic or isometric views, supply view_direction and omit cutting_plane. "
+    "For a section, supply cutting_plane and omit view_direction. Remove a forbidden field; do not set it to null.")
+DERIVED_VIEW["anyOf"] = [
+    _object({**{name: value for name, value in _VIEW_PROPERTIES.items() if name != "cutting_plane"},
+             "kind": {"enum": ["orthographic", "isometric"]}}, ["id", "kind", "up", "view_direction"]),
+    _object({**{name: value for name, value in _VIEW_PROPERTIES.items() if name != "view_direction"},
+             "kind": {"enum": ["section"]}}, ["id", "kind", "up", "cutting_plane"]),
+]
+DERIVED_VIEW["examples"] = [
+    {"id": "top", "kind": "orthographic", "view_direction": [0, 0, 1], "up": [0, 1, 0]},
+    {"id": "iso", "kind": "isometric", "view_direction": [1, -1, 1], "up": [0, 0, 1]},
+    {"id": "section_a", "kind": "section", "up": [0, 0, 1],
+     "cutting_plane": {"letter": "A", "origin": [0, 0, 0], "normal": [0, -1, 0],
+                       "viewing_side": "positive_normal", "source_view_id": "top"}},
+]
 
 _EXTRA = {
     "drawing_verify": (_object({**REVISION, "artifact_id": ID, "source_id": ID, "expected_sha256": HASH},

@@ -92,3 +92,12 @@ def test_only_the_two_calibration_references_get_semantic_checks():
     from drawing2cad_mcp.measurements import calibration_defects
     equal = {"p0": [1, 1], "p1": [1, 1]}
     assert len(calibration_defects([equal] * 20)) == 2
+
+
+def test_anyof_feedback_uses_only_a_bounded_trusted_schema_description():
+    schema = {"anyOf": [{"type": "integer"}, {"type": "boolean"}],
+              "description": "Supply one of the permitted forms."}
+    _, message = describe(_error(schema, {"description": PRIVATE}))
+    assert message.endswith(schema["description"]) and "secret" not in message
+    _, message = describe(_error({**schema, "description": "x" * 501}, PRIVATE))
+    assert "xxx" not in message and "secret" not in message
