@@ -25,6 +25,29 @@ def on_sheet(model, scale=2.0, origin=(100.0, 150.0)):
     return [[(origin[0] + x / scale, origin[1] - y / scale) for x, y in line] for line in model["visible"]]
 
 
+class ObservedTree:
+    """Record candidate counts without changing the spatial search or its production limits."""
+
+    def __init__(self, tree, long_segments):
+        self.tree = tree
+        self.long_segments = long_segments
+        self.count_requests = 0
+        self.list_requests = 0
+        self.materialized_pairs = []
+
+    def query(self, *args, **kwargs):
+        return self.tree.query(*args, **kwargs)
+
+    def query_ball_point(self, *args, **kwargs):
+        result = self.tree.query_ball_point(*args, **kwargs)
+        if kwargs.get("return_length"):
+            self.count_requests += 1
+        else:
+            self.list_requests += 1
+            self.materialized_pairs.append(sum(map(len, result)) + len(result) * self.long_segments)
+        return result
+
+
 def test_correct_part_passes():
     result = compare_view(plate(), on_sheet(plate()), mm_per_sheet_mm=2.0)
     assert result["status"] == "pass", result
@@ -222,3 +245,50 @@ def test_indexed_view_result_matches_all_pairs_result(monkeypatch):
     monkeypatch.setattr(comparison, "_segment_index", lambda starts, ends: None)
     assert compare_view(model, drawing, mm_per_sheet_mm=2) == indexed
     assert indexed["status"] == "fail" and indexed["mirror_candidate"] == ["u"]
+
+
+def test_dense_candidates_use_the_production_fallback_before_list_allocation():
+    import numpy as np
+    from drawing2cad_mcp.projection_check import _INDEX_PAIRS, _distances, _segment_index, _segments
+
+    pytest.importorskip("scipy.spatial")
+    starts, ends = _segments([circle(0, 0, 1, n=1024)])
+    points = np.zeros((256, 2))
+    assert len(points) * len(starts) > _INDEX_PAIRS
+    index = _segment_index(starts, ends)
+    assert index is not None
+    observed = ObservedTree(index.tree, len(index.long))
+    index.tree = observed
+    expected_distance, expected_nearest = _distances(points, starts, ends)
+    distance, nearest = _distances(points, starts, ends, index=index)
+    assert np.array_equal(distance, expected_distance)
+    assert np.array_equal(nearest, expected_nearest)
+    assert observed.count_requests == 1
+    assert observed.list_requests == 0
+
+
+def test_representative_arcs_and_long_lines_select_the_index_and_reduce_work():
+    import numpy as np
+    from drawing2cad_mcp.projection_check import _INDEX_PAIRS, _distances, _segment_index, _segments
+
+    pytest.importorskip("scipy.spatial")
+    lines = [circle(0, 0, 50, n=512)]
+    for number in range(8):
+        angle = 2 * math.pi * number / 8
+        lines.append(circle(30 * math.cos(angle), 30 * math.sin(angle), 5, n=256))
+    lines.extend([[(100 + 2 * number, -10), (100 + 2 * number, 10)] for number in range(200)])
+    starts, ends = _segments(lines)
+    index = _segment_index(starts, ends)
+    assert index is not None
+    assert len(index.long) == 200
+    points = (starts[index.short[::4]] + ends[index.short[::4]]) / 2
+    observed = ObservedTree(index.tree, len(index.long))
+    index.tree = observed
+    expected_distance, expected_nearest = _distances(points, starts, ends)
+    distance, nearest = _distances(points, starts, ends, index=index)
+    assert np.array_equal(distance, expected_distance)
+    assert np.array_equal(nearest, expected_nearest)
+    expected_blocks = math.ceil(len(points) / 256)
+    assert observed.count_requests == observed.list_requests == expected_blocks
+    assert max(observed.materialized_pairs) <= _INDEX_PAIRS
+    assert sum(observed.materialized_pairs) < len(points) * len(starts) / 4

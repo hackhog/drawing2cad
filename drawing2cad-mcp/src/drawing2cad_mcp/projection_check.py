@@ -6,7 +6,9 @@ The view scale converts sheet millimeters to part millimeters. A translation ali
 because the view origin on the sheet is not known. Rotation is not searched.
 
 The pass limits are fixed in this module. A caller cannot change them.
-This module needs numpy. The restricted CAD worker supplies it with the CAD dependencies.
+This module needs numpy. An optional scipy midpoint index reduces the number of segment candidates.
+The exact all-pairs search applies when scipy is absent or a candidate block exceeds its size limit.
+The restricted CAD worker supplies numpy with the CAD dependencies.
 """
 
 from __future__ import annotations
@@ -129,7 +131,7 @@ class _SegmentIndex:
         shifted = points + np.asarray(offset)
         distances = np.empty(len(points))
         nearest = np.zeros_like(shifted)
-        chunk = min(256, max(1, _INDEX_PAIRS // len(self.starts)))
+        chunk = 256
         for begin in range(0, len(points), chunk):
             block = shifted[begin:begin + chunk]
             midpoint_distance, _ = self.tree.query(block)
@@ -161,6 +163,7 @@ class _SegmentIndex:
 
 
 def _segment_index(starts, ends):
+    """Return an optional scipy index when at least 128 segments are at most 2 mm long."""
     import numpy as np
     if len(starts) < 128 or np.count_nonzero(((ends - starts) ** 2).sum(axis=1) <= 4) < 128:
         return None

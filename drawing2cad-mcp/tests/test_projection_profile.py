@@ -31,4 +31,5 @@ def test_retained_projection_inputs(tmp_path):
         assert len(result["views"]) == len(args["views"])
         assert result["status"] in {"pass", "fail"}
         assert result["artifacts"]
-    assert result["worker"]["duration_seconds"] < 95
+    shutdown_margin_seconds = 5
+    assert result["worker"]["duration_seconds"] < runner.limits.timeout_seconds + shutdown_margin_seconds

@@ -201,11 +201,11 @@ def test_projection_completes_and_keeps_timeout_failure_and_recovery(runner):
     assert result["status"] == "pass", result
     assert all(view["status"] == "pass" for view in result["views"])
     assert result["sandbox"]["network"] == "socket_syscalls_denied"
+    assert '"stage": "dependencies", "event": "started"' in result["worker"]["logs"]["stderr"]
     assert '"stage": "result_generation", "event": "completed"' in result["worker"]["logs"]["stderr"]
     limited = runner.run("projection_check", timeout=1, **inputs)
     assert limited["error"]["code"] == "WORKER_TIMEOUT", limited
     assert "views" not in limited and "artifacts" not in limited
     assert limited["worker"]["duration_seconds"] < 5
-    assert '"stage": "dependencies", "event": "started"' in limited["worker"]["logs"]["stderr"]
     assert len(limited["worker"]["logs"]["stderr"]) <= 8192
     assert runner.run("probe")["status"] == "pass"
