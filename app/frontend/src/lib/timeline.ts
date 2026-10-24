@@ -109,7 +109,10 @@ export function outcome(summary: RunLoopSummary | null, budget: number | undefin
     stopped_without_release: summary.continuations != null
       ? "The model gave its final report without a release."
       : "The model answered without a tool call. The run ended without a release.",
-    stopped_without_tool_call: "The model stopped without a tool call: it answered again without a tool call or a final report after the last continuation request.",
+    // With the limit 0 the loop sends no continuation request, so the first answer without a tool call ends the run.
+    stopped_without_tool_call: summary.continuations === 0
+      ? "The model answered without a tool call and without a final report. Continuation requests are off (limit 0), so the run ended."
+      : "The model stopped without a tool call: it answered again without a tool call or a final report after the last continuation request.",
     tool_budget_reached: `The agent used all ${budget ?? summary.tool_requests} tool calls of its budget before a release.`,
     turn_budget_reached: "The agent used all model turns of its budget before a release.",
     time_budget_reached: "The run used its time budget before a release.",
