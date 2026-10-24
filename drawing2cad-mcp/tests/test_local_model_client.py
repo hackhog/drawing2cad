@@ -410,7 +410,15 @@ def recorded_model(*responses):
     ("FINAL REPORT\nBlocked: the hole depth is missing.", True),
     ("\n  final report:\nResult.", True),
     ("## **Final Report**\nResult.", True),
+    ("**FINAL REPORT**:\nResult.", True),
+    ("## Final report", True),
+    ("FINAL REPORT: blocked because the hole depth is missing.", True),
+    ("FINAL REPORT - blocked because the hole depth is missing.", True),
+    ("FINAL REPORT \u2013 blocked because the hole depth is missing.", True),
+    ("Final report on the part\nResult.", True),
+    ("`FINAL_REPORT`", False),
     ("Now I will build the part description and validate it with part_validate.", False),
+    ("Now I will write the final report", False),
     ("Summary\nFINAL REPORT", False),
     ("FINAL REPORTS", False),
     ("", False),
@@ -455,17 +463,41 @@ async def test_a_final_report_ends_the_run_without_a_continuation_message(tmp_pa
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("limit", [1, 3])
+@pytest.mark.parametrize("limit", [0, 1, 3])
 async def test_the_run_stops_without_a_tool_call_after_the_continuation_limit(tmp_path, limit):
     answers = [model_response(text=f"I will continue ({number}).") for number in range(limit + 1)]
     model, requests = recorded_model(*answers)
     result = await drive(Session(), [], plan(max_continuations=limit), "Skill", Trace(tmp_path), model_call=model)
     assert result["status"] == "stopped_without_tool_call"
     assert result["continuations"] == limit and result["model_turns"] == limit + 1
-    assert "final_text" not in result and result["released"] is False
+    # The last model text is the report of the run, also without the marker.
+    assert result["final_text"] == f"I will continue ({limit})." and result["released"] is False
     assert len(requests) == limit + 1
     assert trace_kinds(tmp_path).count("continuation") == limit
-    assert requests[-1][-1]["content"].endswith(f"This is continuation request {limit} of {limit}.")
+    if limit:
+        assert requests[-1][-1]["content"].endswith(f"This is continuation request {limit} of {limit}.")
+    else:
+        # The limit 0 sends no continuation message: the first answer without a tool call ends the run.
+        assert requests[-1][-1]["role"] == "user" and not requests[-1][-1]["content"].startswith("No release exists.")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ["", None])
+async def test_an_empty_answer_gets_a_text_and_a_continuation_message(tmp_path, content):
+    empty = {"message": {"role": "assistant", "content": content}, "eval_count": 0}
+    model, requests = recorded_model(empty, empty)
+    result = await drive(Session(), [], plan(max_continuations=1), "Skill", Trace(tmp_path), model_call=model)
+    assert result["status"] == "stopped_without_tool_call" and result["continuations"] == 1
+    # An empty answer gives no report.
+    assert "final_text" not in result
+    # The next request has a valid assistant message with text, then the continuation message.
+    answer, continuation = requests[1][-2:]
+    assert answer == {"role": "assistant", "content": "(no answer)"}
+    assert continuation["role"] == "user" and continuation["content"].startswith("No release exists.")
+    assert all(message.get("content") is not None for message in requests[1])
+    # The trace keeps the actual response.
+    events = [json.loads(line) for line in (tmp_path / "trace.jsonl").read_text().splitlines()]
+    assert [event["response"]["message"]["content"] for event in events if event["kind"] == "model-response"] == [content] * 2
 
 
 @pytest.mark.asyncio

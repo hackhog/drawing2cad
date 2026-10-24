@@ -50,6 +50,13 @@ QUESTION_TOOL = {"type": "function", "function": {
 FINAL_REPORT_MARKER = "FINAL REPORT"
 # Continuation requests of one run after answers without a tool call, a release, or a final report.
 DEFAULT_MAX_CONTINUATIONS = 3
+# Markdown heading and emphasis characters. The final report check removes them from the first line.
+_MARKDOWN_MARKS = re.compile(r"[#*_`]")
+# Characters that can follow FINAL_REPORT_MARKER directly: a colon, a hyphen, or an en dash.
+_MARKER_SEPARATORS = ":-\u2013"
+# The conversation text of an assistant answer without text and without tool calls. Model endpoints reject an
+# assistant message without content and without tool calls.
+EMPTY_ANSWER_TEXT = "(no answer)"
 _BRIDGE_CODE = """import json,sys,urllib.request
 data=json.load(sys.stdin)
 body=json.dumps(data['payload'],allow_nan=False).encode()
@@ -384,12 +391,18 @@ def corrective_message(name, failure):
 
 
 def is_final_report(text):
-    """True if the first line with text is FINAL_REPORT_MARKER.
+    """True if the first line with text starts the final report.
 
-    The check ignores letter case, spaces, Markdown heading and emphasis characters, and a colon at the end.
+    The check removes the Markdown heading and emphasis characters (#, *, _, `) from the first line with text and
+    ignores letter case and spaces at the start and the end. The line is FINAL_REPORT_MARKER, or it starts with
+    FINAL_REPORT_MARKER, followed by a colon, a hyphen, an en dash, or a space and more text.
     """
     first = next((line for line in (text or "").splitlines() if line.strip()), "")
-    return first.strip().strip("#*_` ").rstrip(":").strip().upper() == FINAL_REPORT_MARKER
+    line = _MARKDOWN_MARKS.sub("", first).strip().upper()
+    if not line.startswith(FINAL_REPORT_MARKER):
+        return False
+    rest = line[len(FINAL_REPORT_MARKER):]
+    return not rest or rest[0] in _MARKER_SEPARATORS or (rest[0] == " " and bool(rest.strip()))
 
 
 def continuation_message(count, limit):
@@ -509,18 +522,24 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
             message = response["message"]
             if message.get("role") != "assistant":
                 raise ValueError("The model response role must be assistant.")
-            messages.append(message)
             requests = message.get("tool_calls", [])
             if not isinstance(requests, list):
                 raise ValueError("Tool calls must be a list.")
+            text = message.get("content") or ""
+            if not requests and not text:
+                # The trace keeps the actual response. The conversation gets a text that model endpoints accept.
+                message = {**message, "content": EMPTY_ANSWER_TEXT}
+            messages.append(message)
             if not requests:
-                text = message.get("content") or ""
                 if summary["released"] or is_final_report(text):
                     summary["final_text"] = text
                     summary["status"] = "released" if summary["released"] else "stopped_without_release"
                     break
                 if summary["continuations"] >= max_continuations:
                     # The model stopped again without a tool call, a release, or a final report.
+                    # The last text is the report of the run, if the model gave one.
+                    if text:
+                        summary["final_text"] = text
                     summary["status"] = "stopped_without_tool_call"
                     break
                 summary["continuations"] += 1

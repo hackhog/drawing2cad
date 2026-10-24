@@ -53,6 +53,8 @@ const LIMIT_LABEL: Record<AgentLimitName, string> = {
   call_timeout_seconds: "Tool call (s)", total_timeout_seconds: "Run (s)", max_tool_text_chars: "Tool result (characters)",
   max_continuations: "Continuation requests",
 };
+// The minimum of each run limit is 1. The value 0 for max_continuations means: no continuation request.
+const LIMIT_MIN: Partial<Record<AgentLimitName, number>> = { max_continuations: 0 };
 const EFFORTS = ["", "none", "minimal", "low", "medium", "high"];
 const NO_AGENT = "Local, no AI";
 const ROW = "flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2.5 has-[:checked]:border-primary has-[:checked]:bg-highlight-bg";
@@ -317,7 +319,7 @@ function LimitFields({ limits, value, onChange }: {
       <div className="mt-2 grid grid-cols-3 gap-3 max-[700px]:grid-cols-1">
         {names.map((name) => (
           <Field key={name} id={`limit-${name}`} label={LIMIT_LABEL[name]} hint={`Default ${limits.defaults[name]}, max. ${limits.maximums[name]}`}>
-            <Input id={`limit-${name}`} type="number" inputMode="numeric" min={1} max={limits.maximums[name]} step={1}
+            <Input id={`limit-${name}`} type="number" inputMode="numeric" min={LIMIT_MIN[name] ?? 1} max={limits.maximums[name]} step={1}
               value={value[name] ?? ""} placeholder={String(limits.defaults[name])}
               onChange={(e) => onChange({ ...value, [name]: e.target.value === "" ? null : Number(e.target.value) })} />
           </Field>

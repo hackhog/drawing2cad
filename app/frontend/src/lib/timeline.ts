@@ -105,7 +105,10 @@ export function outcome(summary: RunLoopSummary | null, budget: number | undefin
   if (!summary) return null;
   const text: Record<string, string> = {
     released: "The agent released a STEP model.",
-    stopped_without_release: "The model gave its final report without a release.",
+    // Older traces have no continuations field. They used this status for each answer without a tool call.
+    stopped_without_release: summary.continuations != null
+      ? "The model gave its final report without a release."
+      : "The model answered without a tool call. The run ended without a release.",
     stopped_without_tool_call: "The model stopped without a tool call: it answered again without a tool call or a final report after the last continuation request.",
     tool_budget_reached: `The agent used all ${budget ?? summary.tool_requests} tool calls of its budget before a release.`,
     turn_budget_reached: "The agent used all model turns of its budget before a release.",

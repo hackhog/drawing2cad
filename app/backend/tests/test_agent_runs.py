@@ -481,31 +481,40 @@ def test_a_repeated_failed_request_fails_the_run_with_its_tool_field_and_count_w
         assert result["iterations"]["mcp_calls"] == 1 and result["iterations"]["blocked_requests"] == 1
 
 
-@pytest.mark.parametrize(("part", "expected"), [
-    (None, "AGENT_NO_TOOL_CALL"),
-    ({"build": {"status": "pass"}, "release": None}, "AGENT_NO_TOOL_CALL"),
-    ({"build": {"status": "pass"}, "release": {"sha256": "a" * 64}}, None),
+@pytest.mark.parametrize(("part", "error", "warning"), [
+    (None, "AGENT_NO_TOOL_CALL", None),
+    ({"build": {"status": "fail"}, "release": None}, "AGENT_NO_TOOL_CALL", None),
+    ({"build": {"status": "pass"}, "release": None}, None, "AGENT_NO_FINAL_REPORT"),
+    ({"build": {"status": "pass"}, "release": {"sha256": "a" * 64}}, None, None),
 ])
-def test_answers_without_a_tool_call_after_the_continuation_limit_fail_the_run_without_a_release(environment, part, expected):
+def test_answers_without_a_tool_call_after_the_continuation_limit_end_the_run_by_the_part_state(environment, part, error,
+                                                                                                 warning):
     with TestClient(api.create_app()) as client:
         services = client.app.state.services
         source = upload(client)
         run = services.jobs.add(source["source_id"])
+        reports = []
+        environment.setattr(services.runner, "store_report", lambda part_run, report: reports.append((part_run, report)))
         if part is not None:
             services.jobs.update(run["run_id"], part_run_id=run["part_prefix"] + "-plate", phase="modeling")
             original = services.backend.call
             environment.setattr(services.backend, "call", lambda operation, **arguments:
                                 {"part": part} if operation == "part_read" else original(operation, **arguments))
         services.runner.finish(run["run_id"], {"status": "stopped_without_tool_call", "model_turns": 9, "tool_requests": 5,
-                                               "mcp_calls": 5, "blocked_requests": 0, "continuations": 3})
+                                               "mcp_calls": 5, "blocked_requests": 0, "continuations": 3,
+                                               "final_text": "I will now build the part."})
         result = services.jobs.get(run["run_id"])
         assert result["iterations"]["continuations"] == 3
-        if expected:
-            assert result["job"]["status"] == "failed" and result["error"]["code"] == expected
-            assert result["error"]["message"] == "The model answered 4 times without a tool call and without a final report."
+        message = "The model answered 4 times without a tool call and without a final report."
+        # The last model text is the run note, also without a final report.
+        assert reports == ([] if part is None else [(run["part_prefix"] + "-plate", "I will now build the part.")])
+        if error:
+            assert result["job"]["status"] == "failed" and result["error"]["code"] == error
+            assert result["error"]["message"] == message and result["warning"] is None
         else:
-            # A released part stays a result.
-            assert result["job"]["status"] == "succeeded" and result["error"] is None
+            # A released part stays a result. A built part without a release is a finished run with a warning.
+            assert result["job"]["status"] == "succeeded" and result["phase"] == "done" and result["error"] is None
+            assert result["warning"] == ({"code": warning, "message": message} if warning else None)
 
 
 @pytest.mark.parametrize("phase", ["model_inference", None])

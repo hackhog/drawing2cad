@@ -58,7 +58,10 @@ describe("timeline", () => {
     const summary = { status: "tool_budget_reached", tool_requests: 45 } as RunLoopSummary;
     expect(outcome(summary, 45)).toBe("The agent used all 45 tool calls of its budget before a release.");
     expect(outcome({ ...summary, status: "released" }, 45)).toBe("The agent released a STEP model.");
-    expect(outcome({ ...summary, status: "stopped_without_release" }, 45)).toBe("The model gave its final report without a release.");
+    expect(outcome({ ...summary, status: "stopped_without_release", continuations: 0 }, 45)).toBe("The model gave its final report without a release.");
+    // An older trace has no continuations field: its status does not show that the model gave a final report.
+    expect(outcome({ ...summary, status: "stopped_without_release" }, 45)).toBe("The model answered without a tool call. The run ended without a release.");
+    expect(outcome({ ...summary, status: "stopped_without_release", continuations: null }, 45)).toBe("The model answered without a tool call. The run ended without a release.");
     expect(outcome({ ...summary, status: "stopped_without_tool_call" }, 45)).toMatch(/^The model stopped without a tool call/);
     expect(outcome({ ...summary, status: "new_status" }, 45)).toBe("The agent loop ended with status new_status.");
     expect(outcome(null, 45)).toBeNull();

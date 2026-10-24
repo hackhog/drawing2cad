@@ -56,7 +56,7 @@ For an explicitly requested STEP-only delivery, domain `export_step` uses `deliv
 ## End of a run
 
 Request a tool in each answer until the work is done. A text that announces the next step is not the end of the run.
-End the run with a final report. Its first line is `FINAL REPORT`.
+End the run with a final report. Its first line is `FINAL REPORT`. The line can continue after a colon, for example `FINAL REPORT: blocked because ...`.
 In the report, state the actual result, the release and drawing status, the open items, and each blocking reason.
 Without a release, a bounded client continues the run after an answer without a tool call and without this first line.
 The client sends a continuation message a limited number of times. After the limit, the run stops with the status `stopped_without_tool_call`.

@@ -200,12 +200,18 @@ class AgentRunner:
                        field=stalled.get("target"))
             return
         if summary.get("status") == "stopped_without_tool_call":
-            # The model stopped again after the last continuation message. Only a release makes the run a result.
+            # The model stopped again after the last continuation message. A release makes the run a result. A built
+            # model without a release is a finished run, but the final report is missing.
             part = self.backend.call("part_read", run_id=part_run)["part"] if part_run is not None else None
             if not (part and part.get("release")):
                 answers = summary.get("continuations", 0) + 1
-                self._fail(run_id, "AGENT_NO_TOOL_CALL",
-                           f"The model answered {answers} times without a tool call and without a final report.",
+                message = f"The model answered {answers} times without a tool call and without a final report."
+                if part and (part.get("build") or {}).get("status") == "pass":
+                    self.jobs.update(run_id, phase="done", error=None,
+                                     warning={"code": "AGENT_NO_FINAL_REPORT", "message": message},
+                                     job={"status": "succeeded", "progress": 1, "finished_at": now()})
+                    return
+                self._fail(run_id, "AGENT_NO_TOOL_CALL", message,
                            "Look at the trace. Start the run again, or use a model that requests tools until it gives "
                            "a final report.")
                 return

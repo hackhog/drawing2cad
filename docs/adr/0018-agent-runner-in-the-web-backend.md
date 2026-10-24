@@ -61,9 +61,13 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
   The client invents no replacement values; interpretation, assumptions, and corrections stay with the model.
   A deadline that ends during model inference or a tool call gives `time_budget_reached` (`AGENT_TIME_BUDGET` when no STEP release exists; a built model stays readable).
 - **Answers without a tool call:** such an answer ends the run only after a STEP release or with a final report. The first line of a
-  final report is `FINAL REPORT`; the system message and the skill name this marker. After another answer without a tool call,
-  `drive()` sends a continuation message and the run continues. The profile limit `max_continuations` (default 3) limits these
-  messages. After the limit, the run stops as `stopped_without_tool_call` (`AGENT_NO_TOOL_CALL` when no STEP release exists).
+  final report is `FINAL REPORT`; the system message and the skill name this marker. The check ignores letter case and the Markdown
+  heading and emphasis characters. After the marker, the line can continue with a colon, a hyphen, an en dash, or a space and more text.
+  After another answer without a tool call, `drive()` sends a continuation message and the run continues. The profile limit
+  `max_continuations` (default 3, 0 for no continuation message) limits these messages. After the limit, the run stops as
+  `stopped_without_tool_call`, and the last model text becomes the run note. Without a STEP release, a built model makes the run
+  succeed with the warning `AGENT_NO_FINAL_REPORT`. Without a built model, the run fails with `AGENT_NO_TOOL_CALL`.
+  The conversation keeps an empty answer as the text `(no answer)`, because model endpoints reject an assistant message without content.
 - **Configuration:** `DRAWING2CAD_AGENT_BASE_URL`, `DRAWING2CAD_AGENT_MODEL`, and `DRAWING2CAD_AGENT_API_KEY` at runtime
   (for example, from a `.env` file that is not in Git). Optional: `DRAWING2CAD_AGENT_API_KEY_HEADER` (`api-key` for Azure AI Foundry)
   and `DRAWING2CAD_AGENT_REASONING_EFFORT`. Without the three required values, the image builds and starts, and the UI reports runs as unavailable.
