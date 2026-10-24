@@ -379,11 +379,144 @@ def deterministic_failure(response):
     return {"code": code, "target": error.get("target") or error.get("field"), "message": str(message)[:500]}
 
 
-def corrective_message(name, failure):
+# JSON types that a model can send as JSON text by mistake.
+_CONTAINER_TYPES = ("object", "array")
+# Bound for the schema levels that the argument decoding follows, and for the local references of one schema.
+_MAX_DECODE_DEPTH = 64
+_MAX_REFERENCES = 32
+# A failed 'type' rule in an MCP schema error message (schema_errors.describe). The message names no input value.
+_TYPE_RULE = re.compile(r"The value at (?P<path>/\S*) fails the schema rule 'type'\. Expected: (?P<expected>.+?)\.(?=\s|$)")
+
+
+def _json_type(value):
+    """The JSON type name of a decoded JSON value."""
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, bool):
+        return "boolean"
+    if value is None:
+        return "null"
+    return "number"
+
+
+def _pointer_token(key):
+    return str(key).replace("~", "~0").replace("/", "~1")
+
+
+def _resolve_schema(schema, root):
+    """The schema after its local references (#/$defs/... or #/definitions/...), else None."""
+    for _ in range(_MAX_REFERENCES):
+        if not isinstance(schema, dict) or "$ref" not in schema:
+            return schema if isinstance(schema, dict) else None
+        reference = schema["$ref"]
+        if not isinstance(reference, str) or not reference.startswith(("#/$defs/", "#/definitions/")):
+            return None
+        section, _, name = reference[2:].partition("/")
+        definitions = root.get(section) if isinstance(root, dict) else None
+        if not isinstance(definitions, dict):
+            return None
+        schema = definitions.get(name.replace("~1", "/").replace("~0", "~"))
+    return None
+
+
+def _expected_containers(schema):
+    """The container types (object, array) that a schema expects. Empty if the schema also permits a string."""
+    types = schema.get("type")
+    types = [types] if isinstance(types, str) else types if isinstance(types, list) else []
+    if "string" in types:
+        return set()
+    return {item for item in types if item in _CONTAINER_TYPES}
+
+
+def decode_json_text_arguments(arguments, schema):
+    """Decode argument values that a model sent as JSON text where the published schema expects an object or array.
+
+    The decoding applies only to a string value whose schema type is object or array (also in a type list without
+    string), and only if the string is valid JSON of an expected type. It follows the "properties" of object schemas
+    and the "items" schema of array schemas, at the top level and in nested values, and resolves local references.
+    It keeps other values unchanged, also strings of an unknown or unresolved schema. The MCP schema and the MCP
+    validation stay strict: the server receives only the decoded value.
+
+    Return the arguments to send and one record for each decoded value: the JSON pointer, the original type, and the
+    decoded type. The records contain no input values. Without a decoded value, the result is the same object.
+    """
+    decoded = []
+
+    def visit(value, node, path, depth):
+        node = _resolve_schema(node, schema)
+        if node is None or depth > _MAX_DECODE_DEPTH:
+            return value
+        expected = _expected_containers(node)
+        if isinstance(value, str) and expected:
+            try:
+                candidate = json.loads(value)
+            except (ValueError, RecursionError):
+                return value
+            if _json_type(candidate) not in expected:
+                return value
+            decoded.append({"path": path, "original_type": "string", "decoded_type": _json_type(candidate)})
+            value = candidate
+        properties = node.get("properties")
+        if isinstance(value, dict) and isinstance(properties, dict):
+            return {key: visit(item, properties[key], f"{path}/{_pointer_token(key)}", depth + 1) if key in properties else item
+                    for key, item in value.items()}
+        if isinstance(value, list) and isinstance(node.get("items"), dict):
+            return [visit(item, node["items"], f"{path}/{index}", depth + 1) for index, item in enumerate(value)]
+        return value
+
+    if not isinstance(arguments, dict):
+        return arguments, decoded
+    result = visit(arguments, schema, "", 0)
+    return (result if decoded else arguments), decoded
+
+
+def _pointer_value(arguments, path):
+    """The value at a JSON pointer in the arguments, else None."""
+    value = arguments
+    for token in path.split("/")[1:]:
+        token = token.replace("~1", "/").replace("~0", "~")
+        if isinstance(value, dict) and token in value:
+            value = value[token]
+        elif isinstance(value, list) and token.isdigit() and int(token) < len(value):
+            value = value[int(token)]
+        else:
+            return None
+    return value
+
+
+def json_text_hints(response, arguments):
+    """Hints for failed 'type' rules where the schema expects an object or array and the request sent a string.
+
+    The hints name only the JSON pointer and the types, never the input value.
+    """
+    data = response.get("structuredContent", response.get("structured_content")) or {}
+    error = data.get("error") if isinstance(data, dict) and isinstance(data.get("error"), dict) else {}
+    messages = [error.get("message")] + [item.get("message") for item in error.get("defects") or [] if isinstance(item, dict)]
+    hints = {}
+    for message in messages:
+        for match in _TYPE_RULE.finditer(message if isinstance(message, str) else ""):
+            try:
+                expected = json.loads(match["expected"])
+            except ValueError:
+                continue
+            expected = [expected] if isinstance(expected, str) else expected if isinstance(expected, list) else []
+            container = next((item for item in _CONTAINER_TYPES if item in expected), None)
+            path = match["path"]
+            if container and path not in hints and isinstance(_pointer_value(arguments, path), str):
+                hints[path] = f"The value at {path} is a string. Send the JSON {container} itself, not a JSON text."
+    return list(hints.values())
+
+
+def corrective_message(name, failure, hints=()):
     """One bounded instruction after a failed request. It names the error and invents no replacement values."""
     at = f" at {failure['target']}" if failure["target"] else ""
+    hint = "".join(f"{text} " for text in hints)
     return {"role": "user", "content": (
-        f"The {name} request failed with {failure['code']}{at}: {failure['message']} "
+        f"The {name} request failed with {failure['code']}{at}: {failure['message']} {hint}"
         "The client will not send an identical request again while the server state is unchanged. An identical request "
         "stops the run without progress. Correct the arguments with the error and the live tool schema, make new source "
         "observations, or use another valid approach. If this tool is optional for the current part, for example a "
@@ -430,6 +563,10 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
     An answer without a tool call ends the run only after a release or with a final report (FINAL_REPORT_MARKER).
     Otherwise the client sends a continuation message, at most `max_continuations` times. After that limit, the
     status is stopped_without_tool_call.
+
+    Before each MCP call, the client decodes argument values that the model sent as JSON text where the published
+    input schema expects an object or array (decode_json_text_arguments). The trace records each decoding as an
+    argument-decoded event without input values.
     """
     tools = tool_catalog(catalog)
     if references is not None:
@@ -437,6 +574,8 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
         trace.write("skill-files", {"files": [{"path": path, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
                                               for path, text in references.files.items()]})
     available = {item["function"]["name"] for item in tools}
+    # The published input schemas. The client decodes JSON text arguments only where these schemas expect a container.
+    input_schemas = {item["function"]["name"]: item["function"].get("parameters") or {} for item in tools}
     domain = "source_id" in plan
     source = f"source ID {plan['source_id']} (SHA-256 {plan['source_sha256']})" if domain else plan["source_path"]
     prompt = ("Follow the supplied drawing2cad skill. Use only listed MCP tools for PDF and CAD work. "
@@ -571,6 +710,13 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                 summary["tool_requests"] += 1
                 function = request.get("function", {})
                 name, arguments = function.get("name"), function.get("arguments", {})
+                # The model response in the trace keeps the original arguments. The request and the repeat guard use
+                # the decoded arguments. Each decoding is an event before the request, so the request and its
+                # response stay adjacent in the trace.
+                arguments, decodings = decode_json_text_arguments(arguments, input_schemas.get(name) or {})
+                for decoding in decodings:
+                    trace.write("argument-decoded", {"turn": turn, "request_number": summary["tool_requests"], "name": name,
+                                                     **decoding})
                 trace.write("tool-request", {"turn": turn, "request_number": summary["tool_requests"], "name": name, "arguments": arguments})
                 if name == "request_user_input":
                     if not isinstance(arguments, dict) or set(arguments) != {"question", "reason"} or not all(isinstance(arguments.get(key), str) and arguments[key].strip() for key in ("question", "reason")):
@@ -630,7 +776,8 @@ async def drive(session, catalog, plan, skill, trace, model_call=call_model, ref
                 failure = deterministic_failure(response_json)
                 if failure is not None:
                     failures[key] = {**failure, "tool": name, "repeat_count": 1}
-                    correction = corrective_message(name, failure)
+                    hints = json_text_hints(response_json, arguments) if failure["code"] == "INVALID_ARGUMENTS" else []
+                    correction = corrective_message(name, failure, hints)
                     corrections.append(correction)
                     trace.write("corrective-instruction", {"turn": turn, "name": name, "failure": failure,
                                                            "message": correction["content"]})

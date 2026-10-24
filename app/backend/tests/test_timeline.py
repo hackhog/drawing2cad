@@ -63,6 +63,27 @@ def test_a_continuation_message_is_a_step_of_its_own(tmp_path):
     assert timeline.summary(t)["status"] == "stopped_without_tool_call" and timeline.summary(t)["continuations"] == 3
 
 
+def test_a_decoded_argument_is_a_step_of_its_own_before_its_tool_request(tmp_path):
+    t = tmp_path / "trace"
+    t.mkdir()
+    write(t, 1, "argument-decoded", turn=2, request_number=5, name="drawing_validate", path="/drawing_spec",
+          original_type="string", decoded_type="object")
+    write(t, 2, "tool-request", turn=2, request_number=5, name="drawing_validate", arguments={"drawing_spec": {}})
+    write(t, 3, "tool-response", turn=2, name="drawing_validate", duration_seconds=0.1, response=response({"status": "pass"}, False))
+    steps = timeline.steps(t)
+    # The decoding does not separate the tool request from its response.
+    assert [(s["sequence"], s["kind"]) for s in steps] == [(1, "decoding"), (2, "tool")]
+    assert steps[1]["status"] == "ok"
+    decoding = steps[0]
+    assert {key: decoding[key] for key in ("turn", "tool", "path", "original_type", "decoded_type")} == {
+        "turn": 2, "tool": "drawing_validate", "path": "/drawing_spec", "original_type": "string", "decoded_type": "object"}
+    assert decoding["text"] == ("The model sent the value at /drawing_spec as a JSON text, a string. "
+                                "The tool schema expects an object. The loop decoded the text and sent the object.")
+    detail = timeline.step_detail(t, 1)
+    assert detail["kind"] == "decoding" and detail["tool"] == "drawing_validate" and detail["text"] == decoding["text"]
+    assert detail["arguments"] is None and detail["problem"] is None
+
+
 def test_steps_join_requests_with_responses_and_name_the_specific_problem(trace):
     steps = timeline.steps(trace)
     assert [(s["sequence"], s["kind"]) for s in steps] == [
