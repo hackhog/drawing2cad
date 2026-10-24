@@ -30,20 +30,23 @@ ACTOR = "web-ui"
 
 # Run limits of the agent loop. A profile can set each one; an unset limit uses the default.
 DEFAULT_LIMITS = {"step_budget": 45, "max_turns": 60, "model_timeout_seconds": 300, "call_timeout_seconds": 240,
-                  "total_timeout_seconds": 2400, "max_tool_text_chars": 80000}
+                  "total_timeout_seconds": 2400, "max_tool_text_chars": 80000, "max_continuations": 3}
 # The deployment can change each maximum with DRAWING2CAD_RUN_MAX_<LIMIT>, for example DRAWING2CAD_RUN_MAX_STEP_BUDGET.
 DEFAULT_MAXIMUMS = {"step_budget": 100, "max_turns": 150, "model_timeout_seconds": 1800, "call_timeout_seconds": 900,
-                    "total_timeout_seconds": 14400, "max_tool_text_chars": 400000}
+                    "total_timeout_seconds": 14400, "max_tool_text_chars": 400000, "max_continuations": 10}
 MAXIMUM_PREFIX = "DRAWING2CAD_RUN_MAX_"
+# The minimum of each run limit is 1. The value 0 for max_continuations means: no continuation message.
+LIMIT_MINIMUMS = {name: 1 for name in DEFAULT_LIMITS} | {"max_continuations": 0}
 
 
-def _positive_int(text: str, variable: str) -> int:
+def _limit_int(text: str, variable: str, minimum: int = 1) -> int:
+    message = f"{variable} must be a positive integer." if minimum == 1 else f"{variable} must be an integer from {minimum}."
     try:
         value = int(text)
     except ValueError:
-        raise ValueError(f"{variable} must be a positive integer.") from None
-    if value < 1:
-        raise ValueError(f"{variable} must be a positive integer.")
+        raise ValueError(message) from None
+    if value < minimum:
+        raise ValueError(message)
     return value
 
 
@@ -53,20 +56,21 @@ def maximums_from_env() -> dict[str, int]:
         variable = MAXIMUM_PREFIX + name.upper()
         text = os.environ.get(variable, "").strip()
         if text:
-            maximums[name] = _positive_int(text, variable)
+            maximums[name] = _limit_int(text, variable, LIMIT_MINIMUMS[name])
     return maximums
 
 
 def check_limits(limits: dict[str, Any], maximums: dict[str, int], source: str = "limits") -> dict[str, int]:
-    """Only known limits, each an integer from 1 to its maximum. Raise a ServiceError that names the field."""
+    """Only known limits, each an integer from its minimum to its maximum. Raise a ServiceError that names the field."""
     checked = {}
     for name, value in limits.items():
         if value is None:
             continue
         if name not in DEFAULT_LIMITS:
             raise ServiceError(422, "INVALID_PROFILE", f"Unknown run limit: {name}.", field=f"{source}.{name}")
-        if type(value) is not int or not 1 <= value <= maximums[name]:
-            raise ServiceError(422, "INVALID_PROFILE", f"{name} must be an integer from 1 to {maximums[name]}.",
+        if type(value) is not int or not LIMIT_MINIMUMS[name] <= value <= maximums[name]:
+            raise ServiceError(422, "INVALID_PROFILE",
+                               f"{name} must be an integer from {LIMIT_MINIMUMS[name]} to {maximums[name]}.",
                                field=f"{source}.{name}", recovery="Use a smaller value or ask the operator to change "
                                f"{MAXIMUM_PREFIX}{name.upper()}.")
         checked[name] = value
@@ -86,7 +90,7 @@ def env_profile_limits(names: list[str], maximums: dict[str, int]) -> dict[str, 
         for limit in DEFAULT_LIMITS:
             text = os.environ.get(prefix + limit.upper(), "").strip()
             if text:
-                limits[limit] = _positive_int(text, prefix + limit.upper())
+                limits[limit] = _limit_int(text, prefix + limit.upper(), LIMIT_MINIMUMS[limit])
         try:
             result[name] = check_limits(limits, maximums, prefix.rstrip("_"))
         except ServiceError as error:

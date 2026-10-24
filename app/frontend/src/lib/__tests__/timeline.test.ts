@@ -11,6 +11,7 @@ const tool = (sequence: number, name: string, code: string | null = null, second
   status: code ? "failed" : "ok", problem: code ? { code, target: "head_stem_fillet", message: `${code} message` } : null,
 });
 const correction: RunStep = { ...base, sequence: 9, kind: "correction", tool: "build_from_description", code: "EDGE_SELECTION", text: "" };
+const continuation: RunStep = { ...base, sequence: 11, kind: "continuation", count: 1, limit: 3, text: "No release exists." };
 
 const steps: RunStep[] = [
   { ...base, sequence: 1, turn: 0, kind: "skill", paths: ["references/a.md"], text: "the first step" },
@@ -31,7 +32,8 @@ describe("timeline", () => {
   });
 
   it("adds model time and tool time separately", () => {
-    expect(totals(steps)).toEqual({ modelSeconds: 30, toolSeconds: 7, turns: 1, calls: 4, failed: 3, corrections: 1 });
+    expect(totals(steps)).toEqual({ modelSeconds: 30, toolSeconds: 7, turns: 1, calls: 4, failed: 3, corrections: 1, continuations: 0 });
+    expect(totals([...steps, model(10, 2, []), continuation]).continuations).toBe(1);
   });
 
   it("names steps and explains them for beginners", () => {
@@ -42,10 +44,29 @@ describe("timeline", () => {
     expect(explanation(tool(8, "unknown_tool"))).toBe("A tool of the MCP server.");
   });
 
+  it("shows a continuation request as a loop step of its own", () => {
+    expect(layerOf(continuation)).toBe("loop");
+    expect(stepLabel(continuation)).toBe("Continuation request 1");
+    expect(explanation(continuation)).toBe("The model answered without a tool call and without a final report, and no release exists. "
+      + "The loop asked the model to continue (request 1 of 3).");
+    // An answer without a tool call ends the run only after a release or with a final report.
+    expect(explanation(model(10, 2, []))).toBe("The model answered without a tool call. This ends the run after a release "
+      + "or with a final report (first line FINAL REPORT). Otherwise the loop asks the model to continue.");
+  });
+
   it("explains why the loop ended", () => {
     const summary = { status: "tool_budget_reached", tool_requests: 45 } as RunLoopSummary;
     expect(outcome(summary, 45)).toBe("The agent used all 45 tool calls of its budget before a release.");
     expect(outcome({ ...summary, status: "released" }, 45)).toBe("The agent released a STEP model.");
+    expect(outcome({ ...summary, status: "stopped_without_release", continuations: 0 }, 45)).toBe("The model gave its final report without a release.");
+    // An older trace has no continuations field: its status does not show that the model gave a final report.
+    expect(outcome({ ...summary, status: "stopped_without_release" }, 45)).toBe("The model answered without a tool call. The run ended without a release.");
+    expect(outcome({ ...summary, status: "stopped_without_release", continuations: null }, 45)).toBe("The model answered without a tool call. The run ended without a release.");
+    expect(outcome({ ...summary, status: "stopped_without_tool_call", continuations: 3 }, 45)).toBe(
+      "The model stopped without a tool call: it answered again without a tool call or a final report after the last continuation request.");
+    // With the limit 0 no continuation request was sent.
+    expect(outcome({ ...summary, status: "stopped_without_tool_call", continuations: 0 }, 45)).toBe(
+      "The model answered without a tool call and without a final report. Continuation requests are off (limit 0), so the run ended.");
     expect(outcome({ ...summary, status: "new_status" }, 45)).toBe("The agent loop ended with status new_status.");
     expect(outcome(null, 45)).toBeNull();
   });

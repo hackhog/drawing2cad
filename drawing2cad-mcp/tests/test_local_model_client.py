@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from drawing2cad_mcp.local_model_client import (
-    ALLOWED_TOOLS, DOMAIN_SKILL_REFERENCES, MUTATION_TOOLS, Trace, authorize_call, drive, response_messages, skill_references,
-    skill_text, tool_catalog, validate_plan,
+    ALLOWED_TOOLS, DOMAIN_SKILL_REFERENCES, FINAL_REPORT_MARKER, MUTATION_TOOLS, Trace, authorize_call, drive, is_final_report,
+    response_messages, skill_references, skill_text, tool_catalog, validate_plan,
 )
 
 
@@ -21,6 +21,11 @@ def plan(**changes):
 
 def call(name, arguments=None):
     return {"function": {"name": name, "arguments": arguments or {}}}
+
+
+def report(text):
+    """A final report: the agreed marker, then the text."""
+    return f"{FINAL_REPORT_MARKER}\n{text}"
 
 
 def model_response(calls=(), text=""):
@@ -51,7 +56,7 @@ def inference(*responses):
     {"step_budget": 0}, {"step_budget": True}, {"total_timeout_seconds": 1000000},
     {"ollama_url": "https://public.example"}, {"ollama_url": "http://127.0.0.1:11434/private"},
     {"run_prefix": "../other"}, {"source_path": "/inputs/file.step"},
-    {"docker_bridge": {"container": "safe", "image": "safe"}},
+    {"docker_bridge": {"container": "safe", "image": "safe"}}, {"max_continuations": 11}, {"max_continuations": -1},
 ])
 def test_invalid_plan(changes):
     with pytest.raises(ValueError):
@@ -133,6 +138,7 @@ async def test_uploaded_source_prompt_requires_a_complete_drawing_before_release
     assert "drawing_verify" in system and "release.pair_current" in system
     assert "STEP-only is allowed only for an explicit STEP-only request" in system
     assert "Do not substitute a STEP-only release" in system
+    assert f"its first line is {FINAL_REPORT_MARKER}" in system
     assert "complete dimensioned drawing" in requests[0]["messages"][1]["content"]
     assert [tool["function"]["name"] for tool in requests[0]["tools"]] == ["drawing_review", "request_user_input"]
 
@@ -221,7 +227,7 @@ async def test_drive_supplies_each_step_reference_once_and_skill_read_uses_no_bu
     responses = iter([
         model_response([call("pdf_info", {"path": "/inputs/part.pdf"}), call("skill_read", {"path": "references/other.md"})]),
         model_response([call("pdf_render_page", {"path": "/inputs/part.pdf"}), call("skill_read", {"path": "../x"})]),
-        model_response(text="Done."),
+        model_response(text=report("Done.")),
     ])
 
     def model(plan, payload, timeout):
@@ -302,6 +308,8 @@ async def test_release_requires_actual_tool_response(tmp_path):
         inference(model_response([call("export_step", {"run_id": "localtest-a"})]), model_response(text="Finished.")))
     assert result["status"] == "released"
     assert result["final_text"] == "Finished."
+    # A released run ends at an answer without a tool call, also without the marker.
+    assert result["continuations"] == 0 and "continuation" not in trace_kinds(tmp_path)
 
 
 @pytest.mark.asyncio
@@ -316,7 +324,7 @@ async def test_later_mutation_invalidates_recorded_release(tmp_path, mutation):
         arguments["sources"] = [{"path": "/inputs/part.pdf", "role": "construction"}]
     result = await drive(ChangingSession(), catalog("export_step", mutation), plan(), "Test skill", Trace(tmp_path),
         inference(model_response([call("export_step", {"run_id": "localtest-a"})]),
-                  model_response([call(mutation, arguments)]), model_response(text="Finished.")))
+                  model_response([call(mutation, arguments)]), model_response(text=report("Finished."))))
     assert result["released"] is False
     assert result["status"] == "stopped_without_release"
 
@@ -353,7 +361,7 @@ async def test_uncertain_mutation_cannot_retain_release_claim(tmp_path):
 
 @pytest.mark.asyncio
 async def test_final_claim_without_release_is_not_pass(tmp_path):
-    result = await drive(Session(), [], plan(), "Test skill", Trace(tmp_path), inference(model_response(text="Success.")))
+    result = await drive(Session(), [], plan(), "Test skill", Trace(tmp_path), inference(model_response(text=report("Success."))))
     assert result["status"] == "stopped_without_release"
     assert result["released"] is False
 
@@ -380,3 +388,124 @@ def test_failed_call_shows_its_error_in_text_content():
     assert "- /references/0/p1: The reference endpoints p0 and p1 are equal." in text
     passed = {"structuredContent": {"status": "pass"}, "content": [{"type": "text", "text": '{"status": "pass"}'}]}
     assert json.loads(response_messages("pdf_info", passed, 4000)[0]["content"])["content"] == []
+
+
+def trace_kinds(path):
+    return [json.loads(line)["kind"] for line in (path / "trace.jsonl").read_text().splitlines()]
+
+
+def recorded_model(*responses):
+    """A model call that records the messages of each request and returns the scripted responses in sequence."""
+    requests = []
+    iterator = iter(responses)
+
+    def model(plan, payload, timeout):
+        requests.append(json.loads(json.dumps(payload["messages"])))
+        return next(iterator)
+
+    return model, requests
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    ("FINAL REPORT\nBlocked: the hole depth is missing.", True),
+    ("\n  final report:\nResult.", True),
+    ("## **Final Report**\nResult.", True),
+    ("**FINAL REPORT**:\nResult.", True),
+    ("## Final report", True),
+    ("FINAL REPORT: blocked because the hole depth is missing.", True),
+    ("FINAL REPORT - blocked because the hole depth is missing.", True),
+    ("FINAL REPORT \u2013 blocked because the hole depth is missing.", True),
+    ("Final report on the part\nResult.", True),
+    ("`FINAL_REPORT`", False),
+    ("Now I will build the part description and validate it with part_validate.", False),
+    ("Now I will write the final report", False),
+    ("Summary\nFINAL REPORT", False),
+    ("FINAL REPORTS", False),
+    ("", False),
+    (None, False),
+])
+def test_a_final_report_starts_with_the_marker(text, expected):
+    assert is_final_report(text) is expected
+
+
+@pytest.mark.asyncio
+async def test_an_answer_without_a_tool_call_gets_a_continuation_message_and_the_run_continues(tmp_path):
+    session = Session()
+    model, requests = recorded_model(
+        model_response(text="Now I will build the part description and validate it with part_validate."),
+        model_response([call("part_validate", {"description": {}})]),
+        model_response(text=report("Blocked: no release; the drawing has no hole depth.")),
+    )
+    result = await drive(session, catalog("part_validate"), plan(), "Skill", Trace(tmp_path), model_call=model)
+    assert session.calls == [("part_validate", {"description": {}})]
+    assert result["status"] == "stopped_without_release" and result["continuations"] == 1
+    assert result["final_text"] == report("Blocked: no release; the drawing has no hole depth.")
+    assert result["model_turns"] == 3
+    # The second request ends with the announcement of the model and the continuation message.
+    continuation = requests[1][-1]
+    assert continuation["role"] == "user" and continuation["content"].startswith("No release exists. Continue with the next tool call.")
+    assert f"start it with the line {FINAL_REPORT_MARKER} and name the blocking reason" in continuation["content"]
+    assert requests[1][-2]["content"].startswith("Now I will build")
+    events = [json.loads(line) for line in (tmp_path / "trace.jsonl").read_text().splitlines()]
+    continuations = [event for event in events if event["kind"] == "continuation"]
+    assert len(continuations) == 1
+    assert {key: continuations[0][key] for key in ("turn", "count", "limit", "message")} == {
+        "turn": 1, "count": 1, "limit": 3, "message": continuation["content"]}
+
+
+@pytest.mark.asyncio
+async def test_a_final_report_ends_the_run_without_a_continuation_message(tmp_path):
+    model, requests = recorded_model(model_response(text=report("Blocked: the source has no view of the slot.")))
+    result = await drive(Session(), [], plan(), "Skill", Trace(tmp_path), model_call=model)
+    assert result["status"] == "stopped_without_release" and result["continuations"] == 0
+    assert result["final_text"] == report("Blocked: the source has no view of the slot.")
+    assert len(requests) == 1 and "continuation" not in trace_kinds(tmp_path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, 1, 3])
+async def test_the_run_stops_without_a_tool_call_after_the_continuation_limit(tmp_path, limit):
+    answers = [model_response(text=f"I will continue ({number}).") for number in range(limit + 1)]
+    model, requests = recorded_model(*answers)
+    result = await drive(Session(), [], plan(max_continuations=limit), "Skill", Trace(tmp_path), model_call=model)
+    assert result["status"] == "stopped_without_tool_call"
+    assert result["continuations"] == limit and result["model_turns"] == limit + 1
+    # The last model text is the report of the run, also without the marker.
+    assert result["final_text"] == f"I will continue ({limit})." and result["released"] is False
+    assert len(requests) == limit + 1
+    assert trace_kinds(tmp_path).count("continuation") == limit
+    if limit:
+        assert requests[-1][-1]["content"].endswith(f"This is continuation request {limit} of {limit}.")
+    else:
+        # The limit 0 sends no continuation message: the first answer without a tool call ends the run.
+        assert requests[-1][-1]["role"] == "user" and not requests[-1][-1]["content"].startswith("No release exists.")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ["", None])
+async def test_an_empty_answer_gets_a_text_and_a_continuation_message(tmp_path, content):
+    empty = {"message": {"role": "assistant", "content": content}, "eval_count": 0}
+    model, requests = recorded_model(empty, empty)
+    result = await drive(Session(), [], plan(max_continuations=1), "Skill", Trace(tmp_path), model_call=model)
+    assert result["status"] == "stopped_without_tool_call" and result["continuations"] == 1
+    # An empty answer gives no report.
+    assert "final_text" not in result
+    # The next request has a valid assistant message with text, then the continuation message.
+    answer, continuation = requests[1][-2:]
+    assert answer == {"role": "assistant", "content": "(no answer)"}
+    assert continuation["role"] == "user" and continuation["content"].startswith("No release exists.")
+    assert all(message.get("content") is not None for message in requests[1])
+    # The trace keeps the actual response.
+    events = [json.loads(line) for line in (tmp_path / "trace.jsonl").read_text().splitlines()]
+    assert [event["response"]["message"]["content"] for event in events if event["kind"] == "model-response"] == [content] * 2
+
+
+@pytest.mark.asyncio
+async def test_a_released_run_that_answers_without_a_tool_call_gets_no_continuation_message(tmp_path):
+    session = Session({"isError": False, "structuredContent": {"status": "pass", "release": {"sha256": "a" * 64}}, "content": []})
+    model, requests = recorded_model(model_response([call("export_step", {"run_id": "localtest-a"})]),
+                                     model_response(text="The STEP model is released."))
+    result = await drive(session, catalog("export_step"), plan(), "Skill", Trace(tmp_path), model_call=model)
+    assert result["status"] == "released" and result["continuations"] == 0
+    assert result["final_text"] == "The STEP model is released."
+    assert len(requests) == 2 and "continuation" not in trace_kinds(tmp_path)

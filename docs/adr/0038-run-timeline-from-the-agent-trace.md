@@ -24,7 +24,7 @@ The run files show the raw trace, but users who do not know the skill and the MC
 
 - The web backend condenses the trace into steps. `GET /api/runs/{run_id}/steps` returns a bounded list of steps and the final loop summary.
   `GET /api/runs/{run_id}/steps/{sequence}` returns the full arguments, the result text, the problem, and up to four images of one step.
-- A step is a skill reference supply, a model turn, a tool call, or a corrective instruction. A tool step joins the tool request with its response.
+- A step is a skill reference supply, a model turn, a tool call, a corrective instruction, or a continuation message. A tool step joins the tool request with its response.
 - The backend never reads model requests. It reads only the event files that it presents. Texts in the step list are shortened.
 - For a failed tool call, the backend names the most specific problem: a service error, then a build error with its feature, then the first validation defect.
   This is presentation only. The backend adds no CAD, drawing, or release rule.

@@ -2,7 +2,7 @@
 name: drawing2cad
 description: Reconstruct or change CAD through drawing2cad-mcp from authorized PDF drawings. Record assumptions, build editable part data, and validate STEP. Use the domain profile for dimensioned DXF/PDF delivery.
 metadata:
-  version: "0.32.0"
+  version: "0.33.0"
 ---
 
 # drawing2cad
@@ -52,6 +52,14 @@ Track the client tool-call budget separately. Reserve calls for one final diagno
 If drawing verification or review cannot pass, report the incomplete delivery and its reasons.
 Do not substitute a STEP-only release for a requested complete-service delivery.
 For an explicitly requested STEP-only delivery, domain `export_step` uses `delivery: "step_only"` and records the actual drawing status.
+
+## End of a run
+
+Request a tool in each answer until the work is done. A text that announces the next step is not the end of the run.
+End the run with a final report. Its first line is `FINAL REPORT`. The line can continue after a colon, for example `FINAL REPORT: blocked because ...`.
+In the report, state the actual result, the release and drawing status, the open items, and each blocking reason.
+Without a release, a bounded client continues the run after an answer without a tool call and without this first line.
+The client sends a continuation message a limited number of times. After the limit, the run stops with the status `stopped_without_tool_call`.
 
 ## Optional, profile-dependent extensions
 

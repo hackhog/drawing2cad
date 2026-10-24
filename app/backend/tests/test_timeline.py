@@ -47,6 +47,22 @@ def trace(tmp_path):
     return t
 
 
+def test_a_continuation_message_is_a_step_of_its_own(tmp_path):
+    t = tmp_path / "trace"
+    t.mkdir()
+    write(t, 1, "model-response", turn=4, duration_seconds=1.0, response={
+        "message": {"role": "assistant", "content": "Now I will build the part description."}})
+    write(t, 2, "continuation", turn=4, count=1, limit=3, message="No release exists. Continue with the next tool call.")
+    write(t, 3, "summary", status="stopped_without_tool_call", released=False, continuations=3)
+    steps = timeline.steps(t)
+    assert [(s["sequence"], s["kind"]) for s in steps] == [(1, "model"), (2, "continuation")]
+    assert {key: steps[1][key] for key in ("turn", "count", "limit", "text")} == {
+        "turn": 4, "count": 1, "limit": 3, "text": "No release exists. Continue with the next tool call."}
+    detail = timeline.step_detail(t, 2)
+    assert detail["kind"] == "continuation" and detail["text"].startswith("No release exists.") and detail["problem"] is None
+    assert timeline.summary(t)["status"] == "stopped_without_tool_call" and timeline.summary(t)["continuations"] == 3
+
+
 def test_steps_join_requests_with_responses_and_name_the_specific_problem(trace):
     steps = timeline.steps(trace)
     assert [(s["sequence"], s["kind"]) for s in steps] == [
@@ -91,7 +107,7 @@ def test_long_texts_are_bounded(trace):
     write(trace, 13, "summary", status="tool_budget_reached", released=False, model_turns=3, conversation=["long"])
     assert timeline.summary(trace) == {"status": "tool_budget_reached", "released": False, "model_turns": 3,
                                        "tool_requests": None, "mcp_calls": None, "blocked_requests": None,
-                                       "model_seconds": None, "mcp_seconds": None, "duration_seconds": None}
+                                       "continuations": None, "model_seconds": None, "mcp_seconds": None, "duration_seconds": None}
 
 
 def test_the_api_serves_steps_and_step_details(environment):  # noqa: F811

@@ -16,7 +16,7 @@ from .mapping import PHASE_BY_TOOL
 
 EVENT_FILE = re.compile(r"(?P<sequence>\d{3,})-(?P<kind>[a-z-]+)\.json")
 # Event kinds of the timeline. Model requests, the conversation, and the summary are not steps.
-STEP_KINDS = {"skill-references", "model-response", "tool-request", "tool-response", "corrective-instruction"}
+STEP_KINDS = {"skill-references", "model-response", "tool-request", "tool-response", "corrective-instruction", "continuation"}
 # Bounds for the step list, which the UI polls during a run, and for the details of one step.
 PREVIEW_CHARS = 280
 DETAIL_CHARS = 20000
@@ -134,6 +134,9 @@ def steps(trace: Path) -> list[dict[str, Any]]:
             failure = event.get("failure") or {}
             result.append({**base, "kind": "correction", "turn": event.get("turn"), "tool": event.get("name"),
                            "code": failure.get("code"), "text": _short(event.get("message", ""), PREVIEW_CHARS)})
+        elif kind == "continuation":
+            result.append({**base, "kind": "continuation", "turn": event.get("turn"), "count": event.get("count"),
+                           "limit": event.get("limit"), "text": _short(event.get("message", ""), PREVIEW_CHARS)})
         elif kind == "skill-references":
             result.append({**base, "kind": "skill", "turn": event.get("turn"), "paths": event.get("paths") or [],
                            "text": event.get("reason") or ""})
@@ -149,7 +152,8 @@ def summary(trace: Path) -> dict[str, Any] | None:
         return None
     data = events[-1]
     return {key: data.get(key) for key in ("status", "released", "model_turns", "tool_requests", "mcp_calls",
-                                           "blocked_requests", "model_seconds", "mcp_seconds", "duration_seconds")}
+                                           "blocked_requests", "continuations", "model_seconds", "mcp_seconds",
+                                           "duration_seconds")}
 
 
 def step_detail(trace: Path, sequence: int) -> dict[str, Any] | None:
@@ -180,6 +184,9 @@ def step_detail(trace: Path, sequence: int) -> dict[str, Any] | None:
     if kind == "corrective-instruction":
         return {"sequence": sequence, "kind": "correction", "text": _short(event.get("message", ""), DETAIL_CHARS),
                 "arguments": None, "result": None, "problem": event.get("failure"), "images": []}
+    if kind == "continuation":
+        return {"sequence": sequence, "kind": "continuation", "text": _short(event.get("message", ""), DETAIL_CHARS),
+                "arguments": None, "result": None, "problem": None, "images": []}
     if kind == "skill-references":
         return {"sequence": sequence, "kind": "skill", "text": event.get("reason") or "",
                 "arguments": _json_text(event.get("paths") or []), "result": None, "problem": None, "images": []}

@@ -362,3 +362,46 @@ def test_the_first_profile_does_not_overwrite_a_selection_of_another_backend(tmp
     finally:
         first.close()
         second.close()
+
+
+def test_the_continuation_limit_is_a_run_limit_with_a_default_and_a_maximum(environment):
+    assert DEFAULT_LIMITS["max_continuations"] == 3 and DEFAULT_MAXIMUMS["max_continuations"] == 10
+    with TestClient(api.create_app()) as client:
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "limits": {"max_continuations": 11}})
+        assert res.status_code == 422 and res.json()["detail"]["field"] == "limits.max_continuations"
+        client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "limits": {"max_continuations": 5}})
+        view = client.get("/api/agent/profiles").json()
+        assert view["profiles"][0]["limits"] == {"max_continuations": 5}
+
+
+def test_the_continuation_limit_zero_means_no_continuation_message(environment):
+    submitted = []
+    no_submit(environment, submitted)
+    with TestClient(api.create_app()) as client:
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "limits": {"max_continuations": -1}})
+        assert res.status_code == 422 and res.json()["detail"]["field"] == "limits.max_continuations"
+        assert "from 0 to 10" in res.json()["detail"]["message"]
+        # The other limits keep the minimum 1.
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "limits": {"step_budget": 0}})
+        assert res.status_code == 422 and res.json()["detail"]["field"] == "limits.step_budget"
+        res = client.put("/api/agent/profiles/P", json={**OPENROUTER, "api_key": "k", "limits": {"max_continuations": 0}})
+        assert res.status_code == 200
+        assert client.get("/api/agent/profiles").json()["profiles"][0]["limits"] == {"max_continuations": 0}
+        source = upload(client)
+        run = client.post(f"/api/sources/{source['source_id']}/runs").json()
+        assert run["agent"]["limits"]["max_continuations"] == 0
+        assert runner_module.run_limits(run)["max_continuations"] == 0
+
+
+def test_environment_profiles_accept_the_continuation_limit_zero(environment):
+    with_model_endpoint(environment)
+    environment.setenv("DRAWING2CAD_AGENT_MAX_CONTINUATIONS", "0")
+    with TestClient(api.create_app()) as client:
+        assert client.app.state.services.runner.profiles.limits("Standard")["max_continuations"] == 0
+    environment.setenv("DRAWING2CAD_AGENT_MAX_CONTINUATIONS", "-1")
+    with pytest.raises(ValueError, match="DRAWING2CAD_AGENT_MAX_CONTINUATIONS"):
+        api.create_app()
+    environment.setenv("DRAWING2CAD_AGENT_MAX_CONTINUATIONS", "0")
+    environment.setenv("DRAWING2CAD_RUN_MAX_MAX_CONTINUATIONS", "0")
+    with TestClient(api.create_app()) as client:
+        assert client.app.state.services.runner.profiles.limits("Standard")["max_continuations"] == 0
