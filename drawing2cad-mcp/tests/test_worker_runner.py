@@ -178,3 +178,34 @@ def test_inline_code_uses_current_description_without_changing_validation(runner
     assert second["status"] == "pass", second
     assert second["measured"]["bbox_size"] == pytest.approx([25, 10, 5])
     assert first["measured"]["bbox_size"] == pytest.approx([20, 10, 5])
+
+
+def test_projection_completes_and_keeps_timeout_failure_and_recovery(runner):
+    from drawing2cad_mcp.drawing_contract import description_digest
+    from test_drafting import drawing_fixture
+
+    description, spec = drawing_fixture()
+    description["features"] = [feature for feature in description["features"] if feature["id"] != "hole"]
+    spec["views"][0]["geometry"] = [primitive for primitive in spec["views"][0]["geometry"] if primitive["id"] != "hole_circle"]
+    spec["views"][0]["dimensions"] = [dimension for dimension in spec["views"][0]["dimensions"] if dimension["id"] != "hole_diameter"]
+    spec["description_sha256"] = description_digest(description)
+    built = runner.run("build", description=description)
+    assert built["status"] == "pass", built
+    drawn = runner.run("drawing", description=description, drawing_spec=spec, revision=1)
+    assert drawn["status"] == "pass", drawn
+    pdf = next(Path(item["path"]) for item in drawn["artifacts"] if item["name"] == "drawing.pdf")
+    views = [{"view_id": "top", "toward_viewer": "+Z", "up": "+Y", "region": [15, 20, 150, 125], "mm_per_sheet_mm": 1.0},
+             {"view_id": "front", "toward_viewer": "-Y", "up": "+Z", "region": [155, 20, 280, 125], "mm_per_sheet_mm": 1.0}]
+    inputs = {"input_step": Path(built["candidate_step"]), "input_pdf": pdf, "page": 1, "views": views}
+    result = runner.run("projection_check", **inputs)
+    assert result["status"] == "pass", result
+    assert all(view["status"] == "pass" for view in result["views"])
+    assert result["sandbox"]["network"] == "socket_syscalls_denied"
+    assert '"stage": "dependencies", "event": "started"' in result["worker"]["logs"]["stderr"]
+    assert '"stage": "result_generation", "event": "completed"' in result["worker"]["logs"]["stderr"]
+    limited = runner.run("projection_check", timeout=1, **inputs)
+    assert limited["error"]["code"] == "WORKER_TIMEOUT", limited
+    assert "views" not in limited and "artifacts" not in limited
+    assert limited["worker"]["duration_seconds"] < 5
+    assert len(limited["worker"]["logs"]["stderr"]) <= 8192
+    assert runner.run("probe")["status"] == "pass"
