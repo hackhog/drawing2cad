@@ -63,7 +63,8 @@ The web adapter supplies the trusted identity. The MCP uses one configured deplo
 - **Arguments as JSON text:** some models send an object or array argument as JSON text (a string that contains the
   encoded value). Before the MCP call, `drive()` decodes such a string. The published input schema of the tool must give
   the parameter the type `object` or `array`. The string must be valid JSON of that type, with no `NaN`, `Infinity`, or
-  number too large for a finite float. The decoding applies at the top level and in nested `properties` and `items`
+  number too large for a finite float. It must contain no string or object key that UTF-8 cannot encode (for example,
+  a truncated escaped emoji). The decoding applies at the top level and in nested `properties` and `items`
   schemas. It follows local references (`$ref` values that start with `#/`, for example `#/$defs/...`). It does not
   change strings of parameters whose schema type is `string` or unknown. The published schema and the MCP validation
   stay strict. The trace records each decoding as an `argument-decoded` event with the tool, the JSON pointer, the

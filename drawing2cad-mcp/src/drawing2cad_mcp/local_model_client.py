@@ -452,6 +452,24 @@ def _has_non_finite_number(value):
     return False
 
 
+def _has_unencodable_string(value):
+    """True if a decoded JSON value contains a string or an object key that UTF-8 cannot encode, for example a lone surrogate."""
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            try:
+                item.encode("utf-8")
+            except UnicodeEncodeError:
+                return True
+        elif isinstance(item, dict):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
+    return False
+
+
 def _expected_containers(schema):
     """The container types (object, array) that a schema expects. Empty if the schema also permits a string."""
     types = schema.get("type")
@@ -466,7 +484,8 @@ def decode_json_text_arguments(arguments, schema):
 
     The decoding applies only to a string value whose schema type is object or array (also in a type list without
     string). The string must be valid JSON of an expected type. It must not contain NaN, Infinity, or a number
-    that is too large for a finite float. The decoding follows the "properties" of object schemas and the "items"
+    that is too large for a finite float. It must not contain a string or an object key that UTF-8 cannot encode,
+    for example a truncated escaped emoji. The decoding follows the "properties" of object schemas and the "items"
     schema of array schemas, at the top level and in nested values. It resolves local references.
     It keeps other values unchanged, also strings of an unknown or unresolved schema. The MCP schema and the MCP
     validation stay strict: the server receives only the decoded value.
@@ -486,7 +505,8 @@ def decode_json_text_arguments(arguments, schema):
                 candidate = json.loads(value, parse_constant=_reject_constant)
             except (ValueError, RecursionError):
                 return value
-            if _json_type(candidate) not in expected or _has_non_finite_number(candidate):
+            if (_json_type(candidate) not in expected or _has_non_finite_number(candidate)
+                    or _has_unencodable_string(candidate)):
                 return value
             decoded.append({"path": path, "original_type": "string", "decoded_type": _json_type(candidate)})
             value = candidate

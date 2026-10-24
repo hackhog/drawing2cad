@@ -344,6 +344,35 @@ async def test_json_text_with_a_non_finite_number_reaches_the_mcp_unchanged(tmp_
     assert "argument-decoded" not in trace_kinds(tmp_path)
 
 
+TRUNCATED_SURROGATE_TEXTS = ['{"name": "\\ud83d"}', '{"\\ud83d": 1}', '{"a": [1, {"b": "x\\ude00y"}]}']
+
+
+@pytest.mark.parametrize("text", TRUNCATED_SURROGATE_TEXTS)
+def test_json_text_with_a_lone_surrogate_stays_a_string(text):
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result is arguments and decoded == []
+
+
+def test_json_text_with_an_escaped_emoji_pair_is_decoded():
+    arguments = {"run_id": "localtest-a", "drawing_spec": '{"name": "\\ud83d\\ude00"}'}
+    result, decoded = decode_json_text_arguments(arguments, DECODE_SCHEMA)
+    assert result == {"run_id": "localtest-a", "drawing_spec": {"name": "\U0001F600"}}
+    assert [item["path"] for item in decoded] == ["/drawing_spec"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", TRUNCATED_SURROGATE_TEXTS)
+async def test_json_text_with_a_lone_surrogate_reaches_the_mcp_unchanged(tmp_path, text):
+    received = []
+    session = ScriptedSession(lambda name, arguments, count: received.append(arguments) or ok_response())
+    arguments = {"run_id": "localtest-a", "drawing_spec": text}
+    model, _ = recorded(model_response([validate_call(arguments)]), model_response(text=report("Done.")))
+    result = await drive(session, decode_catalog(), plan(step_budget=5), "Skill", Trace(tmp_path), model_call=model)
+    assert received == [arguments] and result["mcp_calls"] == 1
+    assert "argument-decoded" not in trace_kinds(tmp_path)
+
+
 @pytest.mark.asyncio
 async def test_a_string_parameter_with_json_text_reaches_the_mcp_unchanged(tmp_path):
     received = []
