@@ -15,26 +15,18 @@ Copy `.env.example` in the repository root to `.env` and set the required values
 Use `--env-file .env` to load this file for Compose interpolation. Shell values have priority.
 If no `.env` exists, omit `--env-file .env` and supply required values through the shell.
 
-From the repository root:
-
-```bash
-docker compose --env-file .env -f deployment/compose.yaml run --rm -T mcp
-```
-
-`deployment/compose.yaml` uses the published image `ghcr.io/hackhog/drawing2cad-mcp` of the version in `DRAWING2CAD_VERSION`, or `latest`
-([ADR 0027](../docs/adr/0027-container-images-on-ghcr-for-version-tags.md)).
-To build the current source, use `deployment/compose.local.yaml` instead. Run `build mcp` before `run`.
-This starts MCP over stdio. Attach a client to stdin/stdout.
-The service has no network and publishes no HTTP port.
-It retains sources, revisions, jobs, notes, and artifacts in the `cad-data` volume at `/data`.
-The Docker configuration enables the domain profile, with private storage at `/data/domain`.
-Send PDF bytes through the upload tools. No source directory mount is required.
-
-For HTTP, set `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism and run:
+Set `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism. From the repository root, run:
 
 ```bash
 docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http up -d mcp-http
 ```
+
+`deployment/compose.yaml` uses the published image `ghcr.io/hackhog/drawing2cad-mcp` of the version in `DRAWING2CAD_VERSION`, or `latest`
+([ADR 0027](../docs/adr/0027-container-images-on-ghcr-for-version-tags.md)).
+To build the current source, run `docker compose --env-file .env -f deployment/compose.local.yaml --profile mcp-http up --build -d mcp-http`.
+It retains sources, revisions, jobs, notes, and artifacts in the `cad-data` volume at `/data`.
+The Docker configuration enables the domain profile, with private storage at `/data/domain`.
+Send PDF bytes through the upload tools. No source directory mount is required.
 
 The endpoint is `http://127.0.0.1:8765/mcp`. Use the same bearer token in the client.
 Only the host loopback interface is exposed. The application can receive HTTP requests; the CAD child retains its separate network restrictions.
@@ -353,7 +345,7 @@ Set the TOML configuration:
 
 - `[pdf]`: permitted source directories, output directory, and optional absolute Poppler path. Without that path, the server searches `PATH` for `pdftoppm`.
 - `[cad]`: enable the maintained worker and set finite timeout, memory, concurrency, and call-budget limits. Keep `allow_build_code=false` unless its verified scope is needed.
-- `[server]`: transport, preview limits, PDF concurrency, `max_step_bytes`, and optional `expose_legacy_workflow`. The default transport is `stdio`.
+- `[server]`: Streamable HTTP transport, preview limits, PDF concurrency, `max_step_bytes`, and optional `expose_legacy_workflow`.
 - `[http]`: listener address, port, permitted Host and Origin headers, and the bearer-token environment variable.
 - `[domain]`: enable ID-based operations, select private storage, set the server principal, and bound PDF/chunk sizes. Docker enables this profile.
 
@@ -369,15 +361,15 @@ The generic example disables CAD execution; the Docker configuration enables the
 Run this command from the package directory:
 
 ```powershell
-.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml --transport streamable-http
+.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml
 ```
 
 On Linux or macOS, use `.venv/bin/python`.
 The default endpoint is `http://127.0.0.1:8000/mcp`.
 The path is `/mcp`. The server does not supply the legacy `/sse` transport.
-Set `[server].transport = "streamable-http"` to make HTTP the configured transport.
-CLI options `--transport`, `--host`, and `--port` override their configuration values.
-The standard command keeps stdio if the configuration does not select HTTP.
+Streamable HTTP is the default transport.
+CLI options `--transport streamable-http`, `--host`, and `--port` override their configuration values.
+The server rejects `--transport stdio` and `transport = "stdio"`.
 
 The server uses the MCP SDK's stateless Streamable HTTP transport with streamed responses.
 It does not require an `Mcp-Session-Id` header.
@@ -396,11 +388,11 @@ This transport setting does not make CAD operations stateless.
 ### Listener access
 
 The default listener accepts connections only on the local loopback interface.
-If `DRAWING2CAD_HTTP_TOKEN` is set, each request must include `Authorization: Bearer <token>`.
+Each request must include `Authorization: Bearer <token>`.
 The server reads the variable named by `[http].token_env` at startup.
 Set the same token in the client. Do not commit its value.
 Restart the server after a token change.
-A non-loopback listener requires a non-empty token before startup.
+The server requires a nonempty token before startup for all listeners.
 
 `allowed_hosts` permits incoming Host headers. Add the deployment hostname and port before clients use that address.
 The defaults permit loopback names. A listener address such as `0.0.0.0` does not permit every Host header.
@@ -415,7 +407,7 @@ The address `127.0.0.1` in a LiteLLM container refers to that container.
 For connections across an untrusted network, put the endpoint behind a TLS reverse proxy.
 Preserve the permitted Host header and request streaming through that proxy.
 
-The HTTP endpoint uses the same domain storage, source ownership, part revision gates, and CAD worker restrictions as stdio.
+The HTTP endpoint uses the domain storage, source ownership, part revision gates, and CAD worker restrictions.
 Uploads and downloads use MCP tools. There are no separate REST download routes or web interface in this milestone.
 The local-path development profile returns server paths; do not use that profile as the remote upload contract.
 MCP image blocks remain available to remote clients.
@@ -440,40 +432,16 @@ For an HTTP client with an `mcpServers` configuration, use the server URL:
 }
 ```
 
-Configure the bearer token through the client's secret mechanism when the server requires it.
+Configure the bearer token through the client's secret mechanism.
 The client must support Streamable HTTP. A browser page or ordinary GET request is not an MCP readiness test.
 Initialize an MCP connection, list tools, and call `drawing2cad_status`.
 
-For stdio clients, replace the example paths:
-
-```json
-{
-  "mcpServers": {
-    "drawing2cad": {
-      "command": "C:/Projekt/drawing2cad-mcp/.venv/Scripts/python.exe",
-      "args": ["-m", "drawing2cad_mcp", "--config", "C:/Projekt/drawing2cad-mcp/drawing2cad-mcp.local.toml", "--transport", "stdio"]
-    }
-  }
-}
-```
-
-Codex uses TOML. For HTTP, use a URL and an optional token variable:
+Codex uses TOML. Set the URL and token variable:
 
 ```toml
 [mcp_servers.drawing2cad]
 url = "http://127.0.0.1:8000/mcp"
 bearer_token_env_var = "DRAWING2CAD_HTTP_TOKEN"
-startup_timeout_sec = 30
-tool_timeout_sec = 300
-```
-
-Omit `bearer_token_env_var` for the local listener without authentication.
-The stdio alternative is:
-
-```toml
-[mcp_servers.drawing2cad]
-command = 'C:\Projekt\drawing2cad-mcp\.venv\Scripts\python.exe'
-args = ["-m", "drawing2cad_mcp", "--config", 'C:\Projekt\drawing2cad-mcp\drawing2cad-mcp.local.toml', "--transport", "stdio"]
 startup_timeout_sec = 30
 tool_timeout_sec = 300
 ```
@@ -484,20 +452,11 @@ A build can include both construction and fresh STEP import, each with its own w
 After configuration changes, reload the MCP connection in the client.
 See the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
-To start the stdio protocol process manually, run this command:
-
-```powershell
-.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml --transport stdio
-```
-
-The process waits for an MCP client on stdin/stdout. It sends logs to stderr.
-An empty console is not an error.
-
 ## Register with LiteLLM
 
 [litellm-mcp.example.json](litellm-mcp.example.json) is a request body for `POST /v1/mcp/server` on LiteLLM.
 It registers Streamable HTTP with the explicit LiteLLM value `"transport": "http"`.
-It is not a stdio UI JSON block or a complete LiteLLM configuration file.
+It is not a complete LiteLLM configuration file.
 
 1. Install the MCP and PDF dependencies. Use the supported Docker worker profile for CAD execution.
 2. Create the local configuration from the [TOML example](drawing2cad-mcp.example.toml). Set its paths for that host.
@@ -514,8 +473,7 @@ For API registration, send the example as JSON to the LiteLLM endpoint with a pe
 The `auth_type` and `auth_value` fields configure LiteLLM's connection to drawing2cad.
 They are separate from the credential used to call the LiteLLM management API.
 
-The example uses `auth_type="none"` for the default local listener without a token.
-If the MCP server requires a token, set `auth_type="bearer_token"` and supply `auth_value` through the registration process.
+The example uses `auth_type="bearer_token"`. Supply `auth_value` through the registration process.
 Use the same value as the server's configured token variable. Keep it outside the committed JSON example.
 Do not use `auth_type="api_key"`; that setting sends a different header.
 
@@ -526,31 +484,16 @@ mcp_servers:
   drawing2cad:
     url: http://127.0.0.1:8000/mcp
     transport: http
-    auth_type: none
-```
-
-For a token-protected server, use these fields instead of `auth_type: none`:
-
-```yaml
     auth_type: bearer_token
     auth_value: os.environ/DRAWING2CAD_HTTP_TOKEN
 ```
 
 Set that variable in the LiteLLM process environment.
-HTTP registration does not require `LITELLM_ENABLE_MCP_STDIO`.
 See the official [transport and configuration reference](https://docs.litellm.ai/docs/mcp_config_reference)
 and [API registration example](https://docs.litellm.ai/docs/mcp_public_internet#per-server-setting).
 Use the [authentication reference](https://docs.litellm.ai/docs/mcp/) for credential fields.
 
-### Optional stdio registration
-
-[litellm-stdio.example.json](litellm-stdio.example.json) preserves the `mcpServers` JSON format for the LiteLLM stdio UI.
-Install the MCP package on the LiteLLM host. Replace both paths with paths accessible to that process.
-Set `LITELLM_ENABLE_MCP_STDIO=true` in the LiteLLM process environment before startup.
-Select **Standard Input/Output (stdio)** and paste the adjusted JSON into its configuration field.
-See the [stdio registration instructions](https://docs.litellm.ai/docs/mcp/#add-stdio-mcp-server).
-
-Registration does not install server dependencies. The Docker image supplies the worker. The `mcp` Compose service uses stdio and no network; the `mcp-http` service publishes the authenticated endpoint.
+Registration does not install server dependencies. The Docker image supplies the worker. The `mcp-http` Compose service publishes the authenticated endpoint.
 
 Load the complete [drawing2cad skill folder](../skills/drawing2cad/SKILL.md) in the agent that uses these tools.
 Include its `references/` files. MCP registration does not install the skill or load its workflow instructions.

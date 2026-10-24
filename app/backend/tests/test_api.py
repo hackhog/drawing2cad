@@ -25,6 +25,7 @@ POPPLER = shutil.which(os.environ.get("DRAWING2CAD_PDFTOPPM", "pdftoppm"))
 def client(tmp_path, monkeypatch):
     """Each test uses its own data directory and no model endpoint."""
     monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DRAWING2CAD_HTTP_TOKEN", "backend-test-http-token")
     for name in ("DRAWING2CAD_AGENT_BASE_URL", "DRAWING2CAD_AGENT_MODEL", "DRAWING2CAD_AGENT_API_KEY", "DRAWING2CAD_AGENT_PROFILES"):
         monkeypatch.delenv(name, raising=False)
     with TestClient(api.create_app()) as test_client:

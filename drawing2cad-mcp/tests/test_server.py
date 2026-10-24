@@ -1,14 +1,20 @@
-"""Native tool contracts and full client-to-server stdio round trips."""
+"""Native tool contracts and full client-to-server HTTP round trips."""
 
+import asyncio
 import base64
+from contextlib import asynccontextmanager
 from io import BytesIO
 import json
 import os
 from pathlib import Path
+import socket
+import subprocess
 import sys
+import time
 
+import httpx2
 from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolRequestParams
 from PIL import Image
 import pytest
@@ -22,6 +28,81 @@ from test_pdf import make_pdf
 from test_part_schema import sample_description
 
 SAMPLE = Path(__file__).resolve().parents[2] / "resources" / "Drawing2CAD" / "Maschinenteil" / "Maschinenteil_dwg.pdf"
+
+
+TOKEN_ENV = "DRAWING2CAD_TEST_CLI_TOKEN"
+TEST_TOKEN = "test-token-for-cli-http"
+
+
+def cli_config(tmp_path):
+    config = tmp_path / "config.toml"
+    quote = json.dumps
+    config.write_text(
+        f'[pdf]\nallowed_roots=[{quote(str(tmp_path))}]\noutput_root={quote(str(tmp_path / "out"))}\n'
+        f'[http]\ntoken_env="{TOKEN_ENV}"\n', encoding="utf8")
+    return config
+
+
+def cli_environment(token=TEST_TOKEN):
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path(drawing2cad_mcp.__file__).resolve().parents[1])
+    environment.pop(TOKEN_ENV, None)
+    if token is not None:
+        environment[TOKEN_ENV] = token
+    return environment
+
+
+@asynccontextmanager
+async def cli_session(tmp_path):
+    """Start the default CLI transport. Retry if another process takes the selected port."""
+    config = cli_config(tmp_path)
+    for attempt in range(3):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+        url = f"http://127.0.0.1:{port}/mcp"
+        log_path = tmp_path / f"server-{attempt}.log"
+        with log_path.open("wb") as log:
+            process = subprocess.Popen(
+                [sys.executable, "-m", "drawing2cad_mcp", "--config", str(config), "--port", str(port)],
+                env=cli_environment(), stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+            )
+            try:
+                ready = False
+                deadline = time.monotonic() + 20
+                async with httpx2.AsyncClient(timeout=1, trust_env=False) as client:
+                    while time.monotonic() < deadline and process.poll() is None:
+                        try:
+                            response = await client.get(url)
+                            ready = response.status_code == 401
+                        except httpx2.TransportError:
+                            pass
+                        if ready:
+                            break
+                        await asyncio.sleep(0.05)
+                if not ready:
+                    output = log_path.read_text(encoding="utf-8", errors="replace")
+                    if process.poll() is not None and ("address already in use" in output.lower() or "10048" in output):
+                        continue
+                    pytest.fail(f"HTTP server did not start: {output}")
+                async with httpx2.AsyncClient(
+                    headers={"Authorization": f"Bearer {TEST_TOKEN}"}, timeout=10, trust_env=False,
+                ) as client:
+                    async with streamable_http_client(url, http_client=client) as streams:
+                        async with ClientSession(*streams, read_timeout_seconds=10) as session:
+                            initialized = await session.initialize()
+                            assert initialized.server_info.name == "drawing2cad-mcp"
+                            yield session
+                return
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                try:
+                    await asyncio.to_thread(process.wait, 10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    await asyncio.to_thread(process.wait, 10)
+    pytest.fail("HTTP server could not bind an available loopback port after three attempts")
 
 
 @pytest.fixture
@@ -157,42 +238,62 @@ def test_config_resolves_paths_relative_to_file(tmp_path):
     settings = Settings.load(config)
     assert settings.pdf.allowed_roots == [tmp_path / "sources"]
     assert settings.pdf.output_root == tmp_path / "out"
+    assert settings.server.transport == "streamable-http"
 
 
-async def test_full_stdio_server_exposes_native_part_and_pdf_tools(tmp_path):
+def test_stdio_configuration_is_rejected(tmp_path):
+    config = cli_config(tmp_path)
+    with config.open("a", encoding="utf-8") as stream:
+        stream.write('[server]\ntransport="stdio"\n')
+    with pytest.raises(ValidationError, match="streamable-http"):
+        Settings.load(config)
+
+
+def test_cli_rejects_stdio(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-m", "drawing2cad_mcp", "--config", str(cli_config(tmp_path)), "--transport", "stdio"],
+        env=cli_environment(), capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 2
+    assert "invalid choice: 'stdio'" in result.stderr and "streamable-http" in result.stderr
+
+
+@pytest.mark.parametrize("token", [None, ""])
+def test_default_http_startup_requires_token(tmp_path, token):
+    result = subprocess.run(
+        [sys.executable, "-m", "drawing2cad_mcp", "--config", str(cli_config(tmp_path))],
+        env=cli_environment(token), capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 2
+    assert TOKEN_ENV in result.stderr and "bearer token" in result.stderr
+
+
+async def test_full_default_http_server_exposes_native_part_and_pdf_tools(tmp_path):
     source = make_pdf(tmp_path / "test.pdf")
-    config = tmp_path / "config.toml"
-    quote = json.dumps
-    config.write_text(
-        f'[pdf]\nallowed_roots=[{quote(str(tmp_path))}]\noutput_root={quote(str(tmp_path / "out"))}\n', encoding="utf8")
-    parameters = StdioServerParameters(command=sys.executable,
-                                      args=["-m", "drawing2cad_mcp", "--config", str(config)],
-                                      env={"PYTHONPATH": str(Path(drawing2cad_mcp.__file__).resolve().parents[1])})
-    async with stdio_client(parameters) as streams:
-        async with ClientSession(*streams) as session:
-            await session.initialize()
-            catalog = (await session.list_tools()).tools
-            assert len(catalog) == len(LOCAL_TOOLS) - 1  # build_code is disabled by default.
-            assert not any(tool.name.startswith("freecad_") or tool.name == "build_code" for tool in catalog)
-            capabilities = await session.call_tool("cad_capabilities", {})
-            assert not capabilities.structured_content["workflow"]["available"]
-            assert capabilities.structured_content["cad"]["backend"] == "build123d"
-            assert "development_proxy" not in capabilities.structured_content
-            schema = await session.call_tool("part_schema", {})
-            assert not schema.is_error
-            assert schema.structured_content["schema"]["additionalProperties"] is False
-            validated = await session.call_tool("part_validate", {"description": sample_description()})
-            assert validated.structured_content["status"] == "pass"
-            removed = await session.call_tool("freecad_execute_code", {"code": "raise AssertionError()"})
-            assert removed.is_error and removed.structured_content["error"]["code"] == "UNKNOWN_TOOL"
-            status = await session.call_tool("drawing2cad_status", {})
-            assert "freecad" not in status.structured_content
-            assert "development_proxy" not in status.structured_content["capabilities"]
-            pdf = await session.call_tool("pdf_info", {"path": str(source)})
-            assert pdf.structured_content["page_count"] == 2
-            text = await session.call_tool("pdf_read_text", {"path": str(source)})
-            assert text.structured_content["source"] == pdf.structured_content["source"]
-            assert "Dimension 42 mm" in text.structured_content["pages"][0]["text"]
+    async with cli_session(tmp_path) as session:
+        catalog = (await session.list_tools()).tools
+        assert len(catalog) == len(LOCAL_TOOLS) - 1  # build_code is disabled by default.
+        assert not any(tool.name.startswith("freecad_") or tool.name == "build_code" for tool in catalog)
+        capabilities = await session.call_tool("cad_capabilities", {})
+        assert not capabilities.structured_content["workflow"]["available"]
+        assert capabilities.structured_content["cad"]["backend"] == "build123d"
+        assert "development_proxy" not in capabilities.structured_content
+        schema = await session.call_tool("part_schema", {})
+        assert not schema.is_error
+        assert schema.structured_content["schema"]["additionalProperties"] is False
+        validated = await session.call_tool("part_validate", {"description": sample_description()})
+        assert validated.structured_content["status"] == "pass"
+        removed = await session.call_tool("freecad_execute_code", {"code": "raise AssertionError()"})
+        assert removed.is_error and removed.structured_content["error"]["code"] == "UNKNOWN_TOOL"
+        status = await session.call_tool("drawing2cad_status", {})
+        assert status.structured_content["transport"] == "streamable-http"
+        assert "freecad" not in status.structured_content
+        assert "development_proxy" not in status.structured_content["capabilities"]
+        pdf = await session.call_tool("pdf_info", {"path": str(source)})
+        assert pdf.structured_content["page_count"] == 2
+        text = await session.call_tool("pdf_read_text", {"path": str(source)})
+        assert text.structured_content["source"] == pdf.structured_content["source"]
+        assert "Dimension 42 mm" in text.structured_content["pages"][0]["text"]
 
 
 async def test_invalid_argument_error_does_not_repeat_the_input_value(app, tmp_path):
@@ -205,23 +306,14 @@ async def test_invalid_argument_error_does_not_repeat_the_input_value(app, tmp_p
     assert "secret" not in json.dumps(result.structured_content)
 
 
-async def test_stdio_transport_does_not_repeat_invalid_input_values(tmp_path):
-    """The complete MCP stdio path returns the field and the rule, not the private value."""
+async def test_http_transport_does_not_repeat_invalid_input_values(tmp_path):
+    """The complete MCP HTTP path reports the field and rule without the private value."""
     private = "/srv/private-customer/secret-drawing.pdf"
     source = make_pdf(tmp_path / "test.pdf")
-    config = tmp_path / "config.toml"
-    quote = json.dumps
-    config.write_text(
-        f'[pdf]\nallowed_roots=[{quote(str(tmp_path))}]\noutput_root={quote(str(tmp_path / "out"))}\n', encoding="utf8")
-    parameters = StdioServerParameters(command=sys.executable,
-                                      args=["-m", "drawing2cad_mcp", "--config", str(config)],
-                                      env={"PYTHONPATH": str(Path(drawing2cad_mcp.__file__).resolve().parents[1])})
-    async with stdio_client(parameters) as streams:
-        async with ClientSession(*streams) as session:
-            await session.initialize()
-            result = await session.call_tool("pdf_read_text", {"path": str(source), "pages": private})
-            assert result.is_error
-            assert "secret" not in json.dumps(result.model_dump(mode="json"))
+    async with cli_session(tmp_path) as session:
+        result = await session.call_tool("pdf_read_text", {"path": str(source), "pages": private})
+        assert result.is_error
+        assert "secret" not in json.dumps(result.model_dump(mode="json"))
 
 
 async def test_calibration_schema_error_lists_every_defect(app):

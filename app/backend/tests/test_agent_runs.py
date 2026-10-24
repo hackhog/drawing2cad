@@ -126,6 +126,7 @@ def test_only_delivered_domain_artifacts_are_shown(role, media_type, expected):
 @pytest.fixture
 def environment(tmp_path, monkeypatch):
     monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DRAWING2CAD_HTTP_TOKEN", "backend-test-http-token")
     # A fixed test master key (ADR 0028). It encrypts only test keys in the temporary data directory.
     monkeypatch.setenv("DRAWING2CAD_SECRET_KEY", TEST_MASTER_KEY)
     monkeypatch.delenv("DRAWING2CAD_SECRET_KEY_FILE", raising=False)
@@ -149,6 +150,24 @@ def upload(client):
     res = client.post("/api/sources", files={"file": ("Plate_dwg.pdf", pdf_bytes(), "application/pdf")})
     assert res.status_code == 200, res.text
     return res.json()
+
+
+def test_backend_startup_requires_http_token(environment):
+    environment.delenv("DRAWING2CAD_HTTP_TOKEN")
+    with pytest.raises(ValueError, match="DRAWING2CAD_HTTP_TOKEN.*bearer token"):
+        api.create_app()
+
+
+def test_mounted_mcp_requires_http_token(environment):
+    with TestClient(api.create_app()) as client:
+        assert client.get("/mcp").status_code == 401
+        assert client.get("/mcp", headers={"Authorization": "Bearer wrong-token"}).status_code == 401
+        response = client.post("/mcp", headers={"Authorization": "Bearer backend-test-http-token",
+                                               "Host": "localhost:8000", "Accept": "application/json, text/event-stream"},
+                               json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                     "params": {"protocolVersion": "2025-03-26", "capabilities": {},
+                                                "clientInfo": {"name": "backend-test", "version": "1"}}})
+        assert response.status_code == 200
 
 
 def test_runs_are_unavailable_without_model_endpoint(environment):

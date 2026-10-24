@@ -4,6 +4,7 @@ Date: 2026-10-17
 
 ## Status
 
+The MCP transport described in the historical test below is replaced by [ADR 0040](0040-streamable-http-as-the-only-mcp-transport.md).
 Proposed. Uses ADR 0003 (vector extractor) and ADR 0004 (text).
 
 Superseded by [ADR 0013](0013-vector-analysis-in-mcp.md) for packaging, status, process isolation, and timeout behavior.

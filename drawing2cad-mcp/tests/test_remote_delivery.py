@@ -18,17 +18,18 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 import pytest
 
-from drawing2cad_mcp.config import CadSettings, DomainSettings, PdfSettings, Settings
+from drawing2cad_mcp.config import CadSettings, DomainSettings, HTTPSettings, PdfSettings, Settings
 from drawing2cad_mcp.drawing_contract import description_digest
 from drawing2cad_mcp.server import Application
 from drawing2cad_mcp.worker_runner import WorkerRunner
 from test_drafting import drawing_fixture
-from test_http import running_server
+from test_http import TEST_TOKEN, TOKEN_ENV, running_server
 
 
 @asynccontextmanager
 async def delivery_session(url):
-    async with httpx2.AsyncClient(timeout=180, trust_env=False) as client:
+    async with httpx2.AsyncClient(headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+                                  timeout=180, trust_env=False) as client:
         async with streamable_http_client(url, http_client=client) as streams:
             async with ClientSession(*streams, read_timeout_seconds=180) as session:
                 await session.initialize()
@@ -167,7 +168,8 @@ async def check_drawing_downloads(session, drawing, expected_length):
 
 
 @pytest.fixture
-def delivery_app(tmp_path):
+def delivery_app(tmp_path, monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV, TEST_TOKEN)
     capability = WorkerRunner.capabilities()
     if os.environ.get("DRAWING2CAD_REQUIRE_SANDBOX") == "1":
         assert capability["available"], capability
@@ -178,6 +180,7 @@ def delivery_app(tmp_path):
                         pdftoppm=os.environ.get("DRAWING2CAD_PDFTOPPM")),
         cad=CadSettings(enabled=True, timeout_seconds=90),
         domain=DomainSettings(enabled=True, root=tmp_path / "store"),
+        http=HTTPSettings(token_env=TOKEN_ENV),
     ))
 
 

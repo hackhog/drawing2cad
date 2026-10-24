@@ -7,9 +7,9 @@ import json
 import pytest
 from mcp.types import CallToolRequestParams
 
-from drawing2cad_mcp.config import DomainSettings, PdfSettings, Settings
+from drawing2cad_mcp.config import DomainSettings, HTTPSettings, PdfSettings, Settings
 from drawing2cad_mcp.server import Application
-from test_http import mcp_session, running_server
+from test_http import TEST_TOKEN, TOKEN_ENV, mcp_session, running_server
 from test_pdf import make_pdf
 from test_part_schema import sample_description
 
@@ -18,6 +18,7 @@ def remote_app(tmp_path):
     return Application(Settings(
         pdf=PdfSettings(allowed_roots=[tmp_path / "private"], output_root=tmp_path / "private"),
         domain=DomainSettings(enabled=True, root=tmp_path / "store"),
+        http=HTTPSettings(token_env=TOKEN_ENV),
     ))
 
 
@@ -37,7 +38,8 @@ async def upload(session, data):
     return await call(session, "upload_complete", upload_id=upload_id)
 
 
-async def test_remote_upload_pdf_and_notes_survive_server_restart(tmp_path):
+async def test_remote_upload_pdf_and_notes_survive_server_restart(tmp_path, monkeypatch):
+    monkeypatch.setenv(TOKEN_ENV, TEST_TOKEN)
     source = make_pdf(tmp_path / "client-only.pdf").read_bytes()
     app = remote_app(tmp_path)
     async with running_server(app) as url:

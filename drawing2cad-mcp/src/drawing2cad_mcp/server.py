@@ -17,7 +17,6 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ImageContent, ListToolsResult, TextContent, Tool, ToolAnnotations
 from PIL import Image
 
@@ -429,52 +428,36 @@ class Application:
         return await self._bounded_pdf_call(name, arguments)
 
 
-async def serve(settings: Settings) -> None:
-    """Run the local stdio transport."""
-    application = Application(settings)
-    application.transport = "stdio"
-    async with stdio_server() as streams:
-        await application.server.run(streams[0], streams[1], application.server.create_initialization_options())
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="PDF preparation and restricted CAD through stdio or Streamable HTTP.")
+    parser = argparse.ArgumentParser(description="PDF preparation and restricted CAD through Streamable HTTP.")
     parser.add_argument("--config", type=Path, required=True, help="Path to the explicit TOML configuration")
-    parser.add_argument("--transport", choices=("stdio", "streamable-http"), help="Override server.transport")
+    parser.add_argument("--transport", choices=("streamable-http",), help="Only Streamable HTTP is supported")
     parser.add_argument("--host", help="Override http.host for Streamable HTTP")
     parser.add_argument("--port", type=int, help="Override http.port for Streamable HTTP")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.WARNING)  # stderr; stdout is exclusively MCP protocol.
+    logging.basicConfig(level=logging.WARNING)
     try:
         # An image of the shared runtime refuses to start without its system tools (ADR 0035).
         from .runtime_tools import require_if_configured
         require_if_configured()
         settings = Settings.load(args.config)
-        if args.transport is not None:
-            settings.server.transport = args.transport
         if args.host is not None or args.port is not None:
-            if settings.server.transport != "streamable-http":
-                raise ValueError("--host and --port require the streamable-http transport")
             values = settings.http.model_dump()
             if args.host is not None:
                 values["host"] = args.host
             if args.port is not None:
                 values["port"] = args.port
             settings.http = type(settings.http).model_validate(values)
-        if settings.server.transport == "streamable-http":
-            import uvicorn
-            from .http import create_http_app
+        import uvicorn
+        from .http import create_http_app
 
-            app = create_http_app(Application(settings))
+        app = create_http_app(Application(settings))
     except (OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
-    if settings.server.transport == "streamable-http":
-        # One process owns the shared CAD service. Forwarded headers require an
-        # explicitly configured deployment boundary and are not trusted here.
-        uvicorn.run(app, host=settings.http.host, port=settings.http.port,
-                    workers=1, proxy_headers=False, timeout_graceful_shutdown=10)
-    else:
-        asyncio.run(serve(settings))
+    # One process owns the shared CAD service. Forwarded headers require an
+    # explicitly configured deployment boundary and are not trusted here.
+    uvicorn.run(app, host=settings.http.host, port=settings.http.port,
+                workers=1, proxy_headers=False, timeout_graceful_shutdown=10)
 
 
 if __name__ == "__main__":

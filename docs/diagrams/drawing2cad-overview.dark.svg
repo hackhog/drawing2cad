@@ -19,8 +19,8 @@
 <text x="507.5" y="447" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">Streamable HTTP /mcp,</text>
 <text x="507.5" y="462" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">loopback</text>
 <path d="M200,552 H260 V552 H320" fill="none" stroke="#8ca4be" stroke-width="2.4"  marker-end="url(#arrow)"/>
-<text x="260" y="542" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">stdio / authenticated</text>
-<text x="260" y="557" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">HTTP</text>
+<text x="260" y="542" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">authenticated</text>
+<text x="260" y="557" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">Streamable HTTP</text>
 <path d="M520,552 H590 V512 H660" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>
 <text x="590" y="522" text-anchor="middle" font-size="12" fill="#a8b8cb" stroke="#0c1624" stroke-width="4" paint-order="stroke">versioned contracts</text>
 <path d="M890,512 H965 V392 H1040" fill="none" stroke="#8ca4be" stroke-width="1.5"  marker-end="url(#arrow)"/>

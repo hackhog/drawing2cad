@@ -3,10 +3,9 @@
 Use the maintained client to run one bounded Ollama trial through the MCP interface.
 It does not read PDF content or execute CAD directly.
 It supplies the file selected by `skill_path` and the live tool schemas to the model.
-It does not automatically load linked skill references.
-Record this context limit when comparing trials.
-For a complete-skill trial, supply an explicit instruction bundle and record the included reference hashes.
-Do not include deprecated adapters or unrelated references in that bundle.
+It supplies the skill references for each workflow step and records the references in the trace.
+The model can read other maintained references through the bounded skill_read tool.
+Keep the complete maintained skill folder available to the client.
 
 Run the client from an environment with the MCP package installed:
 
@@ -16,14 +15,15 @@ python -m drawing2cad_mcp.local_model_client --plan /path/to/plan.json --output 
 
 Put the plan and output in an ignored evaluation directory.
 The output directory must not exist before the run.
-The plan is trusted operator configuration. It can start the specified MCP command.
-Do not accept an unreviewed plan from a model or an uploaded document.
+Start the authenticated MCP HTTP service before the trial.
+Set `DRAWING2CAD_HTTP_TOKEN` in the client environment. The plan names the variable, not its value.
+Keep the token out of the plan, trace, and logs.
 
 Example plan fields:
 
 ```json
 {
-  "server": {"command": "docker", "args": ["run", "--rm", "-i", "drawing2cad-mcp:m1"]},
+  "server": {"url": "http://127.0.0.1:8000/mcp", "token_env": "DRAWING2CAD_HTTP_TOKEN"},
   "model": "local-model-name",
   "ollama_url": "http://127.0.0.1:11434",
   "skill_path": "../../skills/drawing2cad/SKILL.md",
@@ -39,15 +39,18 @@ Example plan fields:
 }
 ```
 
-Add the required source and storage mounts and container restrictions to the server arguments.
-Use a separate volume and run prefix for each trial.
-The source path must name the authorized PDF inside that server.
+Start a host HTTP server with the local-path development profile and an authorized PDF root.
+See the [HTTP setup guide](../drawing2cad-mcp/STREAMABLE_HTTP.md#1-prepare-a-host-installation) for installation, configuration, and startup.
+The Compose `mcp-http` service uses the domain profile; the command-line evaluation client still uses server paths and cannot use that profile.
+Use a separate run prefix for each trial.
+The source path must name an authorized PDF accessible to the server.
 The client denies other PDF paths, other run prefixes, and tools outside its allowlist, including code execution tools.
 
 The web backend calls `drive()` directly against the domain profile ([ADR 0018](adr/0018-agent-runner-in-the-web-backend.md)).
 Its plan contains `source_id` and `source_sha256` instead of `source_path`.
 In this mode, PDF tools and `part_create` sources must use that source ID and hash.
-The allowlist also contains the drawing tools, `artifact_preview`, and run notes. The release records the drawing status; the drawing does not gate the release.
+The allowlist also contains the drawing tools, `artifact_preview`, and run notes.
+Complete-service release requires a current verified STEP and drawing pair. An explicitly requested STEP-only release records the actual drawing status.
 The command-line client supports only `source_path`.
 
 If Ollama has no published host port, replace `ollama_url` with:
@@ -62,7 +65,7 @@ The operator needs access to Docker on the client host.
 The CAD server remains a separate restricted container.
 
 The client retains exact model requests and responses, tool requests and responses, images, questions, and timestamps.
-It also retains the skill, plan, catalog, initialization result, and server error log.
+It also retains the skill, plan, catalog, and initialization result.
 It reports model duration and MCP duration separately.
 Ollama timing and token fields remain in the summary when supplied.
 Large tool text is explicitly truncated only in the model conversation; the full response remains in the trace.

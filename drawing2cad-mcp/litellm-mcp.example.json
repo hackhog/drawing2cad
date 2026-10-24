@@ -3,5 +3,5 @@
   "alias": "drawing2cad",
   "url": "http://127.0.0.1:8000/mcp",
   "transport": "http",
-  "auth_type": "none"
+  "auth_type": "bearer_token"
 }

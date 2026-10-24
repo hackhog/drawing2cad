@@ -12,6 +12,7 @@ from drawing_demo import api
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DRAWING2CAD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DRAWING2CAD_HTTP_TOKEN", "backend-test-http-token")
     for name in ("BASE_URL", "MODEL", "API_KEY"):
         monkeypatch.delenv("DRAWING2CAD_AGENT_" + name, raising=False)
     with TestClient(api.create_app()) as test_client:

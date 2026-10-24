@@ -20,22 +20,12 @@ Run all commands from the repository root.
 Copy `.env.example` to `.env` before these commands, then set the required values.
 The `--env-file .env` option supplies root-file values for Compose interpolation, including image versions and tokens.
 The service `env_file` alone does not supply interpolation values. Shell values have priority.
-If no `.env` exists, omit `--env-file .env`. The web app can start without an agent endpoint.
+If no `.env` exists, omit `--env-file .env` and supply `DRAWING2CAD_HTTP_TOKEN` through the shell.
+The backend needs this token at startup, including when agent runs are unavailable.
 
 ### MCP
 
-```bash
-docker compose --env-file .env -f deployment/compose.yaml run --rm -T mcp
-```
-
-This command starts an MCP stdio process.
-Connect an MCP client to its stdin/stdout; it is not a browser endpoint.
-The container has no network.
-Send PDF bytes through the upload tools. Clients use source, run, job, and artifact IDs.
-No source-directory mount or client access to server paths is required.
-The named `cad-data` volume preserves uploaded sources, revisions, jobs, notes, and immutable artifacts under `/data`.
-
-For Streamable HTTP, supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism, then run:
+Supply `DRAWING2CAD_HTTP_TOKEN` through your secret mechanism, then run:
 
 ```bash
 docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http up -d mcp-http
@@ -43,6 +33,10 @@ docker compose --env-file .env -f deployment/compose.yaml --profile mcp-http up 
 
 Connect to `http://127.0.0.1:8765/mcp` with the same bearer token.
 The HTTP service exposes only the host loopback interface. It does not include the web interface.
+Send PDF bytes through the upload tools. Clients use source, run, job, and artifact IDs.
+No source-directory mount or client access to server paths is required.
+The named `cad-data` volume preserves uploaded sources, revisions, jobs, notes, and immutable artifacts under `/data`.
+For a local image build, use `docker compose --env-file .env -f deployment/compose.local.yaml --profile mcp-http up --build -d mcp-http`.
 
 Call `drawing2cad_status`, `cad_capabilities`, and `cad_worker_probe` before CAD work.
 The worker requires the supported Linux sandbox.
@@ -65,7 +59,7 @@ The files retain their build or drawing revision. The page shows the failed phas
 Runs need an OpenAI-compatible model endpoint.
 Copy `.env.example` to `.env` and set the required values.
 Run `docker compose --env-file .env -f deployment/compose.yaml up -d`.
-Without `.env`, omit `--env-file .env`; the app starts and shows runs as unavailable. See the [app guide](app/README.md).
+Without `.env`, supply `DRAWING2CAD_HTTP_TOKEN` through the shell and omit `--env-file .env`; the app starts and shows runs as unavailable. See the [app guide](app/README.md).
 To keep the key out of `.env`, leave `DRAWING2CAD_AGENT_API_KEY` empty there and pass it from the shell, for example from the macOS Keychain:
 `DRAWING2CAD_AGENT_API_KEY=$(security find-generic-password -a <account> -s <service> -w) docker compose --env-file .env -f deployment/compose.yaml up -d`.
 
@@ -144,7 +138,6 @@ The renderer is part of the repository; it needs no machine-local archify instal
 | [docs/diagrams/](docs/diagrams/drawing2cad-overview.json) | Versioned diagram source and generated HTML/SVG. |
 | `tools/diagrams/` | Portable diagram generator and parity tests. |
 | [litellm-mcp.example.json](drawing2cad-mcp/litellm-mcp.example.json) | Streamable HTTP registration example. |
-| [litellm-stdio.example.json](drawing2cad-mcp/litellm-stdio.example.json) | Optional stdio registration example. |
 | `resources/` | Original drawings and CAD references; construction roles are assigned per run. |
 | `output/` | Ignored generated models, drawings, previews, traces, and reports. |
 

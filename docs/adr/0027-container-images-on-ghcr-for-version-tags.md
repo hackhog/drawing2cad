@@ -4,6 +4,7 @@ Date: 2026-10-19
 
 ## Status
 
+The MCP transport and Compose service list below is replaced by [ADR 0040](0040-streamable-http-as-the-only-mcp-transport.md).
 Accepted. Replaces the rule of [ADR 0010](0010-demo-ui-in-react-with-3d-viewer.md) and [ADR 0012](0012-demo-app-as-frontend-and-backend-container.md) that `docker compose up --build` is the only command to build and start.
 
 ## Context

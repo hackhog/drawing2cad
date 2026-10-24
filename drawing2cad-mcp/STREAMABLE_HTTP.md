@@ -16,9 +16,7 @@ Agent or LiteLLM -> HTTP /mcp -> drawing2cad-mcp -> PDF tools
 ```
 
 The image includes PDF tools, a build123d worker, and the DXF/PDF drawing adapter.
-The `mcp` service in `deployment/compose.yaml` uses stdio with network disabled.
-It does not expose an HTTP port.
-The `mcp-http` service of the same file adds an authenticated listener on host loopback port 8765.
+The `mcp-http` service in `deployment/compose.yaml` provides an authenticated listener on host loopback port 8765.
 The CAD child retains its own network and filesystem restrictions.
 
 The domain profile supplies persistent PDF uploads and artifact downloads through MCP tools.
@@ -140,15 +138,14 @@ If the demo application already uses port 8000, select another MCP port and upda
 The path is always `/mcp`.
 The service does not supply a legacy `/sse` endpoint.
 
-The default configuration selects stdio until you change `server.transport` or supply a CLI override.
-The `--transport` option overrides the configured transport.
-The `--host` and `--port` options apply only to Streamable HTTP.
+Streamable HTTP is the default transport. The `--transport` option accepts only `streamable-http`.
+The server rejects `--transport stdio` and `transport = "stdio"` with an error.
+The `--host` and `--port` options override the HTTP listener settings.
 
-## 4. Configure authentication when required
+## 4. Configure authentication
 
-For the default loopback listener, a token is optional.
-If the configured token variable exists, all HTTP requests require that token.
-A non-loopback listener requires a token before startup.
+Every listener requires a token before startup, including loopback.
+All HTTP requests require that token.
 An empty token or a token with whitespace causes startup to fail.
 
 Generate a URL-safe random secret with your secret manager.
@@ -179,13 +176,13 @@ Restart the server after a token change.
 On Windows:
 
 ```powershell
-.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml --transport streamable-http
+.\.venv\Scripts\python.exe -m drawing2cad_mcp --config drawing2cad-mcp.local.toml
 ```
 
 On Linux or macOS:
 
 ```bash
-.venv/bin/python -m drawing2cad_mcp --config drawing2cad-mcp.local.toml --transport streamable-http
+.venv/bin/python -m drawing2cad_mcp --config drawing2cad-mcp.local.toml
 ```
 
 Keep the process running while clients use the endpoint.
@@ -204,7 +201,7 @@ Start one shared `DomainService` and its job service per store in the applicatio
 ## 6. Verify the MCP connection
 
 1. Connect an MCP client to `http://127.0.0.1:8000/mcp`.
-2. Supply the bearer token if the server requires it.
+2. Supply the bearer token.
 3. Initialize the MCP connection.
 4. List the tools.
 5. Call `drawing2cad_status` with these arguments:
@@ -233,12 +230,12 @@ The address must be reachable from the LiteLLM process.
 
 Use [litellm-mcp.example.json](litellm-mcp.example.json) as the request body for `POST /v1/mcp/server` on LiteLLM.
 The example selects LiteLLM's transport value `"http"`.
-It uses `auth_type: "none"` for a loopback MCP server without a token.
+It uses `auth_type: "bearer_token"`. Supply the token during registration.
 The JSON is not a complete LiteLLM configuration file.
-For the supplied Docker HTTP profile, change the URL to the reachable port 8765 endpoint and use `bearer_token`.
+For the supplied Docker HTTP profile, change the URL to the reachable port 8765 endpoint.
 
 1. Set `url` to the MCP endpoint reachable from LiteLLM.
-2. For a token-protected endpoint, set `auth_type` to `bearer_token`.
+2. Set `auth_type` to `bearer_token`.
 3. Supply `auth_value` through the registration process with the MCP server's token.
 4. Send the JSON with a permitted LiteLLM administration credential.
 5. Assign the required MCP access in LiteLLM.
@@ -255,19 +252,13 @@ Configure database storage for UI registrations as required by your LiteLLM depl
 
 ### Method B: LiteLLM configuration file
 
-For a loopback endpoint without a token, add this entry to LiteLLM's `config.yaml`:
+For a loopback endpoint, add this entry to LiteLLM's `config.yaml`:
 
 ```yaml
 mcp_servers:
   drawing2cad:
     url: http://127.0.0.1:8000/mcp
     transport: http
-    auth_type: none
-```
-
-For a token-protected endpoint, replace the authentication field with these fields:
-
-```yaml
     auth_type: bearer_token
     auth_value: os.environ/DRAWING2CAD_HTTP_TOKEN
 ```
@@ -275,7 +266,6 @@ For a token-protected endpoint, replace the authentication field with these fiel
 Supply the token variable to the LiteLLM process as well as the MCP process.
 Apply the updated configuration through your LiteLLM deployment procedure.
 Then list the tools and call `drawing2cad_status` through LiteLLM.
-HTTP connections do not require `LITELLM_ENABLE_MCP_STDIO`.
 
 Use the official [configuration reference](https://docs.litellm.ai/docs/mcp_config_reference)
 and [API registration procedure](https://docs.litellm.ai/docs/mcp_public_internet#per-server-setting) for deployment-specific details.
@@ -357,7 +347,7 @@ AP242 construction and semantic PMI remain M3 requirements.
 |---|---|
 | Connection refused | Verify that the process runs and the client uses the correct address and port. |
 | Address already in use | Stop the conflicting service or select another port with `--port`. |
-| Startup requests a token | Set the configured token variable before binding to a non-loopback address. |
+| Startup requests a token | Set the configured token variable before startup. |
 | Startup rejects a token | Supply a nonempty ASCII bearer token without whitespace. |
 | HTTP 401 | Supply exactly one valid Authorization header. Verify the server and client token values. |
 | HTTP 421 | Add the actual Host header to `allowed_hosts`, including the port where applicable. |
@@ -375,10 +365,6 @@ AP242 construction and semantic PMI remain M3 requirements.
 | `DRAWING_REVIEW_REQUIRED` | Review the current drawing and model candidate. |
 | Poppler unavailable | Install `pdftoppm` or set its actual executable path in the configuration. |
 | Timeout or lost response | Inspect the model and artifacts before you repeat a CAD operation. |
-
-To return to stdio, configure the client to launch the existing command with `--transport stdio`.
-That override also works when the TOML configuration selects HTTP.
-Use the [stdio registration example](litellm-stdio.example.json) for LiteLLM's stdio configuration format.
 
 ## Operating limits
 

@@ -13,7 +13,7 @@ from drawing2cad_mcp.local_model_client import (
 
 
 def plan(**changes):
-    value = {"server": {"command": "unused"}, "model": "local-test", "source_path": "/inputs/part.pdf",
+    value = {"server": {"url": "http://127.0.0.1:8000/mcp", "token_env": "DRAWING2CAD_HTTP_TOKEN"}, "model": "local-test", "source_path": "/inputs/part.pdf",
              "run_prefix": "localtest", "ollama_url": "http://127.0.0.1:11434", "step_budget": 3}
     value.update(changes)
     return value
@@ -53,6 +53,8 @@ def inference(*responses):
 
 
 @pytest.mark.parametrize("changes", [
+    {"server": {"command": "unused"}}, {"server": {"url": "http://localhost/mcp"}},
+    {"server": {"url": "http://localhost/mcp?token=private", "token_env": "TOKEN"}},
     {"step_budget": 0}, {"step_budget": True}, {"total_timeout_seconds": 1000000},
     {"ollama_url": "https://public.example"}, {"ollama_url": "http://127.0.0.1:11434/private"},
     {"run_prefix": "../other"}, {"source_path": "/inputs/file.step"},
