@@ -69,13 +69,27 @@ def describe(error: ValidationError, prefix: str = "") -> tuple[str, str]:
     if rule == "oneOf":
         return target, f"The value at {location} fails the schema rule 'oneOf': exactly one permitted form must match."
     if rule == "anyOf":
-        return target, f"The value at {location} fails the schema rule 'anyOf': at least one permitted form must match."
+        message = f"The value at {location} fails the schema rule 'anyOf': at least one permitted form must match."
+        kind_defects = _view_kind_defects(error)
+        if kind_defects:
+            field, instruction = kind_defects[0]
+            return target + "/" + field, instruction
+        return target, message
     message = f"The value at {location} fails the schema rule '{rule}'."
     if rule in _SHOWN:
         expected = json.dumps(error.validator_value, ensure_ascii=False, default=str)
         if len(expected) <= _MAX_EXPECTED:
             message += f" Expected: {expected}."
     return target, message + _field_note(error)
+
+
+def _view_kind_defects(error: ValidationError) -> list[tuple[str, str]] | None:
+    """Return fixed kind instructions only for the maintained derived-view union."""
+    if error.validator != "anyOf" or error.schema.get("title") != "DerivedViewRequest":
+        return None
+    from .derived_views import kind_field_defects
+
+    return kind_field_defects(error.instance)
 
 
 def _field_note(error: ValidationError) -> str:
@@ -92,7 +106,21 @@ def describe_all(validator, arguments, prefix: str = "", extra=()) -> tuple[list
     The list keeps the first schema defect first, then the semantic defects, then the other schema defects,
     so that the limit of _MAX_DEFECTS cannot remove a semantic defect. No message repeats an input value."""
     errors = sorted(validator.iter_errors(arguments), key=lambda e: [str(part) for part in e.absolute_path])
-    described = [describe(error, prefix) for error in errors]
+    described = []
+    replacement_fields = {}
+    for error in errors:
+        kind_defects = _view_kind_defects(error)
+        if kind_defects is not None:
+            # Common field defects already have specific errors. Do not also report the union failure.
+            target = pointer(error, prefix)
+            described.extend((target + "/" + field, message) for field, message in kind_defects)
+            replacement_fields.update((target + "/" + field, message) for field, message in kind_defects)
+        else:
+            described.append(describe(error, prefix))
+    # Kind instructions replace duplicate value or nested-field errors for the same field.
+    described = [(target, message) for target, message in described
+                 if not any((target == field or target.startswith(field + "/")) and message != instruction
+                            for field, instruction in replacement_fields.items())]
     # Masked targets can be equal for different input keys, so equal entries stay separate defects.
     ordered = described[:1] + [(prefix + t, m) for t, m in extra] + described[1:]
     defects = [{"target": target, "message": message} for target, message in ordered]
